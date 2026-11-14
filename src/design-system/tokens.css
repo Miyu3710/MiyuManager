@@ -1,0 +1,97 @@
+:root,
+[data-theme="midnight"] {
+  --color-bg: #081521;
+  --color-bg-deep: #06101a;
+  --color-bg-raised: #0c1b2a;
+  --color-surface: #122538;
+  --color-surface-raised: #172d42;
+  --color-surface-soft: rgba(243, 234, 216, 0.04);
+  --color-line: rgba(243, 234, 216, 0.12);
+  --color-line-strong: rgba(243, 234, 216, 0.22);
+  --color-text: #f3ead8;
+  --color-text-muted: rgba(243, 234, 216, 0.9);
+  --color-text-soft: rgba(243, 234, 216, 0.78);
+  --color-text-faint: rgba(243, 234, 216, 0.64);
+  --text-caption: 11px;
+  --text-meta: 11.5px;
+  --text-ui: 13px;
+  --text-body: 14px;
+  --text-title: 16px;
+  --color-accent: #d94b3d;
+  --color-accent-text: #f08b7e;
+  --color-accent-hover: #e45a4a;
+  --color-accent-soft: rgba(217, 75, 61, 0.12);
+  --color-accent-contrast: #f3ead8;
+  --color-status: #8fd3c1;
+  --color-status-soft: rgba(143, 211, 193, 0.12);
+  --color-data: #d9a441;
+  --color-data-soft: rgba(217, 164, 65, 0.12);
+  --color-focus: #8fd3c1;
+  --color-danger: #e45757;
+  --color-bar-bg: #06101a;
+  --color-bar-fg: #d9d0bf;
+  --color-bar-hover: rgba(243, 234, 216, 0.06);
+  --focus-color: var(--color-focus);
+  --selection-bg: var(--color-accent);
+  --selection-fg: var(--color-text);
+  --scroll-thumb: rgba(143, 211, 193, 0.22);
+
+  --rail-width: 204px;
+  --topbar-height: 64px;
+  --page-pad: 26px;
+  --cover-gap: 13px;
+  --library-columns: 5;
+  --control-height: 38px;
+
+  --radius-xs: 5px;
+  --radius-control: 10px;
+  --radius-card: 16px;
+  --radius-panel: 18px;
+  --radius-hero: 24px;
+  --radius-pill: 999px;
+  --radius-cover: 8px;
+  --radius-popover: 18px;
+
+  --shadow-cover: 0 10px 22px rgba(0, 0, 0, 0.24);
+  --shadow-raised: 0 18px 40px rgba(0, 0, 0, 0.3);
+  --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-hero: 0 24px 60px rgba(0, 0, 0, 0.2);
+
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 260ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-density="compact"] {
+  --rail-width: 184px;
+  --page-pad: 20px;
+  --cover-gap: 10px;
+  --library-columns: 6;
+  --control-height: 34px;
+}
+
+[data-density="comfortable"] {
+  --rail-width: 204px;
+  --page-pad: 26px;
+  --cover-gap: 13px;
+  --library-columns: 5;
+  --control-height: 38px;
+}
+
+@media (max-width: 1230px) {
+  :root,
+  [data-theme="midnight"] {
+    --rail-width: 184px;
+    --page-pad: 22px;
+    --library-columns: 4;
+  }
+}
+
+@media (max-width: 1080px) {
+  :root,
+  [data-theme="midnight"] {
+    --page-pad: 18px;
+    --library-columns: 3;
+  }
+}
