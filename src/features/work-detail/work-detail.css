@@ -245,7 +245,15 @@
 }
 
 .detail-install p svg {
+  flex: none;
   color: rgba(143, 211, 193, 0.7);
+}
+
+.detail-install p span {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .detail-install button {
@@ -484,6 +492,20 @@
   font-family: var(--font-mono);
   font-size: 11.5px;
   font-style: normal;
+}
+
+.detail-error-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.detail-source-row--placeholder {
+  opacity: 0.62;
+}
+
+.detail-source-row--placeholder p {
+  color: var(--color-text-faint);
 }
 
 @media (max-width: 1230px) {

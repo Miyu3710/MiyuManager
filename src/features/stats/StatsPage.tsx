@@ -24,9 +24,11 @@ export function StatsPage() {
             PLAY LOG / 游玩统计
           </p>
           <h1>游戏时间</h1>
-          <p>只统计启动器记录的会话，不包含游戏内路线或成就完成度。</p>
+          <p>
+            当前仍是 C1 视觉占位；C6 接入启动器会话后显示真实统计，不包含游戏内路线或成就完成度。
+          </p>
         </div>
-        <Tag tone="data">全部本地数据</Tag>
+        <Tag tone="muted">C6 接入真实会话</Tag>
       </header>
 
       <div className="stats-metrics">

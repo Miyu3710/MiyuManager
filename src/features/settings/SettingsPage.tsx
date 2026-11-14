@@ -10,11 +10,15 @@ import {
 import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "../../design-system/components/Button";
 import { Tag } from "../../design-system/components/Tag";
 import { useAppearance } from "../../app/useAppearance";
+import { formatRelativeDate } from "../../lib/format";
+import { removeLibraryRoot } from "../../lib/library-api";
 import { cn } from "../../lib/cn";
+import { useAppInfo, useInvalidateLibrary, useLibraryRoots } from "../library/useLibrary";
 import "./settings.css";
 
 const settingsSections = [
@@ -23,6 +27,7 @@ const settingsSections = [
   { id: "launcher-settings", label: "启动器", icon: Monitor },
   { id: "appearance-settings", label: "外观", icon: Palette },
   { id: "probe-settings", label: "技术探针", icon: ShieldCheck },
+  { id: "data-settings", label: "数据与备份", icon: SlidersHorizontal },
 ];
 
 function readGamepadState() {
@@ -34,6 +39,10 @@ function readGamepadState() {
 }
 
 export function SettingsPage() {
+  const navigate = useNavigate();
+  const invalidate = useInvalidateLibrary();
+  const roots = useLibraryRoots();
+  const appInfo = useAppInfo();
   const density = useAppearance((state) => state.density);
   const setDensity = useAppearance((state) => state.setDensity);
   const reduceMotion = useAppearance((state) => state.reduceMotion);
@@ -41,6 +50,22 @@ export function SettingsPage() {
   const [gamepadSupported, setGamepadSupported] = useState(() => readGamepadState().supported);
   const [gamepadCount, setGamepadCount] = useState(() => readGamepadState().count);
   const [probeState, setProbeState] = useState("尚未打开");
+
+  const removeRoot = async (rootId: number, path: string) => {
+    const confirmed = window.confirm(
+      "移除扫描目录“" + path + "”？已入库的游戏会保留，只停止后续扫描这个目录。",
+    );
+    if (!confirmed) {
+      return;
+    }
+    try {
+      await removeLibraryRoot(rootId);
+      invalidate();
+      toast.success("已移除扫描目录");
+    } catch (error) {
+      toast.error(String(error));
+    }
+  };
 
   const refreshGamepads = () => {
     const state = readGamepadState();
@@ -123,17 +148,70 @@ export function SettingsPage() {
                 <h2>游戏库</h2>
                 <p>管理扫描根目录、忽略规则和入库策略。</p>
               </div>
-              <Button variant="secondary" size="sm">
+              <Button variant="secondary" size="sm" onClick={() => navigate("/library?import=1")}>
                 添加目录
               </Button>
             </header>
-            <div className="settings-row">
-              <div>
-                <b>扫描根目录</b>
-                <span>D:\\Games</span>
+            {roots.isPending ? (
+              <div className="settings-row">
+                <div>
+                  <b>扫描根目录</b>
+                  <span>正在读取本地数据库…</span>
+                </div>
+                <Tag tone="muted">读取中</Tag>
               </div>
-              <Tag tone="status">已启用</Tag>
-            </div>
+            ) : roots.isError ? (
+              <div className="settings-row">
+                <div>
+                  <b>扫描根目录</b>
+                  <span>{String(roots.error)}</span>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => void roots.refetch()}>
+                  重试
+                </Button>
+              </div>
+            ) : roots.data.length === 0 ? (
+              <div className="settings-row">
+                <div>
+                  <b>扫描根目录</b>
+                  <span>尚未添加。添加后会扫描可执行文件并让你确认主程序。</span>
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => navigate("/library?import=1")}>
+                  选择目录
+                </Button>
+              </div>
+            ) : (
+              roots.data.map((root) => (
+                <div className="settings-row" key={root.id}>
+                  <div>
+                    <b className="settings-path" title={root.path}>
+                      {root.path}
+                    </b>
+                    <span>
+                      {root.lastScannedAt
+                        ? "上次扫描 " + formatRelativeDate(root.lastScannedAt)
+                        : "尚未扫描"}
+                    </span>
+                  </div>
+                  <div className="settings-row__actions">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => navigate("/library?scanRoot=" + encodeURIComponent(root.path))}
+                    >
+                      重新扫描
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void removeRoot(root.id, root.path)}
+                    >
+                      移除
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
             <div className="settings-row">
               <div>
                 <b>忽略规则</b>
@@ -297,14 +375,45 @@ export function SettingsPage() {
             </div>
           </section>
 
-          <section className="settings-section settings-section--quiet">
+          <section id="data-settings" className="settings-section">
             <header>
               <div>
                 <h2>数据与备份</h2>
-                <p>数据库迁移、备份和恢复在 C2/C9 接入；当前不会写入用户游戏目录。</p>
+                <p>本地 SQLite 已启用 WAL 和迁移；备份、恢复和数据目录迁移会在 C9 接入。</p>
               </div>
               <SlidersHorizontal size={15} strokeWidth={1.5} />
             </header>
+            <div className="settings-row">
+              <div>
+                <b>数据库</b>
+                <span className="settings-path" title={appInfo.data?.dbPath}>
+                  {appInfo.data?.dbPath ?? "正在读取…"}
+                </span>
+              </div>
+              <Tag tone="status">SQLite · WAL</Tag>
+            </div>
+            <div className="settings-row">
+              <div>
+                <b>数据目录</b>
+                <span className="settings-path" title={appInfo.data?.dataDir}>
+                  {appInfo.data?.dataDir ?? "正在读取…"}
+                </span>
+              </div>
+              <Tag tone="muted">本机</Tag>
+            </div>
+            <div className="settings-row">
+              <div>
+                <b>版本</b>
+                <span>{appInfo.data?.version ?? "—"}</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => toast("数据库备份与恢复将在 C9 接入。")}
+              >
+                备份
+              </Button>
+            </div>
           </section>
         </div>
       </div>

@@ -1,7 +1,7 @@
 # MiyuManager 项目状态
 
 > 最后更新：2026-11-15  
-> 当前阶段：C1 已完成，G2 视觉基线已确认；C2 尚未启动  
+> 当前阶段：C2 已完成；C3 尚未启动  
 > 计划文件：`docs/DEVELOPMENT_PLAN.md`  
 > 设计提案：`docs/DESIGN.md`
 
@@ -11,7 +11,7 @@
 | ------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------- |
 | C0 规划与技术选型                     | 已完成 | 技术栈、范围、架构、数据模型、质量门槛和子对话拆分已写入 `docs/DEVELOPMENT_PLAN.md`                        |
 | C1 基础工程、设计系统与可点击壳       | 已完成 | 设计系统、应用壳、Home/Library/Detail/Big Screen、Stats/Settings 和探针已完成；2026-11-15 通过 G2 视觉确认 |
-| C2 SQLite、目录扫描与真实游戏库       | 未开始 | 依赖 C1                                                                                                    |
+| C2 SQLite、目录扫描与真实游戏库       | 已完成 | SQLite/WAL/FTS5、目录扫描、候选确认、真实游戏库、搜索筛选排序、持久化和 5,000 条查询已接入；详见下文       |
 | C3 作品详情、图片缓存与启动器         | 未开始 | 依赖 C2                                                                                                    |
 | C4 Metadata Provider、VNDB 与 Bangumi | 未开始 | 依赖 C3                                                                                                    |
 | C5 Steam、多源合并与批量刮削          | 未开始 | 依赖 C4                                                                                                    |
@@ -48,9 +48,29 @@
 - pnpm `11.25.0`
 - Rust `1.100.0`
 - WebView2 Runtime `157.0.4341.46`
-- Git 仓库尚无提交
+- Git 仓库已有 C1 基线提交；C2 在 `codex/c2-library-import` 分支完成
 
-## C1 本轮产出
+## C2 本轮产出
+
+- 数据层：`src-tauri/migrations/20261115000100_initial.sql`、`src-tauri/src/db.rs`；SQLite WAL、外键、迁移、FTS5 trigram、works/releases/local_copies/user_entries/scan_roots/settings 和索引。
+- 数据库默认 `%APPDATA%\MiyuManager\miyumanager.sqlite3`；开发/测试可用 `MIYU_DATA_DIR` 指向独立目录。
+- 扫描器：`src-tauri/src/scan.rs`；递归扫描、忽略规则、候选评分、每目录最多 3 个候选、进度事件、取消、中文/日文/空格/深层路径、按规范化 exe 路径去重、目录大小估算。
+- IPC：`src-tauri/src/commands.rs`；library_query/get、set_status/set_favorite、remove_work、roots list/remove、scan_start/cancel、import_candidates、app_info。
+- UI：`src/features/library/**`；原生目录选择、扫描进度、候选确认、可编辑显示名、选择/取消选择、导入；游戏库搜索、状态筛选、排序、封面/列表、右键状态/收藏/移除、虚拟列表与滚动加载、空/错误/加载状态。
+- 详情与首页：真实扫描作品可进入最小详情页；Home 使用真实库数据，空库显示首次导入引导；Settings 显示真实扫描根目录、SQLite 路径和版本。
+- 去重：重新扫描把已入库候选标为“已在库中”，导入同一 exe 更新已有记录；移除只删管理记录，不删除游戏文件。
+- 预览：浏览器 `pnpm dev` 使用 mock 数据；Tauri 窗口使用真实 SQLite。
+- 性能与分包：Library/Detail/Stats/Settings/Big Screen 已 lazy split；主包约 376 KB（gzip 114.8 KB）。
+
+### C2 已知边界
+
+- 封面仍是标题排印占位；在线封面/元数据留到 C4/C5。
+- 详情页只展示本地安装与启动路径；启动配置、路径校验和真实启动留到 C3。
+- `play_sessions` 尚未建表；统计页仍是 C1 视觉占位，C6 接入真实会话。
+- `install_status` 当前只写 installed；缺失路径检测未实现。
+- 5,000 条数据的 Rust 查询与 Tauri 首屏/滚动加载已验证；未做完整 5,000 条连续滚到手底的性能基准。
+
+## C1 视觉基线（已完成）
 
 - Tauri 2 + React 19 + TypeScript + Vite 工程已初始化，包名为 `miyumanager`。
 - 严格 tsconfig、ESLint 9、Prettier、Rustfmt、Clippy 已配置。
@@ -62,7 +82,7 @@
 - 技术探针：大屏第二窗口、全屏 API、Gamepad API、键盘焦点和 reduced motion。
 - A 游戏启动器已经成为主应用；B/C 原型保留为对照，入口在 `#/design-prototypes`。
 - A/B/C 的历史原型路由仍可访问：`#/prototype/screening`、`#/prototype/archive`、`#/prototype/channel`。
-- 主应用页面使用同一组本地 mock 数据；数据库和扫描尚未接入。
+- C1 时主应用页面使用同一组本地 mock 数据；C2 已把 Home、Library、Detail 和 Settings 接到真实 SQLite 与扫描流程。
 - 封面为程序生成的 Galgame 风格占位图，包含角色剪影、包装盒和日文原题；不是真实作品封面。
 - 原型总览：`#/design-prototypes`，按 1 / 2 / 3 可快速打开。
 - A 使用“深夜游戏盒”配色：墨蓝、盒面奶油、标签红、状态薄荷、数据黄铜。
@@ -74,6 +94,20 @@
 ## 验证记录
 
 已通过：
+
+### C2
+
+- `pnpm typecheck`、`pnpm lint`、`pnpm test`（3 个前端测试）、`pnpm build`。
+- `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（6 个 Rust 测试）。
+- 扫描测试：100 个 fixture 游戏、中文/日文标题、空格路径、深层目录、忽略 `_CommonRedist`/`vcredist`/辅助 exe、取消标志。
+- 查询测试：5,000 条作品的分页查询、状态计数和 FTS5/模糊搜索；搜索结果与状态筛选均通过。
+- Tauri 实际窗口（`MIYU_DATA_DIR=tmp/c2-appdata-1`）：系统目录选择器选择夹具目录，扫描到 10 个候选/12 个目录；确认导入 10 部；重新扫描显示 10 个“已在库中”、导入按钮禁用；右键标记“在玩”后计数更新；关闭并重启后仍有 10 部作品、1 个扫描目录和 1 部在玩。
+- Tauri 实际窗口（`MIYU_DATA_DIR=tmp/c2-appdata-5000`）：5,000 部作品、5 个状态各 1,000 部；首屏只渲染 120 条，拉动滚动条后加载到 240 条，未崩溃。
+- 截图证据：`outputs/app/c2/00-scan-progress*.png`、`01-scan-review*.png`、`02-library-after-import*.png`（1440×900 与 1280×720）；弹窗在视口内，候选列表在弹窗内部滚动，无控制台错误。
+- 主应用截图已重新生成到 `outputs/app/1440x900/`、`1920x1080/`、`150pct-1280x720/` 和 `4k/`；Library 页无横向溢出。
+- 主包 376.24 KB（gzip 114.81 KB），Library/Detail/Stats/Settings/Big Screen 已按路由拆分。
+
+### C1 视觉基线
 
 - `pnpm typecheck`
 - `pnpm lint`
@@ -100,6 +134,8 @@
 
 - G2 已完成：用户确认当前 Home、游戏库、详情、统计、设置和大屏视觉基线。
 - 视觉基线不是冻结规范：配色、主题、密度和布局仍集中在 token 与页面 CSS 中，后续可以继续修改。
+- C2 已完成：真实目录扫描、候选确认、SQLite 入库、搜索/筛选/排序、重复扫描去重和重启持久化均已验证。
+- C2 的视觉验收采用真实扫描数据和占位封面；真实封面/元数据属于 C4/C5，不能把占位图当成最终美术验收。
 
 待后续处理：
 
@@ -108,11 +144,12 @@
 
 ## 下一轮入口
 
-C1 已完成，C2 尚未启动。后续继续调整视觉时，仍按以下原则处理：
+C2 已完成，C3 尚未启动。下一轮入口：
 
-1. 根据反馈修正 token、密度和页面布局；保留可回滚的改动。
-2. 同步更新 `docs/DESIGN.md` 与截图证据。
-3. 只有用户明确要求进入 C2 时，才开始 SQLite、目录扫描与真实游戏库。
+1. C3 处理作品详情、封面缓存、启动配置和真实启动；不要在 C2 继续加在线元数据。
+2. C3 需要先确定 G3（Locale Emulator/NTLEA 默认行为）和启动器路径校验策略。
+3. 只有用户明确要求进入 C3 时，才开始详情编辑、图片缓存与启动器。
+4. 继续调整 C2 视觉时，按 token/密度/布局修正，并同步更新 `docs/DESIGN.md` 与截图证据。
 
 ## 待决策与风险
 
@@ -122,7 +159,10 @@ C1 已完成，C2 尚未启动。后续继续调整视觉时，仍按以下原�
 - G4：C5 多源冲突和字段优先级。
 - G5：C7 大屏布局和手柄映射。
 - G6：C9 安装包、签名、便携版和更新策略。
-- 当前原型封面为程序生成占位图，不代表最终美术质量；方向确认后需要接入真实封面或更完整的占位图集。
+- C2 扫描作品使用标题排印占位封面；真实封面下载和元数据留到 C4/C5。
+- 扫描缺失路径检测尚未实现：已入库副本的 `install_status` 仍只写 installed。
+- 统计页仍是 C1 mock 视觉占位；`play_sessions` 表和真实会话在 C6 接入。
+- 4K、150% 缩放和 1440/1920 截图已覆盖主路由；扫描弹窗在 1440×900 和 1280×720 验证，4K 弹窗未单独手测。
 
 当前没有阻塞项。
 

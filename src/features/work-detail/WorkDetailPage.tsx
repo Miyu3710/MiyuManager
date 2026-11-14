@@ -14,9 +14,12 @@ import { Link, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "../../design-system/components/Button";
 import { CoverArt } from "../../design-system/components/CoverArt";
+import { EmptyState } from "../../design-system/components/EmptyState";
 import { Tag } from "../../design-system/components/Tag";
-import { getGame, statusLabels } from "../../lib/game-data";
+import { statusLabels } from "../../lib/game-data";
+import { libraryItemToGame } from "../../lib/library-api";
 import { cn } from "../../lib/cn";
+import { useLibraryDetail } from "../library/useLibrary";
 import "./work-detail.css";
 
 type Tab = "overview" | "sessions" | "launch" | "sources";
@@ -30,8 +33,63 @@ const tabs: { id: Tab; label: string }[] = [
 
 export function WorkDetailPage() {
   const { id } = useParams();
-  const game = getGame(id);
+  const detail = useLibraryDetail(id);
   const [tab, setTab] = useState<Tab>("overview");
+
+  if (detail.isPending) {
+    return (
+      <div className="detail-page">
+        <EmptyState
+          title="正在读取作品"
+          description="正在从本地数据库读取安装副本、启动路径和用户状态。"
+        />
+      </div>
+    );
+  }
+
+  if (detail.isError) {
+    return (
+      <div className="detail-page">
+        <EmptyState
+          title="无法读取作品"
+          description={String(detail.error)}
+          action={
+            <div className="detail-error-actions">
+              <Button variant="secondary" size="sm" onClick={() => void detail.refetch()}>
+                重试
+              </Button>
+              <Link to="/library">
+                <Button variant="ghost" size="sm">
+                  返回游戏库
+                </Button>
+              </Link>
+            </div>
+          }
+        />
+      </div>
+    );
+  }
+
+  if (!detail.data) {
+    return (
+      <div className="detail-page">
+        <EmptyState
+          title="没有找到这部作品"
+          description="它可能已经从库中移除，或者这个链接来自旧的本地数据。"
+          action={
+            <Link to="/library">
+              <Button variant="secondary" size="sm">
+                返回游戏库
+              </Button>
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
+  const game = libraryItemToGame(detail.data);
+  const isLocal = Boolean(game.isLocal);
 
   return (
     <div className="detail-page">
@@ -49,29 +107,34 @@ export function WorkDetailPage() {
           <CoverArt work={game} />
           <div className="detail-poster__meta">
             <span>{game.catalogNo}</span>
-            <span>{game.year}</span>
+            <span>{game.year ?? "年份未知"}</span>
           </div>
         </div>
 
         <div className="detail-copy">
           <p className="app-kicker">
             <span className="app-status-dot" />
-            Galgame / AVG · {game.year} · {game.developer}
+            {isLocal ? "LOCAL COPY / 本地副本" : "Galgame / AVG"} · {game.year ?? "年份未知"} ·{" "}
+            {game.developer}
           </p>
           <h1>{game.title}</h1>
-          <p className="detail-original">
-            {game.originalTitle}
-            <span>{game.romaji}</span>
-          </p>
+          {game.originalTitle ? (
+            <p className="detail-original">
+              {game.originalTitle}
+              {game.romaji ? <span>{game.romaji}</span> : null}
+            </p>
+          ) : null}
           <div className="detail-tags">
             {game.tags.map((tag) => (
               <Tag key={tag}>{tag}</Tag>
             ))}
-            <Tag tone="data">{game.ageRating}</Tag>
-            <Tag tone="muted">{game.edition}</Tag>
+            {isLocal ? <Tag tone="status">本地扫描</Tag> : null}
+            {game.ageRating !== "未标记" ? <Tag tone="data">{game.ageRating}</Tag> : null}
+            {game.edition !== "未标记" ? <Tag tone="muted">{game.edition}</Tag> : null}
           </div>
           <p className="detail-score">
-            个人评分 {game.rating.toFixed(1)} / 10 · {game.launchCount} 次启动
+            {game.rating > 0 ? "个人评分 " + game.rating.toFixed(1) + " / 10" : "尚未评分"} ·{" "}
+            {game.launchCount} 次启动
           </p>
           <p className="detail-desc">{game.description}</p>
           <div className="detail-stats">
@@ -93,12 +156,21 @@ export function WorkDetailPage() {
             </div>
           </div>
           <div className="detail-actions">
-            <Button variant="primary" onClick={() => toast("原型预览：启动器将在 C3 接入。")}>
+            <Button
+              variant="primary"
+              onClick={() =>
+                toast(
+                  isLocal
+                    ? "启动器将在 C3 接入；当前只保存本地启动路径。"
+                    : "原型预览：启动器将在 C3 接入。",
+                )
+              }
+            >
               <Play size={14} fill="currentColor" strokeWidth={0} />
               启动游戏
             </Button>
             <Button variant="secondary" onClick={() => setTab("launch")}>
-              编辑启动配置
+              查看启动路径
               <ArrowUpRight size={14} strokeWidth={1.6} />
             </Button>
           </div>
@@ -116,23 +188,29 @@ export function WorkDetailPage() {
                   {session.date} {session.time}
                 </span>
                 <b>{session.duration}</b>
-                <i style={{ width: `${Math.min(session.minutes / 1.4, 100)}%` }} />
+                <i style={{ width: Math.min(session.minutes / 1.4, 100) + "%" }} />
               </div>
             ))
           ) : (
-            <p className="detail-side__empty">还没有游玩记录。启动游戏后会自动生成会话。</p>
+            <p className="detail-side__empty">
+              {isLocal
+                ? "还没有游玩记录。启动器与自动计时将在 C3/C6 接入。"
+                : "还没有游玩记录。启动游戏后会自动生成会话。"}
+            </p>
           )}
           <div className="detail-install">
             <span>本地安装</span>
-            <p>
+            <p title={game.exePath}>
               <FolderOpen size={13} strokeWidth={1.5} />
-              {game.exePath}
+              <span>{game.exePath}</span>
             </p>
             <p>
               <HardDrive size={13} strokeWidth={1.5} />
-              {game.installedSize} · {game.edition}
+              <span>
+                {game.installedSize} · {game.edition}
+              </span>
             </p>
-            <button type="button" onClick={() => toast("原型预览：资源管理器将在 C3 接入。")}>
+            <button type="button" onClick={() => toast("路径校验将在 C3 接入。")}>
               <Check size={12} strokeWidth={1.6} />
               校验路径
             </button>
@@ -160,9 +238,15 @@ export function WorkDetailPage() {
           <div className="detail-overview">
             <section>
               <h2>关于这部作品</h2>
-              <p>{game.description}</p>
               <p>
-                原型使用虚构条目。正式版本会在这里显示可追溯的字段来源、发行版本和本地安装；游戏内章节、路线与存档不在管理器的自动读取范围内。
+                {isLocal
+                  ? "本地副本已记录。MiyuManager 只管理本地安装、启动路径、用户状态和可追溯元数据。"
+                  : game.description}
+              </p>
+              <p>
+                {isLocal
+                  ? "管理器不会读取游戏内章节、路线、存档或成就；封面、发行信息和更多资料将在 C3/C4 完善。"
+                  : "原型使用虚构条目。正式版本会在这里显示可追溯的字段来源、发行版本和本地安装；游戏内章节、路线与存档不在管理器的自动读取范围内。"}
               </p>
             </section>
             <section>
@@ -170,7 +254,7 @@ export function WorkDetailPage() {
               <dl className="detail-ledger">
                 <div>
                   <dt>发售</dt>
-                  <dd>{game.year} 年</dd>
+                  <dd>{game.year ? game.year + " 年" : "未知"}</dd>
                 </div>
                 <div>
                   <dt>开发商</dt>
@@ -182,7 +266,7 @@ export function WorkDetailPage() {
                 </div>
                 <div>
                   <dt>语言</dt>
-                  <dd>日语 / 简体中文</dd>
+                  <dd>{isLocal ? "未识别" : "日语 / 简体中文"}</dd>
                 </div>
                 <div>
                   <dt>安装大小</dt>
@@ -197,9 +281,13 @@ export function WorkDetailPage() {
             <section>
               <h2>用户备注</h2>
               <p className="detail-note">
-                二周目想再走一遍月夜线。手动备注，不是游戏内自动读取的状态。
+                {game.notes
+                  ? game.notes
+                  : isLocal
+                    ? "尚未添加备注。备注是手动内容，不是游戏内自动读取的状态；编辑功能将在 C3 接入。"
+                    : "二周目想再走一遍月夜线。手动备注，不是游戏内自动读取的状态。"}
               </p>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" disabled={isLocal}>
                 编辑备注
               </Button>
             </section>
@@ -211,9 +299,13 @@ export function WorkDetailPage() {
             <header>
               <div>
                 <h2>游玩记录</h2>
-                <p>会话由启动器开始与结束时间计算，可手动修正。</p>
+                <p>
+                  {isLocal
+                    ? "启动器将在 C3 接入；C6 接入后会自动生成会话并统计时长。"
+                    : "会话由启动器开始与结束时间计算，可手动修正。"}
+                </p>
               </div>
-              <Button variant="secondary" size="sm">
+              <Button variant="secondary" size="sm" disabled={isLocal}>
                 补录会话
               </Button>
             </header>
@@ -239,7 +331,11 @@ export function WorkDetailPage() {
                   </div>
                 ))
               ) : (
-                <p className="detail-empty-row">还没有会话。启动游戏后会在这里生成第一条记录。</p>
+                <p className="detail-empty-row">
+                  {isLocal
+                    ? "还没有会话。C6 接入后，从启动器启动游戏会自动生成第一条记录。"
+                    : "还没有会话。启动游戏后会在这里生成第一条记录。"}
+                </p>
               )}
             </div>
           </div>
@@ -272,20 +368,20 @@ export function WorkDetailPage() {
               <h2>显示与兼容</h2>
               <div className="detail-launch-row">
                 <Monitor size={13} strokeWidth={1.5} />
-                <span>主显示器 · 全屏</span>
+                <span>主显示器 · 全屏（C3 接入）</span>
               </div>
               <div className="detail-launch-row">
                 <ShieldCheck size={13} strokeWidth={1.5} />
-                <span>Locale Emulator · 日语</span>
+                <span>Locale Emulator · 未配置</span>
               </div>
               <div className="detail-launch-row">
                 <Clock3 size={13} strokeWidth={1.5} />
-                <span>启动后自动记录会话</span>
+                <span>启动后自动记录会话（C6）</span>
               </div>
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => toast("原型预览：路径校验将在 C3 接入。")}
+                onClick={() => toast("路径校验和启动配置编辑将在 C3 接入。")}
               >
                 校验并保存
               </Button>
@@ -297,20 +393,41 @@ export function WorkDetailPage() {
           <div className="detail-sources">
             <header>
               <h2>元数据来源</h2>
-              <p>每个字段保留来源、更新时间和锁定状态。</p>
+              <p>
+                {isLocal
+                  ? "当前只有本地安装来源。VNDB、Bangumi、Steam 会在 C4/C5 接入，每个字段保留来源和锁定状态。"
+                  : "每个字段保留来源、更新时间和锁定状态。"}
+              </p>
             </header>
-            {[
-              ["VNDB", "原题、开发商、标签", "11 月 11 日"],
-              ["Bangumi", "中文标题、简介", "11 月 11 日"],
-              ["本地", "封面、安装目录、启动路径", "11 月 12 日"],
-            ].map(([source, fields, updated]) => (
-              <div className="detail-source-row" key={source}>
-                <span>{source}</span>
-                <p>{fields}</p>
-                <em>{updated}</em>
-                <Tag tone={source === "本地" ? "status" : "data"}>可追溯</Tag>
-              </div>
-            ))}
+            {isLocal ? (
+              <>
+                <div className="detail-source-row">
+                  <span>本地安装</span>
+                  <p>{game.exePath}</p>
+                  <em>{game.addedAt}</em>
+                  <Tag tone="status">可追溯</Tag>
+                </div>
+                <div className="detail-source-row detail-source-row--placeholder">
+                  <span>在线元数据</span>
+                  <p>尚未接入 VNDB / Bangumi / Steam。</p>
+                  <em>C4 / C5</em>
+                  <Tag tone="muted">待接入</Tag>
+                </div>
+              </>
+            ) : (
+              [
+                ["VNDB", "原题、开发商、标签", "11 月 11 日"],
+                ["Bangumi", "中文标题、简介", "11 月 11 日"],
+                ["本地", "封面、安装目录、启动路径", "11 月 12 日"],
+              ].map(([source, fields, updated]) => (
+                <div className="detail-source-row" key={source}>
+                  <span>{source}</span>
+                  <p>{fields}</p>
+                  <em>{updated}</em>
+                  <Tag tone={source === "本地" ? "status" : "data"}>可追溯</Tag>
+                </div>
+              ))
+            )}
           </div>
         ) : null}
       </div>

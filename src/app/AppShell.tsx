@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../design-system/components/Button";
 import { WindowBar } from "../design-system/components/WindowBar";
+import { useLibraryRoots, useLibrarySummary } from "../features/library/useLibrary";
 import { useAppearance } from "./useAppearance";
 import "./app-shell.css";
 
@@ -28,6 +29,8 @@ export function AppShell() {
   const density = useAppearance((state) => state.density);
   const theme = useAppearance((state) => state.theme);
   const reduceMotion = useAppearance((state) => state.reduceMotion);
+  const summary = useLibrarySummary();
+  const roots = useLibraryRoots();
 
   useEffect(() => {
     document.documentElement.dataset.density = density;
@@ -84,13 +87,13 @@ export function AppShell() {
           <div className="app-rail__footer">
             <p>
               <span>库中</span>
-              <b>128</b>
+              <b>{summary.data?.total ?? "—"}</b>
               <span>部游戏</span>
             </p>
             <p>
-              <span>本周</span>
-              <b>6.4</b>
-              <span>小时</span>
+              <span>扫描</span>
+              <b>{roots.data?.length ?? "—"}</b>
+              <span>个目录</span>
             </p>
             <div className="app-rail__profile">
               <span>R</span>
@@ -121,13 +124,13 @@ export function AppShell() {
               <input
                 ref={searchRef}
                 aria-label="搜索游戏"
-                placeholder="搜索游戏、会社、角色"
+                placeholder="搜索游戏、会社、路径"
                 value={query}
                 onChange={(event) => setQuery(event.currentTarget.value)}
               />
               <kbd>Ctrl K</kbd>
             </form>
-            <Button variant="ghost" size="sm" onClick={() => navigate("/settings")}>
+            <Button variant="ghost" size="sm" onClick={() => navigate("/library?import=1")}>
               添加目录
             </Button>
             <button type="button" className="app-icon-button" aria-label="通知">

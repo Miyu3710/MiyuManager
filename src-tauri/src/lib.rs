@@ -1,3 +1,7 @@
+mod commands;
+mod db;
+mod scan;
+
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 #[tauri::command]
@@ -28,8 +32,25 @@ fn open_bigscreen_probe(app: AppHandle) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![open_bigscreen_probe])
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![
+            open_bigscreen_probe,
+            commands::app_info,
+            commands::library_query,
+            commands::library_get,
+            commands::library_set_status,
+            commands::library_set_favorite,
+            commands::library_remove_work,
+            commands::library_roots,
+            commands::library_remove_root,
+            commands::library_scan_start,
+            commands::library_scan_cancel,
+            commands::library_import_candidates,
+        ])
         .setup(|app| {
+            let state = tauri::async_runtime::block_on(commands::create_app_state(app.handle()))?;
+            app.manage(state);
+
             if std::env::var("MIYU_PROBE_WINDOW").ok().as_deref() == Some("1") {
                 let _ = open_bigscreen_probe(app.handle().clone());
             }

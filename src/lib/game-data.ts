@@ -1,6 +1,6 @@
 import type { CoverId } from "../design-system/components/CoverArt";
 
-export type GameStatus = "playing" | "queued" | "finished" | "paused";
+export type GameStatus = "unclassified" | "playing" | "queued" | "finished" | "paused";
 
 export interface PlaySession {
   id: string;
@@ -16,7 +16,7 @@ export interface Game {
   title: string;
   originalTitle: string;
   romaji: string;
-  year: number;
+  year: number | null;
   developer: string;
   tags: string[];
   status: GameStatus;
@@ -26,21 +26,25 @@ export interface Game {
   addedAt: string;
   rating: number;
   description: string;
-  cover: CoverId;
+  cover: CoverId | null;
   catalogNo: string;
   source: string;
   engine: string;
-  ageRating: "全年龄" | "18+";
-  edition: "正式版" | "体验版";
+  ageRating: string;
+  edition: string;
   launchCount: number;
   lastSession: string;
   installedSize: string;
   installedPath: string;
   exePath: string;
   sessions: PlaySession[];
+  isLocal?: boolean;
+  notes?: string;
+  favorite?: boolean;
 }
 
 export const statusLabels: Record<GameStatus, string> = {
+  unclassified: "未分类",
   playing: "在玩",
   queued: "想玩",
   finished: "已通关",

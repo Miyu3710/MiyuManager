@@ -1,6 +1,6 @@
 # 前端组件与依赖选型
 
-> 状态：C1 设计系统前置调研完成；cva 与 tailwind-merge 已安装；Motion、cmdk 待页面需要时加入并锁定版本  
+> 状态：C1 已完成；C2 已接入 TanStack Query、TanStack Virtual 和 Tauri dialog；Motion、cmdk 仍待页面需要时加入并锁定版本  
 > 日期：2026-11-15  
 > 目标：为 MiyuManager 的桌面与大屏界面建立一致的组件、图标、动画和交互规范
 

@@ -7,11 +7,28 @@ import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AppShell } from "./AppShell";
 import { HomePage } from "../features/home/HomePage";
-import { LibraryPage } from "../features/library/LibraryPage";
-import { WorkDetailPage } from "../features/work-detail/WorkDetailPage";
-import { StatsPage } from "../features/stats/StatsPage";
-import { SettingsPage } from "../features/settings/SettingsPage";
-import { BigScreenPage } from "../features/bigscreen/BigScreenPage";
+
+const LibraryPage = lazy(() =>
+  import("../features/library/LibraryPage").then((module) => ({ default: module.LibraryPage })),
+);
+const WorkDetailPage = lazy(() =>
+  import("../features/work-detail/WorkDetailPage").then((module) => ({
+    default: module.WorkDetailPage,
+  })),
+);
+const StatsPage = lazy(() =>
+  import("../features/stats/StatsPage").then((module) => ({ default: module.StatsPage })),
+);
+const SettingsPage = lazy(() =>
+  import("../features/settings/SettingsPage").then((module) => ({
+    default: module.SettingsPage,
+  })),
+);
+const BigScreenPage = lazy(() =>
+  import("../features/bigscreen/BigScreenPage").then((module) => ({
+    default: module.BigScreenPage,
+  })),
+);
 
 const PrototypeGallery = lazy(() =>
   import("../features/prototypes/gallery/PrototypeGallery").then((module) => ({
@@ -30,6 +47,12 @@ function PrototypeRoute({ children }: { children: ReactNode }) {
   );
 }
 
+function PageRoute({ children }: { children: ReactNode }) {
+  return (
+    <Suspense fallback={<div className="page-loading">正在读取本地库…</div>}>{children}</Suspense>
+  );
+}
+
 const queryClient = new QueryClient();
 
 const router = createHashRouter([
@@ -38,13 +61,48 @@ const router = createHashRouter([
     element: <AppShell />,
     children: [
       { index: true, element: <HomePage /> },
-      { path: "library", element: <LibraryPage /> },
-      { path: "work/:id", element: <WorkDetailPage /> },
-      { path: "stats", element: <StatsPage /> },
-      { path: "settings", element: <SettingsPage /> },
+      {
+        path: "library",
+        element: (
+          <PageRoute>
+            <LibraryPage />
+          </PageRoute>
+        ),
+      },
+      {
+        path: "work/:id",
+        element: (
+          <PageRoute>
+            <WorkDetailPage />
+          </PageRoute>
+        ),
+      },
+      {
+        path: "stats",
+        element: (
+          <PageRoute>
+            <StatsPage />
+          </PageRoute>
+        ),
+      },
+      {
+        path: "settings",
+        element: (
+          <PageRoute>
+            <SettingsPage />
+          </PageRoute>
+        ),
+      },
     ],
   },
-  { path: "/big-screen", element: <BigScreenPage /> },
+  {
+    path: "/big-screen",
+    element: (
+      <PageRoute>
+        <BigScreenPage />
+      </PageRoute>
+    ),
+  },
   {
     path: "/design-prototypes",
     element: (

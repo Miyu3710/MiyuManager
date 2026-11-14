@@ -16,8 +16,8 @@ export interface CoverWork {
   title: string;
   originalTitle: string;
   developer: string;
-  year: number;
-  cover: CoverId;
+  year: number | null;
+  cover: CoverId | null;
 }
 
 interface CoverArtProps {
@@ -418,9 +418,39 @@ function HeroineFigure({ kind }: { kind: CoverId }) {
 }
 
 export function CoverArt({ work, className = "", focus = "center" }: CoverArtProps) {
+  if (!work.cover) {
+    return (
+      <div
+        className={`cover-art cover-art--fallback ${className}`.trim()}
+        role="img"
+        aria-label={`${work.title} 封面占位`}
+      >
+        <div className="cover-art__fallback-grid" aria-hidden="true" />
+        <span className="cover-art__fallback-mark" aria-hidden="true">
+          MM
+        </span>
+        <div className="cover-art__type">
+          {work.originalTitle ? <p className="cover-art__jp">{work.originalTitle}</p> : null}
+          <h3 className="cover-art__title">{work.title}</h3>
+          <p className="cover-art__credit">
+            {work.developer}
+            {work.year ? (
+              <>
+                <span>·</span>
+                {work.year}
+              </>
+            ) : null}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const cover = work.cover;
+
   return (
     <div
-      className={`cover-art cover-art--${work.cover} ${className}`.trim()}
+      className={`cover-art cover-art--${cover} ${className}`.trim()}
       role="img"
       aria-label={`${work.title} 封面`}
     >
@@ -430,8 +460,8 @@ export function CoverArt({ work, className = "", focus = "center" }: CoverArtPro
         preserveAspectRatio={focus === "top" ? "xMidYMin slice" : "xMidYMid slice"}
         aria-hidden="true"
       >
-        <Artwork kind={work.cover} />
-        <HeroineFigure kind={work.cover} />
+        <Artwork kind={cover} />
+        <HeroineFigure kind={cover} />
       </svg>
       <div className="cover-art__grain" aria-hidden="true" />
       <div className="cover-art__type">

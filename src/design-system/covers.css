@@ -41,6 +41,63 @@
     inset 0 -18% 36% rgba(0, 0, 0, 0.14);
 }
 
+.cover-art--fallback {
+  border: 1px solid var(--color-line);
+  background:
+    radial-gradient(circle at 18% 20%, rgba(217, 164, 65, 0.12), transparent 34%),
+    linear-gradient(180deg, #122538 0%, #0b1926 58%, #081521 100%);
+  color: var(--color-text);
+}
+
+.cover-art--fallback::before {
+  position: absolute;
+  inset: 8.5% 8.5% 8.5% 8.5%;
+  z-index: 1;
+  border: 1px solid rgba(243, 234, 216, 0.16);
+  content: "";
+  pointer-events: none;
+}
+
+.cover-art__fallback-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(243, 234, 216, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(243, 234, 216, 0.055) 1px, transparent 1px);
+  background-size: 16.666% 11.111%;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.9), transparent 86%);
+}
+
+.cover-art__fallback-mark {
+  position: absolute;
+  top: 7%;
+  right: 7%;
+  color: rgba(143, 211, 193, 0.22);
+  font-family: var(--font-mono);
+  font-size: 12cqw;
+  font-weight: 600;
+  letter-spacing: -0.08em;
+}
+
+.cover-art--fallback .cover-art__type {
+  gap: 1.4cqw;
+  padding: 9cqw;
+}
+
+.cover-art--fallback .cover-art__title {
+  font-family: var(--font-display);
+  font-size: 10.2cqw;
+  letter-spacing: 0.02em;
+}
+
+.cover-art--fallback .cover-art__credit {
+  color: var(--color-data);
+  font-family: var(--font-mono);
+  font-size: 2.6cqw;
+  letter-spacing: 0.1em;
+  opacity: 0.9;
+}
+
 .cover-art__type {
   position: absolute;
   inset: 0;
