@@ -253,7 +253,7 @@
 - 关闭并重启后直接打开上次的 `#/settings`，没有重复首次启动；作品库、收藏集和偏好仍在。
 - `scripts/probe-c8-a11y.mjs`：首个 Tab 聚焦跳转链接，Ctrl+K 聚焦搜索框，方向键切换结果，Escape 关闭后焦点回到“打开全局搜索”，收藏集弹窗焦点落在名称输入，网络分区可跳转，减少动效后 `data-reduced-motion=true`；无控制台错误。
 - `outputs/app/c8/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/` 共 48 张流程截图，全部无横向溢出；`outputs/app/c8/probes/` 包含 4 张可访问性证据；`outputs/app/redesign/` 包含主路由和弹窗的统一视觉截图。
-- 构建主包 `dist/assets/index-*.js` 约 467.54 KB（gzip 142.69 KB），收藏集、首次启动和设置均为独立 lazy chunk；未引入新的运行时依赖。
+- 构建主包 `dist/assets/index-*.js` 约 467.54 KB（gzip 142.70 KB），收藏集、首次启动和设置均为独立 lazy chunk；未引入新的运行时依赖。
 
 ### C7
 

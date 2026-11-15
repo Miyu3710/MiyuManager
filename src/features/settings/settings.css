@@ -1292,6 +1292,15 @@
   color: var(--color-text);
 }
 
+.settings-nav button.is-active {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+}
+
+.settings-nav button.is-active svg {
+  color: var(--color-accent-text);
+}
+
 .settings-nav button svg {
   color: var(--color-text-faint);
 }

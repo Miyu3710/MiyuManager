@@ -83,6 +83,7 @@ export function SettingsPage() {
   const [confirmRoot, setConfirmRoot] = useState<{ id: number; path: string } | null>(null);
   const [removingRoot, setRemovingRoot] = useState(false);
   const [bigScreenBusy, setBigScreenBusy] = useState(false);
+  const [activeSection, setActiveSection] = useState(settingsSections[0]?.id ?? "");
   const activeDisplay = selectedDisplay ?? bigScreenState.data?.display ?? 0;
 
   const removeRoot = (rootId: number, path: string) => {
@@ -136,6 +137,25 @@ export function SettingsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const scroller = document.querySelector<HTMLElement>(".app-page");
+    const update = () => {
+      const threshold = (scroller?.getBoundingClientRect().top ?? 0) + 170;
+      let current = settingsSections[0]?.id ?? "";
+      for (const section of settingsSections) {
+        const element = document.getElementById(section.id);
+        if (element && element.getBoundingClientRect().top <= threshold) {
+          current = section.id;
+        }
+      }
+      setActiveSection(current);
+    };
+    const target: HTMLElement | Window = scroller ?? window;
+    update();
+    target.addEventListener("scroll", update, { passive: true });
+    return () => target.removeEventListener("scroll", update);
+  }, []);
+
   const openBigScreenWindow = async () => {
     if (!isTauri()) {
       navigate("/big-screen");
@@ -178,12 +198,15 @@ export function SettingsPage() {
             <button
               key={id}
               type="button"
-              onClick={() =>
+              className={activeSection === id ? "is-active" : undefined}
+              aria-current={activeSection === id ? "location" : undefined}
+              onClick={() => {
+                setActiveSection(id);
                 document.getElementById(id)?.scrollIntoView({
                   behavior: reduceMotion ? "auto" : "smooth",
                   block: "start",
-                })
-              }
+                });
+              }}
             >
               <Icon size={14} strokeWidth={1.5} /> {label}
             </button>

@@ -24,7 +24,7 @@
         "resizable": true,
         "shadow": true,
         "focus": true,
-        "backgroundColor": "#121311"
+        "backgroundColor": "#F5EFEC"
       }
     ],
     "security": {
