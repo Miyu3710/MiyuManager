@@ -59,7 +59,7 @@ cargo test
 - 元数据来源支持 VNDB API v2 和 Bangumi OpenAPI：可从详情页搜索、查看候选、预览字段差异并导入标题、别名、简介、年份、标签、开发商、发行商、发行日期和封面。
 - 来源优先级保存在 SQLite，可在设置页调整顺序和启停；搜索结果按优先级排列，导入默认只填空白且未锁定字段，手动编辑会自动留下锁定记录。每个字段保留来源、来源 ID 和抓取时间，详情响应缓存 24 小时。
 - 账号连接已接入 OAuth：NextMoe/Kungal 使用 public client + PKCE，Bangumi 使用 OAuth 2.0；Hikarinagi 已接入授权码 + PKCE，但当前应用需要在控制台切换为 public client（或补充 clientSecret）后才能完成 token 交换。
-- OAuth 凭证从 `MIYU_OAUTH_CONFIG`、数据目录 `oauth/providers.json` 或开发目录 `tmp/oauth/providers.json` 读取；access/refresh token 使用 Windows DPAPI 加密后写入 SQLite，不写入日志或前端。
+- OAuth 凭证从 `MIYU_OAUTH_CONFIG`、数据目录 `oauth/providers.json` 或开发目录 `tmp/oauth/providers.json` 读取；设置页可以直接导入 JSON，保存后点“重新读取”即可生效，不需要重启。access/refresh token 使用 Windows DPAPI 加密后写入 SQLite，不写入日志或前端。
 
 开发或测试时可以用 MIYU_DATA_DIR 指向独立的数据目录，避免写入日常数据：
 
@@ -70,11 +70,24 @@ cargo test
 
 账号连接从 `MIYU_OAUTH_CONFIG` 指向的 JSON、数据目录 `oauth/providers.json`（默认 `%APPDATA%\MiyuManager\oauth\providers.json`）或开发目录 `tmp/oauth/providers.json` 读取。文件包含各来源的 `clientId`、可选 `clientSecret`、`redirectUri` 和 `scopes`，不要提交到 Git。
 
+日常启动和安装版可以在“设置 → 账号连接”点“导入配置”，选择 `providers.json`；应用会把它复制到当前数据目录的 `oauth/providers.json`。开发模式会额外查找仓库根目录的 `tmp/oauth/providers.json`，所以从仓库运行 `pnpm tauri dev` 时通常不需要再设置 `MIYU_OAUTH_CONFIG`。
+
 - NextMoe/Kungal：public client + PKCE，回调 `http://127.0.0.1/callback`，不需要 secret。
 - Bangumi：OAuth 2.0，需要 client secret 和已注册的 `http://127.0.0.1:39123/callback`。
 - Hikarinagi：授权码 + PKCE；控制台需要把应用设为 public client，并启用 `openid`、`profile`、`offline_access`，回调 `http://127.0.0.1:39124/callback`。
 
 access token 和 refresh token 使用 Windows DPAPI 加密后写入 SQLite；应用不会把密码或 token 写进日志或前端。
+
+自己测试时，先完全关闭已有的 MiyuManager 窗口和旧的 `pnpm tauri dev` 终端，然后在仓库根目录运行：
+
+    pnpm tauri dev
+
+打开“设置 → 账号连接”。卡片显示“OAuth 配置已读取”且按钮可点时，选择来源点“连接”，系统浏览器会打开授权页。授权成功后卡片显示“已连接”和账号名。关闭窗口，用同一条命令重启，再回到设置页确认账号仍然连接；这就是持久化验证。
+
+想使用独立数据库时，在启动前设置 `MIYU_DATA_DIR`。新目录没有游戏数据，游戏库为空是正常的：
+
+    $env:MIYU_DATA_DIR = "D:\Projects\MiyuManager\tmp\oauth-test-1"
+    pnpm tauri dev
 
 主应用截图保存在 `outputs/app/1440x900/`、`1920x1080/`、`150pct-1280x720/` 和 `4k/`；C2 扫描确认与导入证据在 `outputs/app/c2/`；C3 详情、封面、启动配置和真实启动证据在 `outputs/app/c3/`；C4 搜索、预览、导入和来源优先级证据在 `outputs/app/c4/`；焦点与 reduced-motion 证据在 `outputs/app/probes/`。
 

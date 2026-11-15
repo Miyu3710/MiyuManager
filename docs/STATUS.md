@@ -59,8 +59,8 @@
 - 字段保护：手动编辑通过 `work_update` 写入 `manual` locked claim；导入跳过锁定字段，默认只选空白且未锁定字段；已有手动/本地封面默认保留；锁定字段在重新导入时保持原值。
 - 封面：在线候选封面可下载到现有资产缓存，生成 WebP 缩略图；资产来源标记 `online`，详情页区分手动/本地/在线封面。
 - OAuth：`src-tauri/src/oauth/**`、`20261115000500_oauth.sql`；支持系统浏览器 + 本机环回回调、state、PKCE、token 交换、Windows DPAPI 加密存储、账号状态和断开连接。NextMoe/Kungal 与 Bangumi 已用真实账号完成授权验证；Hikarinagi 授权页和回调已完成，但当前应用被识别为机密客户端，需要控制台切换为 public client 或补充 secret。
-- OAuth 设置：`src/features/settings/OAuthAccounts.tsx`；设置页显示三个来源的配置/连接状态、账号名、scope，并提供连接和断开。凭据从 `MIYU_OAUTH_CONFIG`、数据目录 `oauth/providers.json` 或 `tmp/oauth/providers.json` 读取，不进入前端或 Git。
-- 验证：Provider fixture 测试、优先级/启停测试、锁定字段跳过测试、真实 Tauri 窗口联合搜索（VNDB 在 Bangumi 前）、VNDB 字段导入、锁定简介后 Bangumi 导入不覆盖、在线封面下载和缩略图缓存。
+- OAuth 设置：`src/features/settings/OAuthAccounts.tsx`；设置页显示三个来源的配置/连接状态、账号名、scope，并提供连接、断开、重新读取和导入 `providers.json`。凭据从 `MIYU_OAUTH_CONFIG`、数据目录 `oauth/providers.json` 或开发目录 `tmp/oauth/providers.json` 读取，不进入前端或 Git；开发构建会额外查找仓库根目录的 `tmp/oauth/providers.json`，配置保存后即时生效，不需要重启。
+- 验证：Provider fixture 测试、优先级/启停测试、锁定字段跳过测试、OAuth 配置读取/导入测试、真实 Tauri 窗口联合搜索（VNDB 在 Bangumi 前）、VNDB 字段导入、锁定简介后 Bangumi 导入不覆盖、在线封面下载和缩略图缓存。
 - 证据：`outputs/app/c4/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`，包含 `01-sources-empty.png`、`02-search-results.png`、`03-preview.png`、`04-imported.png`、`04b-locked.png`、`05-settings-priority.png`、`06-oauth-accounts.png`。
 
 ### C4 已知边界
@@ -149,10 +149,11 @@
 ### C4
 
 - `pnpm lint`、`pnpm typecheck`、`pnpm test`（10 个前端测试，新增元数据搜索/导入和来源排序测试）、`pnpm build`、`pnpm format:check`。
-- `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（35 个 Rust 测试；28 个通过，7 个需要网络或人工授权的 live 测试默认忽略）。
+- `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（37 个 Rust 测试；30 个通过，7 个需要网络或人工授权的 live 测试默认忽略）。
 - 网络 smoke：`cargo test live_provider_smoke -- --ignored` 通过；VNDB/Bangumi 联合搜索、详情解析均返回真实数据。
 - 网络导入 smoke：`cargo test live_search_priority_and_cover_import -- --ignored` 通过；VNDB 结果优先于 Bangumi，在线封面下载、原图和 WebP 缩略图写入成功。
 - OAuth smoke：`live_nextmoe_login_persists_account` 与 `live_bangumi_login_persists_account` 通过；真实浏览器同意授权后 token 交换成功、账号写入内存库。`live_hikarinagi_login_persists_account` 已完成浏览器授权和回调，但 token 端点返回 `client authentication failed`，需要把 Hikarinagi 应用切换为 public client。
+- OAuth 配置 smoke：真实开发版窗口从仓库 `tmp/oauth/providers.json` 自动读取配置，设置页显示“OAuth 配置已读取”和文件路径，三个来源均显示“未连接”且连接按钮可用；`reads_config_from_data_directory` 和 `installs_config_and_reloads_it_immediately` 覆盖数据目录读取和设置页导入。
 - 实际 Tauri 窗口（`MIYU_DATA_DIR=tmp/c4-appdata-1`）：在作品详情“来源与字段”搜索“月影”得到 29 条候选，VNDB 12 条在前、Bangumi 17 条在后；选择 VNDB 候选导入 4 个空白字段；锁定简介后切换 Bangumi 候选，预览显示“已锁定”且不可勾选，导入只应用到未锁定字段，简介保持 VNDB 值。
 - SQLite 证据：`metadata_claims` 中 VNDB 的 `aliases`、`description`、`publisher`、`release_date` 有来源和时间；`description` 的 `locked=1`；Bangumi 只写入了未锁定的 `developer`。
 - 截图证据：`outputs/app/c4/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`；所有尺寸无横向溢出，4K 来源面板已完成加载；设置页来源顺序、启停和 OAuth 账号卡可用。

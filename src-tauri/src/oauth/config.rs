@@ -34,41 +34,75 @@ const PROVIDER_DEFS: [OAuthProviderDef; 3] = [
 pub struct OAuthConfig {
     pub providers: HashMap<String, OAuthProviderConfig>,
     pub error: Option<String>,
+    pub path: Option<PathBuf>,
+    pub checked_paths: Vec<PathBuf>,
 }
 
 impl OAuthConfig {
     pub fn load(data_dir: &Path) -> Self {
-        let mut candidates = Vec::new();
-        if let Some(path) = std::env::var_os("MIYU_OAUTH_CONFIG") {
-            candidates.push(PathBuf::from(path));
-        }
-        candidates.push(data_dir.join("oauth").join("providers.json"));
-        if let Ok(cwd) = std::env::current_dir() {
-            candidates.push(cwd.join("tmp").join("oauth").join("providers.json"));
-        }
+        let candidates = {
+            let mut candidates = Vec::new();
+            let mut push = |path: PathBuf| {
+                if !candidates.iter().any(|existing| existing == &path) {
+                    candidates.push(path);
+                }
+            };
+            if let Some(path) = std::env::var_os("MIYU_OAUTH_CONFIG") {
+                push(PathBuf::from(path));
+            }
+            push(data_dir.join("oauth").join("providers.json"));
+            if let Ok(cwd) = std::env::current_dir() {
+                push(cwd.join("tmp").join("oauth").join("providers.json"));
+                if let Some(parent) = cwd.parent() {
+                    push(parent.join("tmp").join("oauth").join("providers.json"));
+                }
+            }
+            #[cfg(debug_assertions)]
+            {
+                push(
+                    Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("..")
+                        .join("tmp")
+                        .join("oauth")
+                        .join("providers.json"),
+                );
+            }
+            candidates
+        };
 
-        for path in candidates {
+        for path in &candidates {
             if !path.is_file() {
                 continue;
             }
-            return match parse_config(&path) {
+            return match parse_config(path) {
                 Ok(providers) => OAuthConfig {
                     providers,
                     error: None,
+                    path: Some(path.clone()),
+                    checked_paths: candidates.clone(),
                 },
                 Err(error) => OAuthConfig {
                     providers: HashMap::new(),
-                    error: Some(format!("OAuth 配置无法读取：{error}")),
+                    error: Some(format!("OAuth 配置无法读取（{}）：{error}", path.display())),
+                    path: Some(path.clone()),
+                    checked_paths: candidates.clone(),
                 },
             };
         }
 
+        let checked = candidates
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join("；");
         OAuthConfig {
             providers: HashMap::new(),
-            error: Some(
-                "没有找到 OAuth 配置。请把 providers.json 放到数据目录 oauth/ 下，或设置 MIYU_OAUTH_CONFIG。"
-                    .to_string(),
-            ),
+            error: Some(format!(
+                "没有找到 OAuth 配置。已查找：{checked}。可以点“导入配置”选择 providers.json，或把文件放到 {}。",
+                data_dir.join("oauth").join("providers.json").display()
+            )),
+            path: None,
+            checked_paths: candidates,
         }
     }
 
@@ -80,8 +114,27 @@ impl OAuthConfig {
         if self.provider(id).is_some() {
             return None;
         }
-        self.error.clone()
+        if let Some(error) = &self.error {
+            return Some(error.clone());
+        }
+        let name = provider_def(id)
+            .map(|definition| definition.name)
+            .unwrap_or(id);
+        let source = self
+            .path
+            .as_ref()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|| "未知位置".to_string());
+        Some(format!("当前配置中没有 {name} 的凭证。配置来自：{source}"))
     }
+}
+
+pub fn validate_file(path: &Path) -> Result<usize> {
+    let providers = parse_config(path)?;
+    if providers.is_empty() {
+        bail!("providers.json 中没有可识别的 OAuth 来源");
+    }
+    Ok(providers.len())
 }
 
 pub fn provider_defs() -> &'static [OAuthProviderDef] {
@@ -185,6 +238,7 @@ fn parse_config(path: &Path) -> Result<HashMap<String, OAuthProviderConfig>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn merges_required_pkce_scopes() {
@@ -196,5 +250,30 @@ mod tests {
     #[test]
     fn maps_kungal_to_nextmoe() {
         assert_eq!(normalize_id("kungal"), "nextmoe");
+    }
+
+    #[test]
+    fn reads_config_from_data_directory() {
+        let temp = TempDir::new().expect("temp dir");
+        let oauth_dir = temp.path().join("oauth");
+        std::fs::create_dir_all(&oauth_dir).expect("oauth dir");
+        let path = oauth_dir.join("providers.json");
+        std::fs::write(
+            &path,
+            r#"{
+                "nextmoe": {
+                    "clientId": "test-client",
+                    "redirectUri": "http://127.0.0.1/callback"
+                }
+            }"#,
+        )
+        .expect("config file");
+
+        let config = OAuthConfig::load(temp.path());
+
+        assert!(config.error.is_none());
+        assert!(config.provider("nextmoe").is_some());
+        assert_eq!(config.path.as_deref(), Some(path.as_path()));
+        assert_eq!(validate_file(&path).expect("valid config"), 1);
     }
 }

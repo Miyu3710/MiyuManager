@@ -34,6 +34,7 @@ import type {
   MetadataClaim,
   MetadataValue,
   MetadataFieldState,
+  OAuthConfigInfo,
   OAuthStatus,
 } from "./library-types";
 import { formatBytes, formatPlaytime, formatRelativeDate } from "./format";
@@ -1345,6 +1346,28 @@ export async function listOAuthAccounts(): Promise<OAuthStatus[]> {
     return previewOAuthStatuses;
   }
   return invoke<OAuthStatus[]>("oauth_status");
+}
+
+const previewOAuthConfig: OAuthConfigInfo = {
+  path: "preview/providers.json",
+  error: null,
+  checkedPaths: [],
+  dataDir: "preview",
+  providerIds: ["bangumi", "hikarinagi", "nextmoe"],
+};
+
+export async function getOAuthConfigInfo(): Promise<OAuthConfigInfo> {
+  if (!isTauri()) {
+    return previewOAuthConfig;
+  }
+  return invoke<OAuthConfigInfo>("oauth_config_info");
+}
+
+export async function importOAuthConfig(sourcePath: string): Promise<OAuthConfigInfo> {
+  if (!isTauri()) {
+    throw new Error("浏览器预览不支持导入 OAuth 配置；请在 Tauri 窗口中操作。");
+  }
+  return invoke<OAuthConfigInfo>("oauth_import_config", { sourcePath });
 }
 
 export async function connectOAuth(providerId: string): Promise<OAuthStatus> {

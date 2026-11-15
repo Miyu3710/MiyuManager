@@ -701,6 +701,24 @@ pub async fn oauth_status(
 }
 
 #[tauri::command]
+pub async fn oauth_config_info(
+    state: State<'_, AppState>,
+) -> Result<crate::oauth::OAuthConfigInfo, String> {
+    Ok(state.oauth.config_info())
+}
+
+#[tauri::command]
+pub async fn oauth_import_config(
+    state: State<'_, AppState>,
+    source_path: String,
+) -> Result<crate::oauth::OAuthConfigInfo, String> {
+    state
+        .oauth
+        .install_config(Path::new(&source_path))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn oauth_connect(
     state: State<'_, AppState>,
     provider_id: String,

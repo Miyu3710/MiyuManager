@@ -1,10 +1,25 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Loader2, LogOut, RefreshCw, ShieldCheck } from "lucide-react";
+import { isTauri } from "@tauri-apps/api/core";
+import {
+  AlertTriangle,
+  FileUp,
+  KeyRound,
+  Loader2,
+  LogOut,
+  RefreshCw,
+  ShieldCheck,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../design-system/components/Button";
 import { Tag } from "../../design-system/components/Tag";
-import { connectOAuth, disconnectOAuth, listOAuthAccounts } from "../../lib/library-api";
+import {
+  connectOAuth,
+  disconnectOAuth,
+  getOAuthConfigInfo,
+  importOAuthConfig,
+  listOAuthAccounts,
+} from "../../lib/library-api";
 
 export function OAuthAccounts() {
   const queryClient = useQueryClient();
@@ -13,10 +28,43 @@ export function OAuthAccounts() {
     queryFn: listOAuthAccounts,
     staleTime: 5_000,
   });
+  const configQuery = useQuery({
+    queryKey: ["oauth-config"],
+    queryFn: getOAuthConfigInfo,
+    staleTime: 5_000,
+  });
   const [busy, setBusy] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["oauth-status"] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["oauth-status"] }),
+      queryClient.invalidateQueries({ queryKey: ["oauth-config"] }),
+    ]);
+  };
+
+  const chooseConfig = async () => {
+    setImporting(true);
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({
+        multiple: false,
+        directory: false,
+        title: "选择 OAuth providers.json",
+        filters: [{ name: "OAuth 配置", extensions: ["json"] }],
+      });
+      const path = Array.isArray(selected) ? selected[0] : selected;
+      if (!path) {
+        return;
+      }
+      const info = await importOAuthConfig(path);
+      toast.success(`OAuth 配置已导入，可使用 ${info.providerIds.length} 个来源`);
+      await refresh();
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setImporting(false);
+    }
   };
 
   const connect = async (providerId: string, name: string) => {
@@ -56,10 +104,49 @@ export function OAuthAccounts() {
             只用于你授权的账号数据。
           </span>
         </div>
-        <Tag tone="data">
-          <ShieldCheck size={11} /> OAuth 2.0
-        </Tag>
+        <div className="settings-oauth__tools">
+          <Tag tone="data">
+            <ShieldCheck size={11} /> OAuth 2.0
+          </Tag>
+          <Button variant="ghost" size="sm" onClick={() => void refresh()}>
+            <RefreshCw size={13} /> 重新读取
+          </Button>
+          {isTauri() ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={importing}
+              onClick={() => void chooseConfig()}
+            >
+              {importing ? <Loader2 size={13} className="settings-spin" /> : <FileUp size={13} />}
+              导入配置
+            </Button>
+          ) : null}
+        </div>
       </div>
+
+      {configQuery.data?.error ? (
+        <div className="settings-oauth__notice settings-oauth__notice--warn">
+          <AlertTriangle size={14} />
+          <div>
+            <b>没有读到 OAuth 配置</b>
+            <p>{configQuery.data.error}</p>
+            <p>
+              当前数据目录：<code>{configQuery.data.dataDir}</code>
+            </p>
+          </div>
+        </div>
+      ) : configQuery.data?.path ? (
+        <div className="settings-oauth__notice settings-oauth__notice--ok">
+          <ShieldCheck size={14} />
+          <div>
+            <b>OAuth 配置已读取</b>
+            <p>
+              <code>{configQuery.data.path}</code>
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       {query.isPending ? (
         <div className="settings-oauth__loading">
@@ -93,8 +180,10 @@ export function OAuthAccounts() {
                   {provider.scopes.length > 4 ? <span>+{provider.scopes.length - 4}</span> : null}
                 </div>
                 {!provider.connected &&
-                (!provider.configured || provider.id === "hikarinagi") &&
-                provider.hint ? (
+                provider.hint &&
+                (provider.configured
+                  ? provider.id === "hikarinagi"
+                  : Boolean(configQuery.data?.path)) ? (
                   <p className="settings-oauth__hint">{provider.hint}</p>
                 ) : null}
               </div>

@@ -5,26 +5,25 @@ mod store;
 mod types;
 
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use reqwest::Client;
 use sqlx::SqlitePool;
 use tokio::sync::Mutex;
 
-pub use types::OAuthStatus;
+pub use types::{OAuthConfigInfo, OAuthStatus};
 
 use config::{normalize_id, provider_def, provider_defs};
 
 pub struct OAuthService {
-    config: config::OAuthConfig,
+    data_dir: PathBuf,
     http: Client,
     connecting: Mutex<HashSet<String>>,
 }
 
 impl OAuthService {
     pub fn new(data_dir: &Path) -> Result<Self> {
-        let config = config::OAuthConfig::load(data_dir);
         let mut builder = Client::builder()
             .user_agent("MiyuManager/0.1 (OAuth desktop client)")
             .http1_only()
@@ -35,13 +34,68 @@ impl OAuthService {
         }
         let http = builder.build().context("无法创建 OAuth HTTP 客户端")?;
         Ok(Self {
-            config,
+            data_dir: data_dir.to_path_buf(),
             http,
             connecting: Mutex::new(HashSet::new()),
         })
     }
 
+    fn current_config(&self) -> config::OAuthConfig {
+        config::OAuthConfig::load(&self.data_dir)
+    }
+
+    pub fn config_info(&self) -> OAuthConfigInfo {
+        let config = self.current_config();
+        let mut provider_ids = config.providers.keys().cloned().collect::<Vec<_>>();
+        provider_ids.sort();
+        OAuthConfigInfo {
+            path: config.path.as_ref().map(|path| path.display().to_string()),
+            error: config.error.clone(),
+            checked_paths: config
+                .checked_paths
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect(),
+            data_dir: self.data_dir.display().to_string(),
+            provider_ids,
+        }
+    }
+
+    pub fn install_config(&self, source: &Path) -> Result<OAuthConfigInfo> {
+        config::validate_file(source)?;
+        let directory = self.data_dir.join("oauth");
+        std::fs::create_dir_all(&directory)
+            .with_context(|| format!("无法创建 OAuth 配置目录 {}", directory.display()))?;
+        let destination = directory.join("providers.json");
+        let same_file = match (
+            std::fs::canonicalize(source),
+            std::fs::canonicalize(&destination),
+        ) {
+            (Ok(source), Ok(destination)) => source == destination,
+            _ => false,
+        };
+        if !same_file {
+            let bytes =
+                std::fs::read(source).with_context(|| format!("无法读取 {}", source.display()))?;
+            let temporary = directory.join("providers.json.tmp");
+            std::fs::write(&temporary, bytes)
+                .with_context(|| format!("无法写入 {}", temporary.display()))?;
+            if destination.exists() {
+                std::fs::remove_file(&destination)
+                    .with_context(|| format!("无法替换 {}", destination.display()))?;
+            }
+            std::fs::rename(&temporary, &destination)
+                .with_context(|| format!("无法保存 {}", destination.display()))?;
+        }
+        let info = self.config_info();
+        if info.error.is_some() || info.provider_ids.is_empty() {
+            bail!("OAuth 配置已保存，但重新读取失败");
+        }
+        Ok(info)
+    }
+
     pub async fn statuses(&self, pool: &SqlitePool) -> Result<Vec<OAuthStatus>> {
+        let config = self.current_config();
         let rows = store::list_accounts(pool).await?;
         let by_provider = rows
             .into_iter()
@@ -51,7 +105,7 @@ impl OAuthService {
             .iter()
             .map(|definition| {
                 let account = by_provider.get(definition.id);
-                let configured = self.config.provider(definition.id).is_some();
+                let configured = config.provider(definition.id).is_some();
                 OAuthStatus {
                     id: definition.id.to_string(),
                     name: definition.name.to_string(),
@@ -62,7 +116,7 @@ impl OAuthService {
                     account_name: account.and_then(|row| row.account_name.clone()),
                     account_id: account.and_then(|row| row.account_id.clone()),
                     scopes: account.map(|row| row.scopes.clone()).unwrap_or_else(|| {
-                        self.config
+                        config
                             .provider(definition.id)
                             .map(|provider| provider.scopes.clone())
                             .unwrap_or_else(|| config::effective_scopes(definition.id, &[]))
@@ -71,7 +125,7 @@ impl OAuthService {
                     hint: if configured {
                         Some(definition.hint.to_string())
                     } else {
-                        self.config.status_hint(definition.id)
+                        config.status_hint(definition.id)
                     },
                 }
             })
@@ -81,8 +135,8 @@ impl OAuthService {
     pub async fn connect(&self, pool: &SqlitePool, provider_id: &str) -> Result<OAuthStatus> {
         let provider_id = normalize_id(provider_id);
         let definition = provider_def(provider_id).context("未知的 OAuth 来源")?;
-        let config = self
-            .config
+        let config = self.current_config();
+        let config = config
             .provider(provider_id)
             .with_context(|| format!("{} 还没有配置 OAuth 应用凭证", definition.name))?;
         {
@@ -170,5 +224,29 @@ mod tests {
         assert!(status.connected);
         let rows = store::list_accounts(&pool).await.expect("accounts");
         assert_eq!(rows.len(), 1);
+    }
+
+    #[test]
+    fn installs_config_and_reloads_it_immediately() {
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let source = temp.path().join("selected.json");
+        std::fs::write(
+            &source,
+            r#"{
+                "bangumi": {
+                    "clientId": "test-client",
+                    "clientSecret": "test-secret",
+                    "redirectUri": "http://127.0.0.1:39123/callback"
+                }
+            }"#,
+        )
+        .expect("source config");
+        let service = OAuthService::new(temp.path()).expect("oauth service");
+
+        let info = service.install_config(&source).expect("install config");
+
+        assert!(info.error.is_none());
+        assert_eq!(info.provider_ids, vec!["bangumi".to_string()]);
+        assert!(temp.path().join("oauth").join("providers.json").is_file());
     }
 }

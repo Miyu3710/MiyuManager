@@ -80,6 +80,8 @@ pub fn run() {
             commands::metadata_candidate_preview,
             commands::metadata_import,
             commands::metadata_set_field_lock,
+            commands::oauth_config_info,
+            commands::oauth_import_config,
             commands::oauth_status,
             commands::oauth_connect,
             commands::oauth_disconnect,

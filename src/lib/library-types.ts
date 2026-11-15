@@ -417,3 +417,11 @@ export interface OAuthStatus {
   expiresAt: number | null;
   hint: string | null;
 }
+
+export interface OAuthConfigInfo {
+  path: string | null;
+  error: string | null;
+  checkedPaths: string[];
+  dataDir: string;
+  providerIds: string[];
+}

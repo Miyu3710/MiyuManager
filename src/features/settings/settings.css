@@ -416,9 +416,18 @@
   border-bottom: 1px solid var(--color-line);
 }
 
-.settings-oauth__head > div {
+.settings-oauth__head > div:first-child {
   display: grid;
   gap: 3px;
+}
+
+.settings-oauth__tools {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .settings-oauth__head b {
@@ -439,6 +448,55 @@
   align-items: center;
   gap: 4px;
   flex: 0 0 auto;
+}
+
+.settings-oauth__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-text-faint);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.settings-oauth__notice > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.settings-oauth__notice b {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.settings-oauth__notice p {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.settings-oauth__notice code {
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  overflow-wrap: anywhere;
+}
+
+.settings-oauth__notice--warn {
+  background: rgba(228, 87, 87, 0.06);
+}
+
+.settings-oauth__notice--warn > svg {
+  color: var(--color-danger);
+}
+
+.settings-oauth__notice--ok {
+  background: rgba(217, 164, 65, 0.05);
+}
+
+.settings-oauth__notice--ok > svg {
+  color: var(--color-data);
 }
 
 .settings-oauth__loading {

@@ -34,6 +34,16 @@ pub struct OAuthStatus {
     pub hint: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthConfigInfo {
+    pub path: Option<String>,
+    pub error: Option<String>,
+    pub checked_paths: Vec<String>,
+    pub data_dir: String,
+    pub provider_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct OAuthAccountRow {
     pub provider: String,
