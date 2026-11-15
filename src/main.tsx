@@ -5,7 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./app/App";
 import "./styles/global.css";
 
-if (isTauri() && getCurrentWindow().label === "bigscreen-probe") {
+if (isTauri() && ["bigscreen", "bigscreen-probe"].includes(getCurrentWindow().label)) {
   window.location.hash = "#/big-screen";
 }
 

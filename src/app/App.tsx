@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { createHashRouter, Navigate, RouterProvider } from "react-router-dom";
 import { Toaster } from "sonner";
 import { isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AppShell } from "./AppShell";
 import { HomePage } from "../features/home/HomePage";
@@ -154,8 +155,26 @@ function useRevealWindow() {
   }, []);
 }
 
+function useMainWindowBridge() {
+  useEffect(() => {
+    if (!isTauri() || getCurrentWindow().label !== "main") {
+      return;
+    }
+
+    let unlisten: (() => void) | undefined;
+    void listen<{ workId: number }>("bigscreen-open-detail", (event) => {
+      window.location.hash = "#/work/" + event.payload.workId;
+    }).then((cleanup) => {
+      unlisten = cleanup;
+    });
+
+    return () => unlisten?.();
+  }, []);
+}
+
 export default function App() {
   useRevealWindow();
+  useMainWindowBridge();
 
   return (
     <QueryClientProvider client={queryClient}>

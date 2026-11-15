@@ -232,6 +232,30 @@
   color: var(--color-status);
 }
 
+.settings-select {
+  min-width: 220px;
+  max-width: 360px;
+  height: 34px;
+  padding: 0 34px 0 11px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-control);
+  background:
+    linear-gradient(45deg, transparent 50%, var(--color-text-soft) 50%) calc(100% - 15px) 14px / 5px
+      5px no-repeat,
+    linear-gradient(135deg, var(--color-text-soft) 50%, transparent 50%) calc(100% - 10px) 14px /
+      5px 5px no-repeat,
+    var(--color-bg-raised);
+  color: var(--color-text);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  appearance: none;
+}
+
+.settings-select:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
 .settings-switch {
   position: relative;
   width: 34px;

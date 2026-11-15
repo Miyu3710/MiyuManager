@@ -158,7 +158,7 @@ function mockToItem(game: Game, index: number): PreviewLibraryItem {
     displayName: game.title,
     installStatus: "installed",
     addedAt: new Date(Date.now() - (index + 1) * 86_400_000).toISOString(),
-    lastPlayedAt: null,
+    lastPlayedAt: new Date(Date.now() - index * 86_400_000 - 3_600_000).toISOString(),
     playtimeMinutes: game.playtimeMinutes,
     launchCount: game.launchCount,
     catalogNo: game.catalogNo,
@@ -231,6 +231,10 @@ function previewQuery(query: LibraryQuery): LibraryPage {
       case "size_desc":
         return right.sizeBytes - left.sizeBytes;
       case "last_played_desc":
+        return (
+          (right.lastPlayedAt ?? "").localeCompare(left.lastPlayedAt ?? "") ||
+          right.addedAt.localeCompare(left.addedAt)
+        );
       case "added_desc":
       default:
         return right.addedAt.localeCompare(left.addedAt);

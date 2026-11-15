@@ -1,25 +1,25 @@
 # MiyuManager 项目状态
 
 > 最后更新：2026-11-15  
-> 当前阶段：C6 已完成；C7 尚未启动
+> 当前阶段：C7 实现完成，待 G5 确认；独立大屏窗口、真实数据、图标分类栏、竖版海报架、Y 游戏菜单、Start 控制侧栏和启动/详情流程已接入；手柄实机与多显示器仍待验证
 >
 > 计划文件：`docs/DEVELOPMENT_PLAN.md`  
 > 设计提案：`docs/DESIGN.md`
 
 ## 当前状态
 
-| 子对话                                | 状态   | 完成内容 / 证据                                                                                                                        |
-| ------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------- |
-| C0 规划与技术选型                     | 已完成 | 技术栈、范围、架构、数据模型、质量门槛和子对话拆分已写入 `docs/DEVELOPMENT_PLAN.md`                                                    |
-| C1 基础工程、设计系统与可点击壳       | 已完成 | 设计系统、应用壳、Home/Library/Detail/Big Screen、Stats/Settings 和探针已完成；2026-11-15 通过 G2 视觉确认                             |
-| C2 SQLite、目录扫描与真实游戏库       | 已完成 | SQLite/WAL/FTS5、目录扫描、候选确认、汉化 exe 识别、扫描排除/手动导入、真实游戏库、搜索筛选排序、持久化和 5,000 条查询已接入；详见下文 |
-| C3 作品详情、图片缓存与启动器         | 已完成 | 真实详情编辑、封面缓存/发现、启动配置、包装器、路径校验、Job Object 启动跟踪与运行状态已接入；详见下文                                 |
-| C4 Metadata Provider、VNDB 与 Bangumi | 已完成 | Provider 框架、来源优先级、VNDB/Bangumi 搜索与导入、字段 claim/锁定、封面下载、来源账本和 OAuth 账号连接已接入；详见下文               |
-| C5 Steam、多源合并与批量刮削          | 已完成 | Steam 来源、Steam 库自动嗅探、字段级/全局优先级、冲突采用/锁定、封面画廊、两阶段批量队列、暂停/取消/重试和局部成功已接入；详见下文     |
-| C6 自动时长统计与统计页               | 已完成 | `play_sessions`、Job Object 会话观察、前台宽限、心跳恢复、真实统计页和会话补录/修正/删除已接入；详见下文                               |
-| C7 电视大屏与手柄导航                 | 未开始 | 依赖 C6                                                                                                                                |
-| C8 首页、收藏集、设置与首次启动       | 未开始 | 依赖 C5、C6、C7                                                                                                                        |
-| C9 硬化、性能、打包与发布候选         | 未开始 | 依赖 C8                                                                                                                                |
+| 子对话                                | 状态   | 完成内容 / 证据                                                                                                                            |
+| ------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| C0 规划与技术选型                     | 已完成 | 技术栈、范围、架构、数据模型、质量门槛和子对话拆分已写入 `docs/DEVELOPMENT_PLAN.md`                                                        |
+| C1 基础工程、设计系统与可点击壳       | 已完成 | 设计系统、应用壳、Home/Library/Detail/Big Screen、Stats/Settings 和探针已完成；2026-11-15 通过 G2 视觉确认                                 |
+| C2 SQLite、目录扫描与真实游戏库       | 已完成 | SQLite/WAL/FTS5、目录扫描、候选确认、汉化 exe 识别、扫描排除/手动导入、真实游戏库、搜索筛选排序、持久化和 5,000 条查询已接入；详见下文     |
+| C3 作品详情、图片缓存与启动器         | 已完成 | 真实详情编辑、封面缓存/发现、启动配置、包装器、路径校验、Job Object 启动跟踪与运行状态已接入；详见下文                                     |
+| C4 Metadata Provider、VNDB 与 Bangumi | 已完成 | Provider 框架、来源优先级、VNDB/Bangumi 搜索与导入、字段 claim/锁定、封面下载、来源账本和 OAuth 账号连接已接入；详见下文                   |
+| C5 Steam、多源合并与批量刮削          | 已完成 | Steam 来源、Steam 库自动嗅探、字段级/全局优先级、冲突采用/锁定、封面画廊、两阶段批量队列、暂停/取消/重试和局部成功已接入；详见下文         |
+| C6 自动时长统计与统计页               | 已完成 | `play_sessions`、Job Object 会话观察、前台宽限、心跳恢复、真实统计页和会话补录/修正/删除已接入；详见下文                                   |
+| C7 电视大屏与手柄导航                 | 待验收 | 正式 `bigscreen` 窗口、显示器选择、真实库、图标分类栏、竖版海报架、Y 菜单、Start 控制侧栏、启动/详情和焦点管理已接入；待 G5 确认；详见下文 |
+| C8 首页、收藏集、设置与首次启动       | 未开始 | 依赖 C5、C6、C7                                                                                                                            |
+| C9 硬化、性能、打包与发布候选         | 未开始 | 依赖 C8                                                                                                                                    |
 
 ## 已锁定的决策
 
@@ -49,7 +49,25 @@
 - pnpm `11.25.0`
 - Rust `1.100.0`
 - WebView2 Runtime `157.0.4341.46`
-- Git 仓库已有 C1 基线提交；C2 在 `codex/c2-library-import` 分支完成；C3 在 `codex/c3-detail-launch` 分支完成；C4 在 `codex/c4-metadata-providers` 分支完成；C5 在 `codex/c5-metadata-merge` 分支完成；C6 在 `codex/c6-playtime-stats` 分支完成
+- Git 仓库已有 C1 基线提交；C2 在 `codex/c2-library-import` 分支完成；C3 在 `codex/c3-detail-launch` 分支完成；C4 在 `codex/c4-metadata-providers` 分支完成；C5 在 `codex/c5-metadata-merge` 分支完成；C6 在 `codex/c6-playtime-stats` 分支完成；C7 在 `codex/c7-bigscreen` 分支完成实现，待 G5 确认
+
+## C7 本轮产出
+
+- 独立窗口：`src-tauri/src/bigscreen.rs`；新增 `bigscreen_open`、`bigscreen_close`、`bigscreen_move`、`bigscreen_state`、`bigscreen_open_detail`。窗口标签 `bigscreen`，路由 `#/big-screen`，前端挂载后显示；无边框全屏，显示器选择写入 SQLite `settings` 的 `bigscreen.display`，无效显示器回退主屏并返回提示。打开时隐藏主窗口，关闭时恢复并聚焦；详情入口关闭大屏并在主窗口打开 `#/work/{id}`。
+- 大屏页面：`src/features/bigscreen/**`；使用真实作品、分类、游玩状态、累计时长和最近会话数据。左侧为纯图标分类栏（最近启动、在玩、想玩、已完成、搁置、收藏、全部游戏），垂直居中，不显示文字或计数；主视觉左侧显示状态、标题、原题、简介、标签和启动/详情，右侧显示 2:3 封面；底部为横向海报架，只显示 2:3 海报，不显示标题、开发商或入库时间。大屏不展示“最近入库”。
+- 输入：`useBigScreenInput.ts`、`useBigScreenFocus.ts`；A 确认、B 返回、Y 游戏菜单、Start 控制菜单、LB/RB 切换区域，X 未分配。D-pad/左摇杆移动，键盘方向键/Enter/Escape/C/M/Tab 提供完整替代；焦点按分类栏、主视觉、海报架分区域记忆，关闭菜单/抽屉后回到触发项。鼠标静止后隐藏光标，支持 reduced motion。
+- 菜单：Y 在当前位置打开游戏菜单（启动/停止、查看详情、收藏、游玩状态子菜单、关闭）；Start 从右侧打开控制菜单（显示器、手柄状态、按键说明、刷新游戏库、返回主窗口）。B/Escape 只逐层返回，根界面不会退出大屏；退出入口只放在控制菜单。
+- 设置：`SettingsPage` 新增“电视大屏”，可选择显示器、查看手柄连接状态、打开大屏和查看简短键位提示。
+- 验证：`pnpm typecheck`、`pnpm lint`、`pnpm test`（8 个文件 / 26 passed）、`pnpm build`、`pnpm format:check`；`cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（62 passed / 10 ignored）。实际 Tauri 窗口在当前 2560×1440（125%）屏幕上以 2048×1152 CSS 全屏打开；7 个图标分类渲染正常，“全部游戏”切换后聚焦首张海报；真实 dummy 游戏从大屏启动并结算为 10 秒 `exited` 会话；“游戏详情”关闭大屏并把主窗口导航到 `#/work/2`；设置页打开/关闭大屏正常。当前机器未连接物理手柄，且只有一个显示器，因此手柄实机映射和多显示器移动尚未验证。
+- 证据：`outputs/app/c7/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`（`01-bigscreen`、`02-game-menu`、`03-control`、`04-detail-drawer`）；实际 Tauri 截图 `outputs/app/c7/tauri-bigscreen-final.png`、`tauri-category-all.png`、`tauri-game-menu-final.png`、`tauri-control-final.png`、`tauri-detail-drawer.png`、`tauri-main-detail.png`、`tauri-settings-bigscreen.png`、`tauri-launch-running.png`、`tauri-launch-finished.png`；结构化结果 `tauri-probe.json`、`tauri-launch-real.json`、`tauri-categories.json`。
+
+### C7 已知边界
+
+- Gamepad API 在 WebView2 中可用，但本机没有物理手柄，A/B/Y/Start/LB/RB 的实机映射仍未验证；键盘路径已完整走查。
+- 本机只有一个显示器，显示器选择和切换的移动逻辑只有主屏回退路径有实际窗口证据，多显示器仍需外接屏幕复测。
+- 大屏分类栏只显示图标，分类名称通过 `aria-label` 和悬浮提示提供；不显示每个分类的作品数量，避免在 10-foot 视图里堆叠文字。
+- 打开大屏会隐藏主窗口；“游戏详情”会关闭大屏并回到主窗口，不在大屏内打开完整详情页。启动/停止、收藏和状态修改直接写回现有 SQLite 数据。
+- 游戏架海报使用 2:3 竖版比例，横幅封面会被裁切；没有单独的文字标签，作品识别依赖海报和主视觉。
 
 ## C6 本轮产出
 
@@ -195,6 +213,15 @@
 
 已通过：
 
+### C7
+
+- `pnpm typecheck`、`pnpm lint`、`pnpm test`（8 个文件 / 26 passed）、`pnpm build`、`pnpm format:check`；`cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（62 passed / 10 ignored）。
+- 实际 Tauri 窗口（`MIYU_DATA_DIR=tmp/c7-appdata`）打开 `bigscreen` 窗口，2048×1152 CSS 无边框全屏；关闭后主窗口恢复。设置页显示器选择和“在电视上打开”可用，关闭大屏后按钮状态复位。
+- 分类探针确认 7 个纯图标项渲染正常、`railText` 为空、标签只在 `aria-label`；点击“全部游戏”后分类切换并聚焦首张海报。底部书架为 2:3 竖版海报，没有标题/开发商文字，页面没有“最近入库”。
+- Y/右键菜单显示启动/停止、查看详情、收藏、游玩状态和关闭；Start 控制侧栏显示显示器、手柄状态、按键说明、刷新游戏库和返回主窗口；B/Escape 在根界面不退出。
+- 真实 dummy 游戏从大屏启动，运行中显示“停止游戏”，退出后生成 10 秒 `exited` 会话；“游戏详情”关闭大屏并把主窗口导航到 `#/work/2`。
+- 16 张浏览器截图和实际窗口截图覆盖 1440×900、1920×1080、150%（1280×720 CSS）和 4K；均无横向溢出。当前没有物理手柄，Gamepad API 返回 0 个设备。
+
 ### C6
 
 - `pnpm lint`、`pnpm typecheck`、`pnpm test`（18 passed，新增统计范围切换与补录表单）、`pnpm build`、`pnpm format:check`。
@@ -320,11 +347,12 @@ C2/C3 不再扩展；已知边界见上文，C4 及之后内容不在本对话�
 
 ## 下一轮入口
 
-C6 已完成，本对话到此结束，不启动 C7。若后续另开对话并明确要求 C7，再按以下入口执行：
+C7 已实现，等待 G5 对当前大屏布局、纯图标分类栏、竖版海报架和按键映射的确认。确认后再进入 C8：
 
-1. C7 处理独立大屏窗口、显示器选择、10-foot 布局、手柄/键盘焦点管理、从大屏启动与返回。
-2. 会话统计已经成为 C7 的真实数据来源；大屏仍只展示本地库、会话时长、用户状态和可追溯元数据，不伪造游戏内进度。
-3. 继续调整统计或会话体验时，保持 `play_sessions` 为事实来源，并同步更新 `docs/DESIGN.md` 与 `outputs/app/c6/` 截图证据。
+1. C8 处理首页、收藏集、设置与首次启动，把现有扫描、详情、统计、大屏和启动流程串成完整产品。
+2. 大屏仍只展示本地库、会话时长、用户状态和可追溯元数据，不伪造游戏内进度。
+3. 接入物理手柄后复测 A/B/Y/Start/LB/RB 和摇杆重复节奏；有第二块显示器时复测窗口移动与主窗口恢复。
+4. 继续调整大屏或统计体验时，保持 `play_sessions` 为事实来源，并同步更新 `docs/DESIGN.md` 与 `outputs/app/c7/` 截图证据。
 
 ## 待决策与风险
 
@@ -332,7 +360,7 @@ C6 已完成，本对话到此结束，不启动 C7。若后续另开对话并�
 - G2：已完成；当前视觉基线已确认，后续修改不改变 C1 验收结论。
 - G3：已完成；默认直接启动，不捆绑/不自动下载 Locale Emulator 或 NTLEA；按作品可选包装器 exe 和参数数组。
 - G4：已完成；字段级默认优先级 + 全局顺序开关，手动/锁定优先，导入默认 `only_if_empty`，采用/锁定/解锁分离。
-- G5：C7 大屏布局和手柄映射。
+- G5：C7 实现已完成，待确认当前大屏布局、纯图标分类栏、竖版海报架和按键映射；物理手柄与多显示器验证仍待补齐。
 - G6：C9 安装包、签名、便携版和更新策略。
 - C3 封面只支持手动选择和本地发现；C4/C5 已补充在线封面下载、多源元数据、Steam、封面画廊和批量刮削。
 - C3 的显示偏好只保存，不强制移动游戏窗口；实际窗口放置留到后续阶段。

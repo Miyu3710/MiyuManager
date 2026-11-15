@@ -1,14 +1,17 @@
 import {
   Database,
+  Gamepad2,
   Monitor,
   Palette,
   RefreshCw,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Tv,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { useQuery } from "@tanstack/react-query";
+import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -17,12 +20,14 @@ import { Tag } from "../../design-system/components/Tag";
 import { useAppearance } from "../../app/useAppearance";
 import { formatRelativeDate } from "../../lib/format";
 import { removeLibraryRoot, removeScanExclusion } from "../../lib/library-api";
+import { getBigScreenState, openBigScreen } from "../../lib/bigscreen-api";
 import { cn } from "../../lib/cn";
 import { MetadataSourceSettings } from "./MetadataSourceSettings";
 import {
   useAppInfo,
   useInvalidateLibrary,
   useLibraryRoots,
+  useMonitors,
   useScanExclusions,
 } from "../library/useLibrary";
 import "./settings.css";
@@ -31,6 +36,7 @@ const settingsSections = [
   { id: "library-settings", label: "游戏库", icon: Database },
   { id: "source-settings", label: "元数据来源", icon: Sparkles },
   { id: "launcher-settings", label: "启动器", icon: Monitor },
+  { id: "bigscreen-settings", label: "大屏模式", icon: Tv },
   { id: "appearance-settings", label: "外观", icon: Palette },
   { id: "probe-settings", label: "技术探针", icon: ShieldCheck },
   { id: "data-settings", label: "数据与备份", icon: SlidersHorizontal },
@@ -50,13 +56,21 @@ export function SettingsPage() {
   const roots = useLibraryRoots();
   const appInfo = useAppInfo();
   const exclusions = useScanExclusions();
+  const monitors = useMonitors();
+  const bigScreenState = useQuery({
+    queryKey: ["bigscreen-state"],
+    queryFn: getBigScreenState,
+    staleTime: 10_000,
+  });
   const density = useAppearance((state) => state.density);
   const setDensity = useAppearance((state) => state.setDensity);
   const reduceMotion = useAppearance((state) => state.reduceMotion);
   const setReduceMotion = useAppearance((state) => state.setReduceMotion);
   const [gamepadSupported, setGamepadSupported] = useState(() => readGamepadState().supported);
   const [gamepadCount, setGamepadCount] = useState(() => readGamepadState().count);
-  const [probeState, setProbeState] = useState("尚未打开");
+  const [selectedDisplay, setSelectedDisplay] = useState<number | null>(null);
+  const [bigScreenBusy, setBigScreenBusy] = useState(false);
+  const activeDisplay = selectedDisplay ?? bigScreenState.data?.display ?? 0;
 
   const removeRoot = async (rootId: number, path: string) => {
     const confirmed = window.confirm(
@@ -104,17 +118,22 @@ export function SettingsPage() {
     };
   }, []);
 
-  const openBigScreenProbe = async () => {
+  const openBigScreenWindow = async () => {
     if (!isTauri()) {
-      toast("第二窗口只在 Tauri 桌面窗口中可用。");
+      navigate("/big-screen");
       return;
     }
+    setBigScreenBusy(true);
     try {
-      await invoke("open_bigscreen_probe");
-      setProbeState("已请求打开第二窗口");
+      const state = await openBigScreen(activeDisplay);
+      if (state.message) {
+        toast(state.message);
+      }
+      toast.success("已打开大屏模式");
     } catch (error) {
-      setProbeState("打开失败");
-      toast(String(error));
+      toast.error(String(error));
+    } finally {
+      setBigScreenBusy(false);
     }
   };
 
@@ -305,6 +324,68 @@ export function SettingsPage() {
             </div>
           </section>
 
+          <section id="bigscreen-settings" className="settings-section">
+            <header>
+              <div>
+                <h2>电视大屏</h2>
+              </div>
+              <Tag tone={bigScreenState.data?.open ? "status" : "muted"}>
+                {bigScreenState.data?.open ? "已打开" : "未打开"}
+              </Tag>
+            </header>
+            <div className="settings-row">
+              <div>
+                <b>显示器</b>
+              </div>
+              <select
+                className="settings-select"
+                value={activeDisplay}
+                onChange={(event) => setSelectedDisplay(Number(event.target.value))}
+                aria-label="大屏显示器"
+              >
+                {(monitors.data ?? []).length === 0 ? (
+                  <option value={0}>正在读取显示器…</option>
+                ) : (
+                  (monitors.data ?? []).map((monitor) => (
+                    <option key={monitor.index} value={monitor.index}>
+                      {monitor.name} · {monitor.width} × {monitor.height} ·{" "}
+                      {Math.round(monitor.scaleFactor * 100)}%
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+            <div className="settings-row">
+              <div>
+                <b>手柄</b>
+              </div>
+              <div className="settings-row__actions">
+                <Tag tone={gamepadCount > 0 ? "status" : "muted"}>
+                  <Gamepad2 size={12} strokeWidth={1.7} />
+                  {gamepadCount > 0 ? "已连接" : "未连接"}
+                </Tag>
+                <Button variant="ghost" size="sm" onClick={refreshGamepads}>
+                  <RefreshCw size={13} strokeWidth={1.6} /> 重新检测
+                </Button>
+              </div>
+            </div>
+            <div className="settings-row">
+              <div>
+                <b>打开大屏</b>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={bigScreenBusy}
+                onClick={() => void openBigScreenWindow()}
+              >
+                <Tv size={14} strokeWidth={1.7} />
+                {bigScreenBusy ? "正在打开…" : "在电视上打开"}
+              </Button>
+            </div>
+            <p className="settings-hint">A 确认 · B 返回 · Y 游戏菜单 · START 控制 · LB/RB 区域</p>
+          </section>
+
           <section id="appearance-settings" className="settings-section">
             <header>
               <div>
@@ -373,7 +454,7 @@ export function SettingsPage() {
             <header>
               <div>
                 <h2>技术探针</h2>
-                <p>只验证 C1 能力，不完成大屏和手柄功能。</p>
+                <p>运行环境诊断；大屏和手柄的产品入口已经移到对应分区。</p>
               </div>
               <Tag tone="data">DEV</Tag>
             </header>
@@ -388,15 +469,6 @@ export function SettingsPage() {
               </div>
               <Button variant="ghost" size="sm" onClick={refreshGamepads}>
                 <RefreshCw size={13} strokeWidth={1.6} /> 重新检测
-              </Button>
-            </div>
-            <div className="settings-row">
-              <div>
-                <b>第二窗口 / 大屏</b>
-                <span>{probeState}。大屏窗口使用独立 WebView。</span>
-              </div>
-              <Button variant="secondary" size="sm" onClick={() => void openBigScreenProbe()}>
-                打开探针
               </Button>
             </div>
             <div className="settings-row">
