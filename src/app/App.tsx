@@ -8,6 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AppShell } from "./AppShell";
 import { HomePage } from "../features/home/HomePage";
+import { useAppInfo } from "../features/library/useLibrary";
 
 const LibraryPage = lazy(() =>
   import("../features/library/LibraryPage").then((module) => ({ default: module.LibraryPage })),
@@ -23,6 +24,16 @@ const StatsPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("../features/settings/SettingsPage").then((module) => ({
     default: module.SettingsPage,
+  })),
+);
+const CollectionsPage = lazy(() =>
+  import("../features/collections/CollectionsPage").then((module) => ({
+    default: module.CollectionsPage,
+  })),
+);
+const OnboardingPage = lazy(() =>
+  import("../features/onboarding/OnboardingPage").then((module) => ({
+    default: module.OnboardingPage,
   })),
 );
 const BigScreenPage = lazy(() =>
@@ -54,12 +65,28 @@ function PageRoute({ children }: { children: ReactNode }) {
   );
 }
 
+function OnboardedShell() {
+  const appInfo = useAppInfo();
+  if (appInfo.isPending) {
+    return (
+      <div className="app-boot" aria-busy="true">
+        <span>M</span>
+        <p>正在读取本地游戏库…</p>
+      </div>
+    );
+  }
+  if (appInfo.data && !appInfo.data.onboardingCompleted && appInfo.data.libraryCount === 0) {
+    return <Navigate to="/onboarding" replace />;
+  }
+  return <AppShell />;
+}
+
 const queryClient = new QueryClient();
 
 const router = createHashRouter([
   {
     path: "/",
-    element: <AppShell />,
+    element: <OnboardedShell />,
     children: [
       { index: true, element: <HomePage /> },
       {
@@ -87,6 +114,22 @@ const router = createHashRouter([
         ),
       },
       {
+        path: "collections",
+        element: (
+          <PageRoute>
+            <CollectionsPage />
+          </PageRoute>
+        ),
+      },
+      {
+        path: "collections/:id",
+        element: (
+          <PageRoute>
+            <CollectionsPage />
+          </PageRoute>
+        ),
+      },
+      {
         path: "settings",
         element: (
           <PageRoute>
@@ -95,6 +138,14 @@ const router = createHashRouter([
         ),
       },
     ],
+  },
+  {
+    path: "/onboarding",
+    element: (
+      <PageRoute>
+        <OnboardingPage />
+      </PageRoute>
+    ),
   },
   {
     path: "/big-screen",
@@ -180,8 +231,8 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
       <Toaster
-        position="bottom-right"
-        theme="dark"
+        position="bottom-left"
+        theme="light"
         toastOptions={{
           className: "miyu-toast",
         }}

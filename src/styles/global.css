@@ -9,15 +9,17 @@
 @import "../features/prototypes/channel.css";
 
 :root {
-  --font-ui: "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
-  --font-display: "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
+  --font-ui:
+    "Segoe UI Variable Text", "Microsoft YaHei UI", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --font-display: "Noto Serif SC", "Source Han Serif SC", "Yu Mincho", "SimSun", serif;
   --font-jp: "Yu Mincho", "YuMincho", "Noto Serif SC", "SimSun", serif;
   --font-mono: "Cascadia Mono", "Consolas", monospace;
-  --font-game: "Bahnschrift", "Noto Sans SC", "Microsoft YaHei UI", sans-serif;
+  --font-data: "Bahnschrift", "Segoe UI Variable Display", "Microsoft YaHei UI", sans-serif;
+  --font-game: var(--font-display);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-swift: cubic-bezier(0.3, 0.7, 0.2, 1);
   font-family: var(--font-ui);
-  color-scheme: dark;
+  color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -36,8 +38,8 @@ body,
 body {
   margin: 0;
   overflow: hidden;
-  background: #111210;
-  color: #e9e2d4;
+  background: var(--color-bg);
+  color: var(--color-text);
   font-size: 14px;
 }
 
@@ -65,13 +67,13 @@ button:focus-visible,
 a:focus-visible,
 input:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid var(--focus-color, #d7a25c);
-  outline-offset: 3px;
+  outline: 2px solid var(--focus-color, #d7b98a);
+  outline-offset: 2px;
 }
 
 ::selection {
-  background: var(--selection-bg, #d7a25c);
-  color: var(--selection-fg, #121311);
+  background: var(--selection-bg, #c25b45);
+  color: var(--selection-fg, #ece5d6);
 }
 
 * {
@@ -80,8 +82,8 @@ input:focus-visible,
 }
 
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 *::-webkit-scrollbar-track {
@@ -89,9 +91,9 @@ input:focus-visible,
 }
 
 *::-webkit-scrollbar-thumb {
-  border: 3px solid transparent;
+  border: 2px solid transparent;
   border-radius: 99px;
-  background: var(--scroll-thumb, rgba(233, 226, 212, 0.22));
+  background: var(--scroll-thumb, rgba(236, 229, 214, 0.2));
   background-clip: padding-box;
 }
 
@@ -101,8 +103,8 @@ input:focus-visible,
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-  background: var(--app-bg, #111210);
-  color: var(--app-fg, #e9e2d4);
+  background: var(--app-bg, #f5efec);
+  color: var(--app-fg, #2c2225);
   opacity: 0;
   transition: opacity 280ms var(--ease-out);
 }
@@ -124,11 +126,13 @@ html[data-ready="true"] .app-window {
 }
 
 .miyu-toast {
-  border: 1px solid rgba(233, 226, 212, 0.14) !important;
-  background: #171916 !important;
-  color: #e9e2d4 !important;
+  border: 1px solid var(--color-line-strong) !important;
+  border-radius: var(--radius-control) !important;
+  background: var(--color-surface-raised) !important;
+  color: var(--color-text) !important;
   font-family: var(--font-ui) !important;
-  font-size: 12px !important;
+  font-size: 12.5px !important;
+  box-shadow: var(--shadow-raised) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -167,4 +171,155 @@ html[data-reduced-motion="true"] *::after {
     transform: scale(1.25);
     transform-origin: top left;
   }
+}
+
+.app-boot {
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--color-bg);
+  color: var(--color-text-faint);
+  font-size: 12px;
+}
+
+.app-boot > span {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 2px;
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.app-boot > p {
+  margin: 0;
+}
+
+/* Dense tools and dialogs share the same paper-and-rule language. */
+.scan-overlay,
+.batch-overlay,
+.steam-overlay,
+.detail-edit-overlay,
+.global-search__overlay {
+  background: rgba(10, 9, 7, 0.76);
+  backdrop-filter: blur(2px);
+}
+
+.scan-dialog,
+.batch-dialog,
+.steam-dialog,
+.detail-edit-dialog,
+.global-search {
+  border-color: var(--color-line-strong);
+  border-radius: var(--radius-popover);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-raised);
+}
+
+.scan-dialog__head h2,
+.batch-head h2,
+.steam-head h2,
+.detail-edit-dialog h2,
+.global-search h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.scan-dialog__head-copy > p:last-child,
+.batch-head p:not(.app-kicker),
+.steam-head p:not(.app-kicker) {
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+}
+
+.scan-dialog__mark,
+.steam-scanning__mark,
+.scan-dialog__close,
+.detail-edit-dialog__close {
+  border-radius: var(--radius-control);
+}
+
+.scan-dialog__foot {
+  background: var(--color-bg-raised);
+}
+
+.scan-dialog__foot p,
+.scan-hint,
+.scan-progress__metrics span {
+  font-size: 11.5px;
+}
+
+.scan-progress__metrics > div {
+  border-radius: var(--radius-control);
+  background: transparent;
+}
+
+.scan-progress__metrics b {
+  color: var(--color-text);
+  font-family: var(--font-data);
+  font-weight: 500;
+}
+
+.scan-progress__path {
+  border-radius: var(--radius-control);
+  background: transparent;
+}
+
+.batch-head p:not(.app-kicker),
+.steam-head p:not(.app-kicker) {
+  color: var(--color-text-soft);
+}
+
+.batch-notice,
+.steam-notice {
+  border-radius: var(--radius-control);
+  font-size: 11.5px;
+}
+
+.batch-provider {
+  border-radius: var(--radius-control);
+  background: transparent;
+}
+
+.batch-provider.is-selected {
+  border-color: rgba(168, 195, 176, 0.32);
+  background: var(--color-status-soft);
+}
+
+.batch-provider b,
+.batch-options b,
+.batch-section-head b {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.batch-provider em,
+.batch-options em {
+  font-size: 11px;
+}
+
+.steam-libraries {
+  border-radius: var(--radius-control);
+  background: transparent;
+}
+
+.steam-scanning__body span,
+.steam-progress__stats {
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+}
+
+.global-search__foot-brand {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  letter-spacing: 0;
 }

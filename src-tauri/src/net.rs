@@ -16,6 +16,14 @@ pub fn system_proxy() -> Option<String> {
     None
 }
 
+pub fn proxy_for_mode(mode: &str, custom_url: &str) -> Option<String> {
+    match mode.trim().to_ascii_lowercase().as_str() {
+        "direct" => None,
+        "custom" => normalize_proxy(custom_url),
+        _ => system_proxy(),
+    }
+}
+
 fn normalize_proxy(value: &str) -> Option<String> {
     let value = value.trim();
     if value.is_empty() {

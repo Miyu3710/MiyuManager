@@ -6,11 +6,11 @@ import {
   FolderPlus,
   Gamepad2,
   Grid2X2,
+  ListChecks,
   List,
   MoreHorizontal,
   RefreshCw,
   Search,
-  Sparkles,
   Star,
   Trash2,
   X,
@@ -21,6 +21,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useAppearance } from "../../app/useAppearance";
 import { Button } from "../../design-system/components/Button";
+import { ConfirmDialog } from "../../design-system/components/ConfirmDialog";
 import { CoverArt } from "../../design-system/components/CoverArt";
 import { EmptyState } from "../../design-system/components/EmptyState";
 import { Tag } from "../../design-system/components/Tag";
@@ -123,14 +124,11 @@ function LibraryCard({
   onToggleSelect: () => void;
 }) {
   const game = libraryItemToGame(item);
-  const techLine = game.isLocal
-    ? game.installedSize === "—"
-      ? "大小未知"
-      : game.installedSize
-    : game.engine + " · " + game.ageRating;
-  const lastLine = game.isLocal
-    ? "入库 " + formatRelativeDate(item.addedAt)
-    : game.playtime + " · 上次 " + game.lastPlayed;
+  const activityLine = game.isLocal
+    ? (game.installedSize === "—" ? "大小未知" : game.installedSize) +
+      "　入库 " +
+      formatRelativeDate(item.addedAt)
+    : game.playtime + "　上次 " + game.lastPlayed;
 
   return (
     <div
@@ -155,11 +153,8 @@ function LibraryCard({
               {selected ? <Check size={12} strokeWidth={2.2} /> : null}
             </span>
           ) : null}
-          <span className={cn("library-status", "library-status--" + game.status)}>
-            {statusLabels[game.status]}
-          </span>
           {item.steamAppId ? (
-            <span className="library-origin" title={`Steam 库 · AppID ${item.steamAppId}`}>
+            <span className="library-origin" title={`Steam 库 AppID ${item.steamAppId}`}>
               Steam
             </span>
           ) : null}
@@ -172,11 +167,12 @@ function LibraryCard({
         <div className="library-card__meta">
           <h3>{game.title}</h3>
           {game.originalTitle ? <p>{game.originalTitle}</p> : <p>本地副本</p>}
-          <span>
-            {game.developer} {game.year ? <i>·</i> : null} {game.year ?? ""}
+          <span className={cn("library-card__meta-line", "is-" + game.status)}>
+            {statusLabels[game.status]}
+            {game.developer ? "　" + game.developer : ""}
+            {game.year ? "，" + game.year : ""}
           </span>
-          <span className="library-card__tech">{techLine}</span>
-          <span className="library-card__last">{lastLine}</span>
+          <span className="library-card__activity">{activityLine}</span>
         </div>
       </Link>
       {!selectable ? (
@@ -235,7 +231,7 @@ function LibraryRow({
         <p>{game.originalTitle || "本地副本"}</p>
       </div>
       <span>{game.developer}</span>
-      <span>{item.steamAppId ? "Steam · 本地安装" : game.isLocal ? "本地安装" : game.engine}</span>
+      <span>{item.steamAppId ? "Steam 本地安装" : game.isLocal ? "本地安装" : game.engine}</span>
       <span>{game.isLocal ? formatBytes(item.sizeBytes) : game.playtime}</span>
       <span>
         {game.isLocal ? "入库 " + formatRelativeDate(item.addedAt) : "上次 " + game.lastPlayed}
@@ -281,12 +277,21 @@ export function LibraryPage() {
   } = scan;
 
   const q = searchParams.get("q") ?? "";
+  const favoriteOnly = searchParams.get("favorite") === "1";
   const [queryInput, setQueryInput] = useState(q);
-  const [filter, setFilter] = useState<LibraryFilter>("all");
-  const [sort, setSort] = useState<LibrarySort>("added_desc");
+  const [filter, setFilter] = useState<LibraryFilter>(() => {
+    const status = searchParams.get("status");
+    return filters.some((entry) => entry.id === status) ? (status as LibraryFilter) : "all";
+  });
+  const [sort, setSort] = useState<LibrarySort>(() => {
+    const value = searchParams.get("sort");
+    return sortOptions.some((entry) => entry.id === value) ? (value as LibrarySort) : "added_desc";
+  });
   const [view, setView] = useState<ViewMode>("grid");
   const [rootMenuOpen, setRootMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<LibraryItem | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedWorkIds, setSelectedWorkIds] = useState<Set<number>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
@@ -375,7 +380,7 @@ export function LibraryPage() {
     }
   }, [pickAndStart, searchParams, setSearchParams, startScan]);
 
-  const library = useLibraryInfinite({ search: q, status: filter, sort });
+  const library = useLibraryInfinite({ search: q, status: filter, sort, favoriteOnly });
   const items = useMemo(
     () => library.data?.pages.flatMap((page) => page.items) ?? [],
     [library.data],
@@ -399,13 +404,21 @@ export function LibraryPage() {
 
   const columns = useMemo(() => {
     const comfortable =
-      viewportWidth >= 1580 ? 6 : viewportWidth >= 1120 ? 5 : viewportWidth >= 820 ? 4 : 3;
-    return density === "compact" ? Math.min(6, comfortable + 1) : comfortable;
+      viewportWidth >= 1520
+        ? 7
+        : viewportWidth >= 1080
+          ? 6
+          : viewportWidth >= 960
+            ? 5
+            : viewportWidth >= 760
+              ? 4
+              : 3;
+    return density === "compact" ? Math.min(7, comfortable + 1) : comfortable;
   }, [density, viewportWidth]);
 
-  const gap = 13;
+  const gap = 16;
   const cardWidth = Math.max(120, (viewportWidth - gap * (columns - 1)) / columns);
-  const gridRowHeight = Math.round(cardWidth * 1.5 + 126);
+  const gridRowHeight = Math.round(cardWidth * 1.5 + 124);
   const rowCount = Math.ceil(items.length / columns);
 
   // TanStack Virtual exposes imperative measurement methods by design.
@@ -504,20 +517,25 @@ export function LibraryPage() {
     }
   };
 
-  const removeWork = async (item: LibraryItem) => {
+  const removeWork = (item: LibraryItem) => {
     setContextMenu(null);
-    const confirmed = window.confirm(
-      "从库中移除“" + item.title + "”？只会删除管理记录，不会删除游戏文件；后续扫描会跳过它。",
-    );
-    if (!confirmed) {
+    setConfirmRemove(item);
+  };
+
+  const confirmRemoveWork = async () => {
+    if (!confirmRemove) {
       return;
     }
+    setRemoveBusy(true);
     try {
-      await removeLibraryWork(item.workId);
+      await removeLibraryWork(confirmRemove.workId);
       invalidate();
+      setConfirmRemove(null);
       toast.success("已从库中移除；后续扫描会跳过，需要重新加入时使用手动导入。");
     } catch (error) {
       toast.error(String(error));
+    } finally {
+      setRemoveBusy(false);
     }
   };
 
@@ -526,6 +544,8 @@ export function LibraryPage() {
     setFilter("all");
     const next = new URLSearchParams(searchParams);
     next.delete("q");
+    next.delete("favorite");
+    next.delete("status");
     setSearchParams(next, { replace: true });
   };
 
@@ -533,14 +553,10 @@ export function LibraryPage() {
     <div className="library-page">
       <header className="library-head">
         <div>
-          <p className="app-kicker">
-            <span className="app-status-dot" />
-            GAME LIBRARY / 游戏库
-          </p>
           <h1>游戏库</h1>
           <p className="library-head__summary">
-            {total} 部游戏 · {counts.playing} 部在玩 · {roots.data?.length ?? 0} 个扫描目录
-            {q ? " · 搜索“" + q + "”" : ""}
+            {total} 部游戏，{counts.playing} 部在玩，{roots.data?.length ?? 0} 个扫描目录
+            {q ? "，搜索“" + q + "”" : ""}
           </p>
         </div>
         <div className="library-head__actions">
@@ -611,6 +627,21 @@ export function LibraryPage() {
               <span>{counts[entry.id]}</span>
             </button>
           ))}
+          <button
+            type="button"
+            aria-pressed={favoriteOnly}
+            onClick={() => {
+              const next = new URLSearchParams(searchParams);
+              if (favoriteOnly) {
+                next.delete("favorite");
+              } else {
+                next.set("favorite", "1");
+              }
+              setSearchParams(next, { replace: true });
+            }}
+          >
+            <Star size={12} strokeWidth={1.6} /> 收藏
+          </button>
         </div>
         <div className="library-view-tools">
           <Button
@@ -626,7 +657,7 @@ export function LibraryPage() {
               }
             }}
           >
-            <Sparkles size={13} strokeWidth={1.6} />
+            <ListChecks size={13} strokeWidth={1.6} />
             {selectionMode ? "退出批量" : "批量刮削"}
           </Button>
           <label className="library-search">
@@ -692,14 +723,14 @@ export function LibraryPage() {
         />
       ) : items.length === 0 ? (
         <EmptyState
-          title={q || filter !== "all" ? "没有找到游戏" : "游戏库还是空的"}
+          title={q || filter !== "all" || favoriteOnly ? "没有找到游戏" : "游戏库还是空的"}
           description={
-            q || filter !== "all"
+            q || filter !== "all" || favoriteOnly
               ? "换一个标题、会社或路径，或者清除当前搜索和筛选条件。"
               : "选择包含 Galgame / AVG 的文件夹，扫描可执行文件并确认主程序。扫描只读取文件名和大小，不修改游戏目录。"
           }
           action={
-            q || filter !== "all" ? (
+            q || filter !== "all" || favoriteOnly ? (
               <Button variant="secondary" size="sm" onClick={clearFilters}>
                 清除搜索和筛选
               </Button>
@@ -724,7 +755,7 @@ export function LibraryPage() {
                 style={{
                   transform: "translateY(" + row.start + "px)",
                   gridTemplateColumns: "repeat(" + columns + ", minmax(0, 1fr))",
-                  gap: "24px " + gap + "px",
+                  gap: "26px " + gap + "px",
                 }}
               >
                 {items.slice(row.index * columns, row.index * columns + columns).map((item) => (
@@ -791,7 +822,7 @@ export function LibraryPage() {
       {selectionMode ? (
         <div className="library-batch-bar" role="region" aria-label="批量刮削选择">
           <div>
-            <Sparkles size={15} strokeWidth={1.6} />
+            <ListChecks size={15} strokeWidth={1.6} />
             <span>
               已选 <b>{selectedWorkIds.size}</b> 部作品
             </span>
@@ -821,7 +852,7 @@ export function LibraryPage() {
               disabled={selectedWorkIds.size === 0}
               onClick={() => setBatchOpen(true)}
             >
-              <Sparkles size={14} /> 开始批量刮削
+              <ListChecks size={14} /> 开始批量刮削
             </Button>
           </div>
         </div>
@@ -909,6 +940,20 @@ export function LibraryPage() {
       {steamOpen ? (
         <SteamLibraryDialog open onClose={() => setSteamOpen(false)} onImported={invalidate} />
       ) : null}
+
+      <ConfirmDialog
+        open={confirmRemove !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmRemove(null);
+          }
+        }}
+        title={"从库中移除「" + (confirmRemove?.title ?? "") + "」？"}
+        description="只会删除 MiyuManager 的管理记录，不会删除游戏文件。后续扫描会跳过它；需要重新加入时使用“手动导入”。"
+        confirmLabel="从库中移除"
+        busy={removeBusy}
+        onConfirm={() => void confirmRemoveWork()}
+      />
     </div>
   );
 }

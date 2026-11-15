@@ -150,7 +150,7 @@ export function BigScreenControlMenu({
                 <span>切换区域</span>
               </div>
             </div>
-            <p className="bigscreen-control__note">键盘：C 菜单 · M 控制 · Tab 区域</p>
+            <p className="bigscreen-control__note">键盘：C 菜单，M 控制，Tab 区域</p>
           </section>
 
           <section className="bigscreen-control__section">

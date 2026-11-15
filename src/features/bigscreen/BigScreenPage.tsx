@@ -531,13 +531,13 @@ export function BigScreenPage() {
       <div className="bigscreen-ambient__scrim" aria-hidden="true" />
       <header className="bigscreen-topbar">
         <div className="bigscreen-brand">
-          <span>MIYU</span>
-          <em>LOCAL LIBRARY</em>
+          <span>Miyu</span>
+          <em>本地库</em>
         </div>
         <div className="bigscreen-topbar__status">
           <span>
             <i className="app-status-dot" />
-            本地 · {data.loading ? "读取中" : `${data.libraryCount} 部`}
+            本地，{data.loading ? "读取中" : `${data.libraryCount} 部`}
           </span>
           <span>
             本周 {data.stats.data ? formatPlaytimeSeconds(data.stats.data.rangeSeconds) : "—"}

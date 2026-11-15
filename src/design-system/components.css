@@ -4,12 +4,12 @@
   justify-content: center;
   gap: 8px;
   height: var(--control-height);
-  padding: 0 14px;
+  padding: 0 13px;
   border: 1px solid transparent;
   border-radius: var(--radius-control);
   background: transparent;
   color: var(--color-text);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
@@ -27,28 +27,30 @@
 }
 
 .ds-button--sm {
-  height: 32px;
-  padding-inline: 11px;
+  height: 30px;
+  padding-inline: 10px;
   font-size: 12px;
   border-radius: var(--radius-control);
 }
 
 .ds-button--lg {
-  height: 46px;
-  padding-inline: 20px;
-  font-size: 14px;
-  border-radius: 12px;
+  height: 42px;
+  padding-inline: 18px;
+  font-size: 13.5px;
+  border-radius: var(--radius-control);
 }
 
 .ds-button--primary {
-  border-color: var(--color-accent);
-  background: var(--color-accent);
-  color: var(--color-accent-contrast);
+  border-color: #e7dcc7;
+  background: #e7dcc7;
+  color: #191713;
+  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.18);
 }
 
 .ds-button--primary:hover {
-  border-color: var(--color-accent-hover);
-  background: var(--color-accent-hover);
+  border-color: #f2e8d5;
+  background: #f2e8d5;
+  color: #11110f;
 }
 
 .ds-button--secondary {
@@ -57,8 +59,8 @@
 }
 
 .ds-button--secondary:hover {
-  border-color: var(--color-status);
-  color: var(--color-status);
+  border-color: rgba(236, 229, 214, 0.4);
+  color: var(--color-text);
 }
 
 .ds-button--ghost {
@@ -71,21 +73,22 @@
 }
 
 .ds-button--danger {
-  border-color: rgba(228, 87, 87, 0.45);
-  color: #f08b8b;
+  border-color: rgba(216, 118, 98, 0.45);
+  color: #e49a89;
 }
 
 .ds-button--danger:hover {
-  background: rgba(228, 87, 87, 0.12);
+  background: rgba(216, 118, 98, 0.12);
+  color: #f0b3a5;
 }
 
 .ds-icon-button {
   display: inline-grid;
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   place-items: center;
   border: 1px solid var(--color-line);
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--color-text-muted);
   cursor: pointer;
@@ -104,7 +107,7 @@
 .ds-surface {
   border: 1px solid var(--color-line);
   border-radius: var(--radius-panel);
-  background: var(--color-surface);
+  background: transparent;
 }
 
 .ds-surface--raised {
@@ -128,32 +131,95 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 8px;
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-pill);
+  padding: 2px 7px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: rgba(236, 229, 214, 0.055);
   color: var(--color-text-soft);
   font-size: 11px;
-  line-height: 1.35;
-  letter-spacing: 0.02em;
+  line-height: 1.45;
+  letter-spacing: 0;
 }
 
 .ds-tag--accent {
-  border-color: rgba(217, 75, 61, 0.45);
-  color: #ed8b80;
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
 }
 
 .ds-tag--status {
-  border-color: rgba(143, 211, 193, 0.4);
+  background: var(--color-status-soft);
   color: var(--color-status);
 }
 
 .ds-tag--data {
-  border-color: rgba(217, 164, 65, 0.42);
+  background: var(--color-data-soft);
   color: var(--color-data);
 }
 
 .ds-tag--muted {
   color: var(--color-text-faint);
+}
+
+.ds-confirm__overlay {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  background: rgba(10, 9, 7, 0.76);
+  backdrop-filter: blur(2px);
+  animation: ds-confirm-fade 160ms ease-out;
+}
+
+.ds-confirm {
+  position: fixed;
+  z-index: 81;
+  top: 50%;
+  left: 50%;
+  width: min(440px, calc(100vw - 40px));
+  transform: translate(-50%, -50%);
+  padding: 22px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-popover);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-raised);
+}
+
+.ds-confirm__kicker {
+  margin: 0 0 10px;
+  color: var(--color-accent-text);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  letter-spacing: 0;
+}
+
+.ds-confirm__title {
+  margin: 0;
+  color: var(--color-text);
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 1.35;
+}
+
+.ds-confirm__description {
+  margin: 10px 0 0;
+  color: var(--color-text-soft);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.ds-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+@keyframes ds-confirm-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .ds-empty {
@@ -164,9 +230,9 @@
   flex-direction: column;
   gap: 10px;
   padding: 32px;
-  border: 1px dashed var(--color-line-strong);
+  border: 1px solid var(--color-line);
   border-radius: var(--radius-panel);
-  background: var(--color-surface-soft);
+  background: transparent;
   text-align: center;
 }
 
@@ -176,7 +242,7 @@
   height: 42px;
   place-items: center;
   border: 1px solid var(--color-line-strong);
-  border-radius: 50%;
+  border-radius: var(--radius-control);
   color: var(--color-status);
 }
 
@@ -184,7 +250,7 @@
   margin: 4px 0 0;
   color: var(--color-text);
   font-family: var(--font-game);
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 700;
 }
 
@@ -192,7 +258,7 @@
   max-width: 420px;
   margin: 0;
   color: var(--color-text-soft);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.75;
 }
 
@@ -204,7 +270,7 @@
   position: relative;
   z-index: 50;
   display: flex;
-  height: 38px;
+  height: 32px;
   flex: none;
   align-items: stretch;
   border-bottom: 1px solid var(--color-line);
@@ -215,31 +281,31 @@
 
 .ds-window-bar__identity {
   display: flex;
-  min-width: 238px;
+  min-width: var(--rail-width);
   align-items: center;
   gap: 9px;
-  padding-left: 13px;
-  font-size: 12.5px;
-  letter-spacing: 0.04em;
+  padding-left: 16px;
+  font-size: 12px;
+  letter-spacing: 0;
 }
 
 .ds-window-mark {
   display: grid;
-  width: 20px;
-  height: 20px;
+  width: 17px;
+  height: 17px;
   flex: none;
   place-items: center;
   border: 1px solid var(--color-status);
-  border-radius: 50%;
+  border-radius: 2px;
   color: var(--color-status);
   font-family: var(--font-game);
-  font-size: 11.5px;
+  font-size: 10.5px;
   font-weight: 700;
 }
 
 .ds-window-bar__product {
   font-weight: 600;
-  opacity: 0.84;
+  opacity: 0.9;
 }
 
 .ds-window-bar__divider {
@@ -252,7 +318,7 @@
 .ds-window-bar__context {
   overflow: hidden;
   max-width: 220px;
-  opacity: 0.66;
+  opacity: 0.52;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

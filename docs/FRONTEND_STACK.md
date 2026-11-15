@@ -1,6 +1,6 @@
 # 前端组件与依赖选型
 
-> 状态：C6 已完成；C2 已接入 TanStack Query、TanStack Virtual 和 Tauri dialog；C3 详情/启动表单已接入 React Hook Form + Zod；C4/C5 元数据搜索、合并、冲突、字段优先级、批量队列、事件进度和封面画廊复用 TanStack Query；C6 统计页和会话 CRUD 复用 TanStack Query 与 Tauri 事件，不新增前端依赖；Motion、cmdk 仍待页面需要时加入并锁定版本
+> 状态：C8 已完成；C2 已接入 TanStack Query、TanStack Virtual 和 Tauri dialog；C3 详情/启动表单已接入 React Hook Form + Zod；C4/C5 元数据搜索、合并、冲突、字段优先级、批量队列、事件进度和封面画廊复用 TanStack Query；C6 统计页和会话 CRUD 复用 TanStack Query 与 Tauri 事件；C8 全局搜索使用 Radix Dialog + combobox/listbox，收藏集和首次启动使用 Radix Dialog，不新增前端依赖；Motion、cmdk 仍待页面需要时加入并锁定版本
 >
 > 日期：2026-11-15  
 > 目标：为 MiyuManager 的桌面与大屏界面建立一致的组件、图标、动画和交互规范
@@ -18,7 +18,7 @@
 | 微动效         | CSS transition / animation                       | 颜色、hover、press、focus 等高频交互优先 CSS                                    |
 | 复杂动效       | Motion（`motion/react`）                         | 支持 React 18.2+；适合共享元素、布局变化、弹窗进出和可中断动画                  |
 | 组件变体       | class-variance-authority + tailwind-merge + clsx | 明确 variant/size，避免页面里堆叠条件类名                                       |
-| 命令面板       | cmdk                                             | 支持 React 19；适合 Ctrl+K 全局搜索与键盘导航                                   |
+| 命令面板       | 自建 Radix Dialog + combobox/listbox             | C8 已用于 Ctrl+K；结果数量有限，自己管理键盘和焦点更直接                        |
 | 通知           | Sonner                                           | 已使用；支持 React 19                                                           |
 | 虚拟列表       | TanStack Virtual                                 | 书库、搜索结果和大屏列表复用                                                    |
 | 表单           | React Hook Form + Zod                            | 启动配置、来源、扫描目录和设置表单                                              |
@@ -87,6 +87,7 @@ GSAP 适合复杂时间线，但不是 React 声明式状态的首选；React Sp
 - **大屏**：自建 focus manager、Radix 基础行为、Motion（焦点移动/抽屉）、Gamepad API 或 Rust XInput。
 - **设置**：RHF + Zod、Radix Switch/Select/RadioGroup、Sonner、TanStack Query（来源顺序/启停）。
 - **首次启动**：Radix Dialog/Progress、TanStack Query、Motion（步骤切换）。
+- **全局搜索与收藏集**：Radix Dialog、combobox/listbox、TanStack Query；C8 已落地，不引入 cmdk。
 
 ## 版本与验证清单
 

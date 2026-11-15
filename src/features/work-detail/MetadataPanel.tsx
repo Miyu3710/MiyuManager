@@ -11,7 +11,7 @@ import {
   Lock,
   LockOpen,
   Search,
-  Sparkles,
+  Globe2,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -210,7 +210,7 @@ function LedgerRow({
           >
             <span>
               {field.claims.length} 个来源值
-              {field.conflict ? " · 需要确认" : ""}
+              {field.conflict ? "，需要确认" : ""}
             </span>
             <ChevronRight size={12} className={cn(open && "is-open")} />
           </button>
@@ -567,7 +567,7 @@ export function MetadataPanel({ detail, onChanged }: MetadataPanelProps) {
 
       <div className="metadata-heading">
         <div>
-          <p className="app-kicker">METADATA / 在线来源</p>
+          <p className="app-kicker">在线来源</p>
           <h2>搜索并导入元数据</h2>
           <p>先按优先级查询所有启用的来源；导入只填空白和未锁定字段，手动资料不会被静默覆盖。</p>
         </div>
@@ -597,7 +597,7 @@ export function MetadataPanel({ detail, onChanged }: MetadataPanelProps) {
           onChange={(event) => setProviderFilter(event.target.value)}
           aria-label="搜索来源"
         >
-          <option value="all">全部来源 · 按优先级</option>
+          <option value="all">全部来源（按优先级）</option>
           {providerOptions.map((provider) => (
             <option key={provider.id} value={provider.id} disabled={!provider.enabled}>
               {provider.name}
@@ -666,7 +666,7 @@ export function MetadataPanel({ detail, onChanged }: MetadataPanelProps) {
           </header>
           {results === null ? (
             <div className="metadata-placeholder">
-              <Sparkles size={18} strokeWidth={1.4} />
+              <Globe2 size={18} strokeWidth={1.4} />
               <p>
                 输入作品名开始搜索。VNDB 和 Bangumi 会按设置中的来源顺序出现；候选不会自动写入。
               </p>
@@ -705,7 +705,7 @@ export function MetadataPanel({ detail, onChanged }: MetadataPanelProps) {
                       </span>
                     ) : null}
                     <span className="metadata-candidate__meta">
-                      {candidate.year ?? "年份未知"} · {candidate.developer ?? "开发商未知"}
+                      {candidate.year ?? "年份未知"}，{candidate.developer ?? "开发商未知"}
                     </span>
                     {candidate.summary ? <p>{candidate.summary}</p> : null}
                   </span>
@@ -722,7 +722,7 @@ export function MetadataPanel({ detail, onChanged }: MetadataPanelProps) {
               <h3>导入预览</h3>
               <span>
                 {selected
-                  ? `${providerName(providers, selected.provider)} · #${selected.sourceId}`
+                  ? `${providerName(providers, selected.provider)} #${selected.sourceId}`
                   : "选择左侧候选"}
               </span>
             </div>
@@ -828,7 +828,7 @@ export function MetadataPanel({ detail, onChanged }: MetadataPanelProps) {
                   <span>关联作品</span>
                   {preview.candidate.related.map((related) => (
                     <em key={`${related.sourceId}:${related.title}`}>
-                      {related.relation} · {related.title}
+                      {related.relation}，{related.title}
                     </em>
                   ))}
                 </div>

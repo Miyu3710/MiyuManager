@@ -6,6 +6,7 @@ mod launcher;
 mod metadata;
 mod net;
 mod oauth;
+mod preferences;
 mod scan;
 mod steam_library;
 mod tracking;
@@ -27,6 +28,11 @@ pub fn run() {
             bigscreen::bigscreen_state,
             bigscreen::bigscreen_open_detail,
             commands::app_info,
+            commands::preferences_get,
+            commands::preferences_update,
+            commands::onboarding_complete,
+            commands::open_data_dir,
+            commands::update_check,
             commands::library_query,
             commands::library_get,
             commands::work_update,
@@ -53,6 +59,13 @@ pub fn run() {
             commands::library_remove_work,
             commands::library_roots,
             commands::library_remove_root,
+            commands::collections_list,
+            commands::collection_create,
+            commands::collection_rename,
+            commands::collection_delete,
+            commands::collection_reorder,
+            commands::collection_add_works,
+            commands::collection_remove_work,
             commands::library_scan_start,
             commands::library_scan_cancel,
             commands::steam_scan_start,

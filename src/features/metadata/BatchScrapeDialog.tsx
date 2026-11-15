@@ -9,7 +9,7 @@ import {
   Pause,
   Play,
   RotateCcw,
-  Sparkles,
+  ListChecks,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -329,7 +329,7 @@ export function BatchScrapeDialog({ open, workIds, onClose, onApplied }: BatchSc
       <div className="batch-dialog" role="dialog" aria-modal="true" aria-labelledby="batch-title">
         <header className="batch-head">
           <div>
-            <p className="app-kicker">METADATA / 批量刮削</p>
+            <p className="app-kicker">批量刮削</p>
             <h2 id="batch-title">
               {step === "setup"
                 ? "批量补全元数据"
@@ -430,7 +430,7 @@ export function BatchScrapeDialog({ open, workIds, onClose, onApplied }: BatchSc
                 </span>
               </label>
               <div className="batch-safety">
-                <Sparkles size={14} />
+                <ListChecks size={14} />
                 <span>
                   两阶段执行：先匹配并生成提案，确认后才会写入。非空字段不会自动覆盖，失败项可以单独重试。
                 </span>
@@ -448,7 +448,7 @@ export function BatchScrapeDialog({ open, workIds, onClose, onApplied }: BatchSc
                   disabled={workIds.length === 0 || selectedProviders.length === 0}
                   onClick={() => void runScan()}
                 >
-                  <Sparkles size={14} /> 开始匹配
+                  <ListChecks size={14} /> 开始匹配
                 </Button>
               </div>
             </footer>
@@ -548,7 +548,7 @@ export function BatchScrapeDialog({ open, workIds, onClose, onApplied }: BatchSc
                           <div className="batch-work__sources">
                             {item.preview.matched.map((match) => (
                               <span key={`${match.provider}:${match.sourceId}`}>
-                                {match.providerName} · {Math.round(match.score * 100)}%
+                                {match.providerName}，{Math.round(match.score * 100)}%
                               </span>
                             ))}
                           </div>
@@ -614,8 +614,8 @@ export function BatchScrapeDialog({ open, workIds, onClose, onApplied }: BatchSc
             <div className="batch-done__summary">
               <b>已应用 {applyResult.appliedWorks} 部作品</b>
               <p>
-                {applyResult.appliedFields} 个字段 · {applyResult.coverApplied} 张封面 · 跳过{" "}
-                {applyResult.skippedWorks} 部 · 失败 {applyResult.failedWorks} 部
+                {applyResult.appliedFields} 个字段，{applyResult.coverApplied} 张封面，跳过{" "}
+                {applyResult.skippedWorks} 部，失败 {applyResult.failedWorks} 部
               </p>
             </div>
             <div className="batch-done__list">
@@ -625,7 +625,7 @@ export function BatchScrapeDialog({ open, workIds, onClose, onApplied }: BatchSc
                   <Tag tone={statusTone(item.status)}>{statusLabel(item.status)}</Tag>
                   <em>
                     {item.applied.length > 0 ? `${item.applied.length} 个字段` : "无字段"}
-                    {item.coverApplied ? " · 封面" : ""}
+                    {item.coverApplied ? "，封面" : ""}
                   </em>
                 </div>
               ))}

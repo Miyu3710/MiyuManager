@@ -18,6 +18,9 @@
     "screenshots:c4": "node scripts/capture-c4.mjs",
     "screenshots:c5": "node scripts/capture-c5.mjs",
     "screenshots:c6": "node scripts/capture-c6.mjs",
+    "screenshots:c7": "node scripts/capture-c7.mjs",
+    "screenshots:c8": "node scripts/capture-c8.mjs",
+    "probe:c8-a11y": "node scripts/probe-c8-a11y.mjs",
     "probe:c2": "node scripts/probe-c2.mjs"
   },
   "dependencies": {

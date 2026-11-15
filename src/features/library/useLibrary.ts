@@ -19,7 +19,14 @@ import type { LibraryQuery, StatsPeriod } from "../../lib/library-types";
 
 export function useLibraryInfinite(query: Omit<LibraryQuery, "page" | "pageSize">) {
   return useInfiniteQuery({
-    queryKey: ["library", query.search, query.status, query.sort],
+    queryKey: [
+      "library",
+      query.search,
+      query.status,
+      query.sort,
+      query.favoriteOnly ?? false,
+      query.collectionId ?? null,
+    ],
     queryFn: ({ pageParam }) =>
       queryLibrary({
         ...query,
@@ -48,6 +55,68 @@ export function useHomeLibrary() {
         pageSize: 12,
       }),
     staleTime: 3_000,
+  });
+}
+
+function useLibrarySlice(
+  query: Omit<LibraryQuery, "page" | "pageSize">,
+  pageSize = 8,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: [
+      "library-slice",
+      query.search,
+      query.status,
+      query.sort,
+      query.favoriteOnly ?? false,
+      query.collectionId ?? null,
+      pageSize,
+    ],
+    queryFn: () =>
+      queryLibrary({
+        ...query,
+        page: 0,
+        pageSize,
+      }),
+    enabled,
+    staleTime: 3_000,
+  });
+}
+
+export function useRecentPlayed(limit = 8) {
+  return useLibrarySlice({ search: "", status: "all", sort: "last_played_desc" }, limit);
+}
+
+export function useRecentAdded(limit = 8) {
+  return useLibrarySlice({ search: "", status: "all", sort: "added_desc" }, limit);
+}
+
+export function useFavoriteGames(limit = 8) {
+  return useLibrarySlice(
+    { search: "", status: "all", sort: "last_played_desc", favoriteOnly: true },
+    limit,
+  );
+}
+
+export function useQueuedGames(limit = 8) {
+  return useLibrarySlice({ search: "", status: "queued", sort: "added_desc" }, limit);
+}
+
+export function useGlobalSearchResults(query: string) {
+  const trimmed = query.trim();
+  return useQuery({
+    queryKey: ["global-search", trimmed],
+    queryFn: () =>
+      queryLibrary({
+        search: trimmed,
+        status: "all",
+        sort: "last_played_desc",
+        page: 0,
+        pageSize: 8,
+      }),
+    enabled: trimmed.length > 0,
+    staleTime: 5_000,
   });
 }
 
@@ -131,6 +200,7 @@ export function useInvalidateLibrary() {
     void queryClient.invalidateQueries({ queryKey: ["library"] });
     void queryClient.invalidateQueries({ queryKey: ["library-detail"] });
     void queryClient.invalidateQueries({ queryKey: ["home-library"] });
+    void queryClient.invalidateQueries({ queryKey: ["library-slice"] });
     void queryClient.invalidateQueries({ queryKey: ["library-summary"] });
     void queryClient.invalidateQueries({ queryKey: ["library-roots"] });
     void queryClient.invalidateQueries({ queryKey: ["app-info"] });

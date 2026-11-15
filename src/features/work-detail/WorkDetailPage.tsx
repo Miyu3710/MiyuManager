@@ -2,7 +2,6 @@ import { listen } from "@tauri-apps/api/event";
 import { isTauri } from "@tauri-apps/api/core";
 import {
   ArrowLeft,
-  ArrowUpRight,
   Check,
   CheckCircle2,
   FolderOpen,
@@ -20,6 +19,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "../../design-system/components/Button";
+import { ConfirmDialog } from "../../design-system/components/ConfirmDialog";
 import { CoverArt } from "../../design-system/components/CoverArt";
 import { EmptyState } from "../../design-system/components/EmptyState";
 import { Tag } from "../../design-system/components/Tag";
@@ -45,6 +45,7 @@ import {
   useMonitors,
   useWorkSessions,
 } from "../library/useLibrary";
+import { usePreferences } from "../../app/usePreferences";
 import { LaunchConfigPanel } from "./LaunchConfigPanel";
 import { MetadataPanel } from "./MetadataPanel";
 import { MergePanel } from "../metadata/MergePanel";
@@ -70,12 +71,12 @@ function launchLabel(snapshot: LaunchSnapshot | null): string {
     return "尚未运行";
   }
   if (snapshot.state === "running") {
-    return "运行中 · PID " + snapshot.pid;
+    return "运行中，PID " + snapshot.pid;
   }
   if (snapshot.exitCode === null) {
     return "已退出";
   }
-  return "已退出 · 退出码 " + snapshot.exitCode;
+  return "已退出，退出码 " + snapshot.exitCode;
 }
 
 export function WorkDetailPage() {
@@ -83,11 +84,13 @@ export function WorkDetailPage() {
   const detail = useLibraryDetail(id);
   const invalidate = useInvalidateLibrary();
   const monitors = useMonitors();
+  const preferences = usePreferences();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = tabFrom(searchParams.get("tab"));
   const [editOpen, setEditOpen] = useState(false);
   const [coverCandidates, setCoverCandidates] = useState<CoverCandidate[] | null>(null);
   const [coverBusy, setCoverBusy] = useState(false);
+  const [confirmClearCover, setConfirmClearCover] = useState(false);
   const [launchSnapshot, setLaunchSnapshot] = useState<LaunchSnapshot | null>(null);
   const [launchBusy, setLaunchBusy] = useState(false);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
@@ -323,13 +326,18 @@ export function WorkDetailPage() {
     if (!workId) {
       return;
     }
-    if (!window.confirm("清除这部作品的封面缓存？游戏文件不会被删除。")) {
+    setConfirmClearCover(true);
+  };
+
+  const confirmClearCoverAction = async () => {
+    if (!workId) {
       return;
     }
     setCoverBusy(true);
     try {
       await clearWorkCover(workId);
       invalidate();
+      setConfirmClearCover(false);
       toast.success("已清除封面");
     } catch (error) {
       toast.error(String(error));
@@ -417,9 +425,8 @@ export function WorkDetailPage() {
         </div>
 
         <div className="detail-copy">
-          <p className="app-kicker">
-            <span className="app-status-dot" />
-            {hasLocalCopy ? "LOCAL COPY / 本地副本" : "Galgame / AVG"} · {game.year ?? "年份未知"} ·{" "}
+          <p className="detail-eyebrow">
+            {hasLocalCopy ? "本地副本" : "Galgame / AVG"}，{game.year ?? "年份未知"}，
             {game.developer}
           </p>
           <h1>{game.title}</h1>
@@ -438,7 +445,7 @@ export function WorkDetailPage() {
             ))}
             {hasLocalCopy ? <Tag tone="status">本地扫描</Tag> : null}
             {detail.data.steamAppId ? (
-              <Tag tone="data">Steam 库 · {detail.data.steamAppId}</Tag>
+              <Tag tone="data">Steam 库 {detail.data.steamAppId}</Tag>
             ) : null}
             {game.ageRating !== "未标记" ? <Tag tone="data">{game.ageRating}</Tag> : null}
             {game.edition !== "未标记" ? <Tag tone="muted">{game.edition}</Tag> : null}
@@ -492,13 +499,12 @@ export function WorkDetailPage() {
             </Button>
             <Button variant="ghost" onClick={() => selectTab("launch")}>
               启动配置
-              <ArrowUpRight size={14} strokeWidth={1.6} />
             </Button>
           </div>
           <p className={cn("detail-launch-status", isRunning && "is-running")}>
             <span />
             {launchLabel(launch)}
-            {launch?.state === "exited" && launch.message ? " · " + launch.message : null}
+            {launch?.state === "exited" && launch.message ? "，" + launch.message : null}
           </p>
         </div>
 
@@ -542,7 +548,7 @@ export function WorkDetailPage() {
             <p>
               <Monitor size={13} strokeWidth={1.5} />
               <span>
-                {game.installedSize} · {game.edition}
+                {game.installedSize}，{game.edition}
               </span>
             </p>
             <button type="button" onClick={() => void handleValidate()}>
@@ -636,7 +642,7 @@ export function WorkDetailPage() {
                 {detail.data.steamAppId ? (
                   <div>
                     <dt>来源</dt>
-                    <dd>Steam 库 · AppID {detail.data.steamAppId}</dd>
+                    <dd>Steam 库 AppID {detail.data.steamAppId}</dd>
                   </div>
                 ) : null}
                 <div>
@@ -651,9 +657,7 @@ export function WorkDetailPage() {
             </section>
             <section>
               <h2>用户备注</h2>
-              <p className="detail-note">
-                {detail.data.notes || "尚未添加备注。备注是手动内容，不是游戏内自动读取的状态。"}
-              </p>
+              <p className="detail-note">{detail.data.notes || "尚未添加备注。备注为手动内容。"}</p>
               <Button variant="ghost" size="sm" onClick={() => setEditOpen(true)}>
                 编辑资料与备注
               </Button>
@@ -672,6 +676,18 @@ export function WorkDetailPage() {
             key={detail.data.workId}
             detail={detail.data}
             monitors={monitors.data ?? []}
+            preferences={
+              preferences.data ?? {
+                proxyMode: "system",
+                proxyUrl: "",
+                defaultMonitor: null,
+                launchFullscreen: false,
+                wrapperPath: "",
+                wrapperArgs: [],
+                updateManifestUrl: "",
+                onboardingCompleted: true,
+              }
+            }
             onSaved={invalidate}
             onLaunch={() => void handleLaunch()}
           />
@@ -693,6 +709,16 @@ export function WorkDetailPage() {
           </>
         ) : null}
       </div>
+
+      <ConfirmDialog
+        open={confirmClearCover}
+        onOpenChange={setConfirmClearCover}
+        title="清除这部作品的封面？"
+        description="只删除 MiyuManager 缓存的原图和缩略图，游戏文件不会被删除。之后可以重新选择或抓取封面。"
+        confirmLabel="清除封面"
+        busy={coverBusy}
+        onConfirm={() => void confirmClearCoverAction()}
+      />
 
       <WorkEditDialog
         detail={detail.data}

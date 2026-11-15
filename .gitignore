@@ -15,6 +15,7 @@ src-tauri/gen
 src-tauri/target-*
 outputs/
 tmp/
+.impeccable/
 
 # Editor directories and files
 .vscode/*

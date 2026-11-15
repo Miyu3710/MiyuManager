@@ -2,6 +2,7 @@ import { Check, Clock3, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../design-system/components/Button";
+import { ConfirmDialog } from "../../design-system/components/ConfirmDialog";
 import { createSession, deleteSession, updateSession } from "../../lib/library-api";
 import type { PlaySessionWithWork } from "../../lib/library-types";
 import { formatPlaytimeSeconds } from "../../lib/format";
@@ -66,6 +67,7 @@ export function SessionHistory({ workId, onChanged }: SessionHistoryProps) {
   const [editor, setEditor] = useState<"new" | number | null>(null);
   const [form, setForm] = useState<SessionForm>(defaultForm);
   const [busy, setBusy] = useState(false);
+  const [confirmSession, setConfirmSession] = useState<PlaySessionWithWork | null>(null);
 
   const beginCreate = () => {
     setEditor("new");
@@ -120,8 +122,13 @@ export function SessionHistory({ workId, onChanged }: SessionHistoryProps) {
     }
   };
 
-  const remove = async (session: PlaySessionWithWork) => {
-    if (!window.confirm("删除这条游玩记录？累计时长会重新计算，游戏文件不会受影响。")) {
+  const remove = (session: PlaySessionWithWork) => {
+    setConfirmSession(session);
+  };
+
+  const confirmRemove = async () => {
+    const session = confirmSession;
+    if (!session) {
       return;
     }
     setBusy(true);
@@ -132,6 +139,7 @@ export function SessionHistory({ workId, onChanged }: SessionHistoryProps) {
       }
       await sessions.refetch();
       onChanged();
+      setConfirmSession(null);
       toast.success("游玩记录已删除");
     } catch (error) {
       toast.error(String(error));
@@ -285,6 +293,19 @@ export function SessionHistory({ workId, onChanged }: SessionHistoryProps) {
           ))
         )}
       </div>
+      <ConfirmDialog
+        open={confirmSession !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmSession(null);
+          }
+        }}
+        title="删除这条游玩记录？"
+        description="累计时长会重新计算，游戏文件不会受影响。"
+        confirmLabel="删除记录"
+        busy={busy}
+        onConfirm={() => void confirmRemove()}
+      />
     </div>
   );
 }

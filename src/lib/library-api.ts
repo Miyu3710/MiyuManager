@@ -11,6 +11,7 @@ import type {
   LibraryPage,
   LibraryQuery,
   LibraryStatus,
+  CollectionSummary,
   LaunchConfigInput,
   LaunchProfile,
   LaunchSnapshot,
@@ -69,7 +70,11 @@ const previewImported: PreviewLibraryItem[] = [];
 const previewRemoved = new Set<number>();
 const previewExclusions: ScanExclusion[] = [];
 const previewStatus = new Map<number, LibraryStatus>();
-const previewFavorite = new Map<number, boolean>();
+const previewFavorite = new Map<number, boolean>([
+  [2, true],
+  [4, true],
+  [6, true],
+]);
 const previewWorkUpdates = new Map<number, WorkUpdateInput>();
 const previewLaunchProfiles = new Map<number, LaunchProfile>();
 const previewPlaySessions: PlaySessionWithWork[] = createPreviewPlaySessions();
@@ -84,6 +89,32 @@ const previewRoots: ScanRoot[] = [
   },
 ];
 let previewWorkId = 1000;
+
+const previewCollections: CollectionSummary[] = [
+  {
+    id: 1,
+    name: "深夜推荐",
+    sortOrder: 1,
+    workCount: 3,
+    covers: [],
+    createdAt: new Date(Date.now() - 6 * 86_400_000).toISOString(),
+    updatedAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+  },
+  {
+    id: 2,
+    name: "想再玩一遍",
+    sortOrder: 2,
+    workCount: 2,
+    covers: [],
+    createdAt: new Date(Date.now() - 4 * 86_400_000).toISOString(),
+    updatedAt: new Date(Date.now() - 86_400_000).toISOString(),
+  },
+];
+const previewCollectionMembers = new Map<number, Set<number>>([
+  [1, new Set([1, 2, 3])],
+  [2, new Set([4, 5])],
+]);
+let previewCollectionId = 10;
 
 function createPreviewPlaySessions(): PlaySessionWithWork[] {
   const now = Date.now();
@@ -205,7 +236,7 @@ function countStatuses(items: LibraryItem[]): LibraryCounts {
 
 function previewQuery(query: LibraryQuery): LibraryPage {
   const search = query.search.trim().toLocaleLowerCase();
-  const items = previewItems().filter((item) => {
+  let items = previewItems().filter((item) => {
     if (!search) {
       return true;
     }
@@ -221,6 +252,13 @@ function previewQuery(query: LibraryQuery): LibraryPage {
       .toLocaleLowerCase();
     return haystack.includes(search);
   });
+  if (query.favoriteOnly) {
+    items = items.filter((item) => item.favorite);
+  }
+  if (query.collectionId) {
+    const members = previewCollectionMembers.get(query.collectionId) ?? new Set<number>();
+    items = items.filter((item) => members.has(item.workId));
+  }
   const counts = countStatuses(items);
   const filtered =
     query.status === "all" ? items : items.filter((item) => item.status === query.status);
@@ -332,6 +370,127 @@ export async function setLibraryFavorite(workId: number, favorite: boolean): Pro
     return;
   }
   await invoke("library_set_favorite", { workId, favorite });
+}
+
+function previewCollectionSummary(collection: CollectionSummary): CollectionSummary {
+  return {
+    ...collection,
+    workCount: previewCollectionMembers.get(collection.id)?.size ?? 0,
+  };
+}
+
+export async function listCollections(): Promise<CollectionSummary[]> {
+  if (!isTauri()) {
+    return [...previewCollections]
+      .sort((left, right) => left.sortOrder - right.sortOrder || left.id - right.id)
+      .map(previewCollectionSummary);
+  }
+  return invoke<CollectionSummary[]>("collections_list");
+}
+
+export async function createCollection(name: string): Promise<CollectionSummary> {
+  if (!isTauri()) {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      throw new Error("收藏集名称不能为空");
+    }
+    if (previewCollections.some((entry) => entry.name.toLowerCase() === trimmed.toLowerCase())) {
+      throw new Error("已经有同名收藏集");
+    }
+    const id = ++previewCollectionId;
+    const now = new Date().toISOString();
+    const collection: CollectionSummary = {
+      id,
+      name: trimmed,
+      sortOrder: previewCollections.length + 1,
+      workCount: 0,
+      covers: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    previewCollections.push(collection);
+    previewCollectionMembers.set(id, new Set());
+    return collection;
+  }
+  return invoke<CollectionSummary>("collection_create", { name });
+}
+
+export async function renameCollection(
+  collectionId: number,
+  name: string,
+): Promise<CollectionSummary> {
+  if (!isTauri()) {
+    const collection = previewCollections.find((entry) => entry.id === collectionId);
+    if (!collection) {
+      throw new Error("收藏集不存在");
+    }
+    const trimmed = name.trim();
+    if (!trimmed) {
+      throw new Error("收藏集名称不能为空");
+    }
+    if (
+      previewCollections.some(
+        (entry) => entry.id !== collectionId && entry.name.toLowerCase() === trimmed.toLowerCase(),
+      )
+    ) {
+      throw new Error("已经有同名收藏集");
+    }
+    collection.name = trimmed;
+    collection.updatedAt = new Date().toISOString();
+    return previewCollectionSummary(collection);
+  }
+  return invoke<CollectionSummary>("collection_rename", { collectionId, name });
+}
+
+export async function deleteCollection(collectionId: number): Promise<void> {
+  if (!isTauri()) {
+    const index = previewCollections.findIndex((entry) => entry.id === collectionId);
+    if (index >= 0) {
+      previewCollections.splice(index, 1);
+      previewCollectionMembers.delete(collectionId);
+    }
+    return;
+  }
+  await invoke("collection_delete", { collectionId });
+}
+
+export async function reorderCollections(collectionIds: number[]): Promise<void> {
+  if (!isTauri()) {
+    collectionIds.forEach((id, index) => {
+      const collection = previewCollections.find((entry) => entry.id === id);
+      if (collection) {
+        collection.sortOrder = index + 1;
+      }
+    });
+    return;
+  }
+  await invoke("collection_reorder", { collectionIds });
+}
+
+export async function addCollectionWorks(collectionId: number, workIds: number[]): Promise<number> {
+  if (!isTauri()) {
+    const members = previewCollectionMembers.get(collectionId);
+    if (!members) {
+      throw new Error("收藏集不存在");
+    }
+    let added = 0;
+    for (const workId of workIds) {
+      if (!members.has(workId)) {
+        members.add(workId);
+        added += 1;
+      }
+    }
+    return added;
+  }
+  return invoke<number>("collection_add_works", { collectionId, workIds });
+}
+
+export async function removeCollectionWork(collectionId: number, workId: number): Promise<void> {
+  if (!isTauri()) {
+    previewCollectionMembers.get(collectionId)?.delete(workId);
+    return;
+  }
+  await invoke("collection_remove_work", { collectionId, workId });
 }
 
 export async function removeLibraryWork(workId: number): Promise<void> {
@@ -597,6 +756,8 @@ export async function getAppInfo(): Promise<AppInfo> {
       dbPath: "未连接 SQLite",
       libraryCount: previewItems().length,
       exclusionCount: previewExclusions.length,
+      rootCount: previewRoots.length,
+      onboardingCompleted: true,
       version: "0.1.0-preview",
     };
   }

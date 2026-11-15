@@ -31,13 +31,18 @@ struct CachedAppToken {
 }
 
 impl OAuthService {
+    #[cfg(test)]
     pub fn new(data_dir: &Path) -> Result<Self> {
+        Self::new_with_proxy(data_dir, crate::net::system_proxy())
+    }
+
+    pub fn new_with_proxy(data_dir: &Path, proxy: Option<String>) -> Result<Self> {
         let mut builder = Client::builder()
             .user_agent("MiyuManager/0.1 (OAuth desktop client)")
             .http1_only()
             .timeout(std::time::Duration::from_secs(30))
             .connect_timeout(std::time::Duration::from_secs(10));
-        if let Some(proxy) = crate::net::system_proxy() {
+        if let Some(proxy) = proxy {
             builder = builder.proxy(reqwest::Proxy::all(proxy).context("OAuth 代理配置无效")?);
         }
         let http = builder.build().context("无法创建 OAuth HTTP 客户端")?;

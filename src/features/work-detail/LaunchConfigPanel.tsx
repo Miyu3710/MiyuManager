@@ -18,6 +18,7 @@ import type {
   MonitorInfo,
   ValidationReport,
 } from "../../lib/library-types";
+import type { AppPreferences } from "../../lib/app-types";
 
 const schema = z.object({
   exePath: z.string().trim().min(1, "需要选择可执行文件"),
@@ -32,21 +33,21 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-function defaultProfile(detail: LibraryItemDetail): LaunchProfile {
+function defaultProfile(detail: LibraryItemDetail, preferences: AppPreferences): LaunchProfile {
   return (
     detail.launchProfile ?? {
       args: [],
       env: [],
-      wrapperPath: null,
-      wrapperArgs: [],
-      monitor: null,
-      fullscreen: false,
+      wrapperPath: preferences.wrapperPath.trim() || null,
+      wrapperArgs: preferences.wrapperArgs,
+      monitor: preferences.defaultMonitor,
+      fullscreen: preferences.launchFullscreen,
     }
   );
 }
 
-function valuesFrom(detail: LibraryItemDetail): FormValues {
-  const profile = defaultProfile(detail);
+function valuesFrom(detail: LibraryItemDetail, preferences: AppPreferences): FormValues {
+  const profile = defaultProfile(detail, preferences);
   return {
     exePath: detail.exePath,
     workingDir: detail.workingDir,
@@ -111,11 +112,18 @@ function CheckRow({ label, check }: { label: string; check: ValidationReport["ex
 interface LaunchConfigPanelProps {
   detail: LibraryItemDetail;
   monitors: MonitorInfo[];
+  preferences: AppPreferences;
   onSaved: () => void;
   onLaunch: () => void;
 }
 
-export function LaunchConfigPanel({ detail, monitors, onSaved, onLaunch }: LaunchConfigPanelProps) {
+export function LaunchConfigPanel({
+  detail,
+  monitors,
+  preferences,
+  onSaved,
+  onLaunch,
+}: LaunchConfigPanelProps) {
   const {
     register,
     handleSubmit,
@@ -124,7 +132,7 @@ export function LaunchConfigPanel({ detail, monitors, onSaved, onLaunch }: Launc
     formState: { isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: valuesFrom(detail),
+    defaultValues: valuesFrom(detail, preferences),
   });
   const [report, setReport] = useState<ValidationReport | null>(null);
 
@@ -324,7 +332,7 @@ export function LaunchConfigPanel({ detail, monitors, onSaved, onLaunch }: Launc
               <option value="">跟随游戏 / 主显示器</option>
               {monitors.map((monitor) => (
                 <option key={monitor.index} value={monitor.index}>
-                  {monitor.name} · {monitor.width}×{monitor.height}
+                  {monitor.name}，{monitor.width}×{monitor.height}
                 </option>
               ))}
             </select>

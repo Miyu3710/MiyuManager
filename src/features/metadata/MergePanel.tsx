@@ -7,7 +7,7 @@ import {
   Loader2,
   Lock,
   RefreshCw,
-  Sparkles,
+  ListChecks,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -253,14 +253,14 @@ export function MergePanel({ detail, onChanged }: MergePanelProps) {
     <section className="merge-panel">
       <header className="merge-panel__head">
         <div>
-          <p className="app-kicker">MERGE / 多源合并</p>
+          <p className="app-kicker">多源合并</p>
           <h2>一次比较所有来源</h2>
           <p>
             按字段优先级自动匹配每个来源的候选，冲突会并列显示。应用前可以改选或跳过；锁定字段不会被覆盖。
           </p>
         </div>
         <Button variant="secondary" size="sm" onClick={() => void loadPreview()} disabled={loading}>
-          {loading ? <Loader2 size={14} className="merge-spin" /> : <Sparkles size={14} />}
+          {loading ? <Loader2 size={14} className="merge-spin" /> : <ListChecks size={14} />}
           {loading ? "匹配中" : preview ? "重新匹配" : "开始多源匹配"}
         </Button>
       </header>
@@ -317,7 +317,7 @@ export function MergePanel({ detail, onChanged }: MergePanelProps) {
               <div className="merge-fields">
                 <div className="merge-fields__head">
                   <span>字段 / 当前值</span>
-                  <span>候选值 · 点击选择</span>
+                  <span>候选值，点击选择</span>
                   <span>状态</span>
                 </div>
                 {preview.fields.map((field) => (
@@ -358,7 +358,7 @@ export function MergePanel({ detail, onChanged }: MergePanelProps) {
 
               <footer className="merge-actions">
                 <span>
-                  已选 {selected.size} 个字段{cover ? " · 1 张封面" : ""}；应用时再次检查锁定状态。
+                  已选 {selected.size} 个字段{cover ? "，1 张封面" : ""}；应用时再次检查锁定状态。
                 </span>
                 <div>
                   <Button
@@ -388,7 +388,7 @@ export function MergePanel({ detail, onChanged }: MergePanelProps) {
         </div>
       ) : (
         <div className="merge-placeholder">
-          <Sparkles size={20} strokeWidth={1.3} />
+          <ListChecks size={20} strokeWidth={1.3} />
           <div>
             <b>把 VNDB、Bangumi、Steam 和后续来源放在同一张工作台上</b>
             <p>

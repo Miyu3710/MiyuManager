@@ -22,6 +22,10 @@ pub struct LibraryQuery {
     pub page: u32,
     #[serde(default = "default_page_size")]
     pub page_size: u32,
+    #[serde(default)]
+    pub favorite_only: bool,
+    #[serde(default)]
+    pub collection_id: Option<i64>,
 }
 
 fn default_status() -> String {
@@ -44,6 +48,8 @@ impl Default for LibraryQuery {
             sort: default_sort(),
             page: 0,
             page_size: default_page_size(),
+            favorite_only: false,
+            collection_id: None,
         }
     }
 }
@@ -247,6 +253,8 @@ pub struct AppInfo {
     pub db_path: String,
     pub library_count: i64,
     pub exclusion_count: i64,
+    pub root_count: i64,
+    pub onboarding_completed: bool,
     pub version: String,
 }
 
@@ -465,6 +473,16 @@ fn build_filters(query: &LibraryQuery, force_like: bool, include_status: bool) -
     if include_status && !status.is_empty() && status != "all" && STATUSES.contains(&status) {
         clauses.push("COALESCE(ue.status, 'unclassified') = ?".to_string());
         binds.push(status.to_string());
+    }
+
+    if query.favorite_only {
+        clauses.push("COALESCE(ue.favorite, 0) = 1".to_string());
+    }
+
+    if let Some(collection_id) = query.collection_id {
+        clauses.push(format!(
+            "w.id IN (SELECT work_id FROM collection_items WHERE collection_id = {collection_id})"
+        ));
     }
 
     FilterParts {
@@ -1711,6 +1729,266 @@ pub async fn import_candidates(
     Ok(result)
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionSummary {
+    pub id: i64,
+    pub name: String,
+    pub sort_order: i64,
+    pub work_count: i64,
+    pub covers: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+fn normalize_collection_name(name: &str) -> Result<String> {
+    let value = name.trim();
+    if value.is_empty() {
+        bail!("收藏集名称不能为空");
+    }
+    if value.chars().count() > 80 {
+        bail!("收藏集名称最多 80 个字符");
+    }
+    Ok(value.to_string())
+}
+
+async fn collection_summary_row(
+    pool: &SqlitePool,
+    id: i64,
+    name: String,
+    sort_order: i64,
+    created_at: String,
+    updated_at: String,
+    work_count: i64,
+) -> Result<CollectionSummary> {
+    let rows = sqlx::query(
+        "SELECT a.thumb_path
+         FROM collection_items ci
+         JOIN assets a ON a.work_id = ci.work_id AND a.kind = 'cover'
+         WHERE ci.collection_id = ?
+         ORDER BY ci.added_at DESC, ci.work_id DESC
+         LIMIT 4",
+    )
+    .bind(id)
+    .fetch_all(pool)
+    .await?;
+    let covers = rows
+        .iter()
+        .map(|row| row.try_get::<String, _>("thumb_path"))
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(CollectionSummary {
+        id,
+        name,
+        sort_order,
+        work_count,
+        covers,
+        created_at,
+        updated_at,
+    })
+}
+
+pub async fn list_collections(pool: &SqlitePool) -> Result<Vec<CollectionSummary>> {
+    let rows = sqlx::query(
+        "SELECT c.id, c.name, c.sort_order, c.created_at, c.updated_at,
+                (SELECT COUNT(*) FROM collection_items ci WHERE ci.collection_id = c.id) AS work_count
+         FROM collections c
+         ORDER BY c.sort_order ASC, c.id ASC",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let mut collections = Vec::with_capacity(rows.len());
+    for row in rows {
+        collections.push(
+            collection_summary_row(
+                pool,
+                row.try_get("id")?,
+                row.try_get("name")?,
+                row.try_get("sort_order")?,
+                row.try_get("created_at")?,
+                row.try_get("updated_at")?,
+                row.try_get("work_count")?,
+            )
+            .await?,
+        );
+    }
+    Ok(collections)
+}
+
+pub async fn get_collection(pool: &SqlitePool, collection_id: i64) -> Result<CollectionSummary> {
+    let row = sqlx::query(
+        "SELECT c.id, c.name, c.sort_order, c.created_at, c.updated_at,
+                (SELECT COUNT(*) FROM collection_items ci WHERE ci.collection_id = c.id) AS work_count
+         FROM collections c WHERE c.id = ?",
+    )
+    .bind(collection_id)
+    .fetch_optional(pool)
+    .await?
+    .context("收藏集不存在")?;
+    collection_summary_row(
+        pool,
+        row.try_get("id")?,
+        row.try_get("name")?,
+        row.try_get("sort_order")?,
+        row.try_get("created_at")?,
+        row.try_get("updated_at")?,
+        row.try_get("work_count")?,
+    )
+    .await
+}
+
+pub async fn create_collection(pool: &SqlitePool, name: &str) -> Result<CollectionSummary> {
+    let name = normalize_collection_name(name)?;
+    let duplicate: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM collections WHERE name = ? COLLATE NOCASE LIMIT 1")
+            .bind(&name)
+            .fetch_optional(pool)
+            .await?;
+    if duplicate.is_some() {
+        bail!("已经有同名收藏集");
+    }
+    let sort_order: i64 =
+        sqlx::query_scalar("SELECT COALESCE(MAX(sort_order), 0) + 1 FROM collections")
+            .fetch_one(pool)
+            .await?;
+    let id = sqlx::query("INSERT INTO collections (name, sort_order) VALUES (?, ?)")
+        .bind(&name)
+        .bind(sort_order)
+        .execute(pool)
+        .await?
+        .last_insert_rowid();
+    get_collection(pool, id).await
+}
+
+pub async fn rename_collection(
+    pool: &SqlitePool,
+    collection_id: i64,
+    name: &str,
+) -> Result<CollectionSummary> {
+    let name = normalize_collection_name(name)?;
+    let duplicate: Option<i64> = sqlx::query_scalar(
+        "SELECT id FROM collections WHERE name = ? COLLATE NOCASE AND id != ? LIMIT 1",
+    )
+    .bind(&name)
+    .bind(collection_id)
+    .fetch_optional(pool)
+    .await?;
+    if duplicate.is_some() {
+        bail!("已经有同名收藏集");
+    }
+    let result = sqlx::query(
+        "UPDATE collections SET name = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+         WHERE id = ?",
+    )
+    .bind(&name)
+    .bind(collection_id)
+    .execute(pool)
+    .await?;
+    if result.rows_affected() == 0 {
+        bail!("收藏集不存在");
+    }
+    get_collection(pool, collection_id).await
+}
+
+pub async fn delete_collection(pool: &SqlitePool, collection_id: i64) -> Result<()> {
+    let result = sqlx::query("DELETE FROM collections WHERE id = ?")
+        .bind(collection_id)
+        .execute(pool)
+        .await?;
+    if result.rows_affected() == 0 {
+        bail!("收藏集不存在");
+    }
+    Ok(())
+}
+
+pub async fn reorder_collections(pool: &SqlitePool, ids: &[i64]) -> Result<()> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let mut unique = HashSet::new();
+    if ids.iter().any(|id| !unique.insert(*id)) {
+        bail!("收藏集排序包含重复项");
+    }
+    let existing: Vec<i64> =
+        sqlx::query_scalar("SELECT id FROM collections ORDER BY sort_order ASC, id ASC")
+            .fetch_all(pool)
+            .await?;
+    if existing.len() != ids.len() || existing.iter().any(|id| !unique.contains(id)) {
+        bail!("收藏集列表已变化，请刷新后重试");
+    }
+
+    let mut tx = pool.begin().await?;
+    for (index, id) in ids.iter().enumerate() {
+        sqlx::query(
+            "UPDATE collections SET sort_order = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+             WHERE id = ?",
+        )
+        .bind(index as i64 + 1)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+pub async fn add_collection_works(
+    pool: &SqlitePool,
+    collection_id: i64,
+    work_ids: &[i64],
+) -> Result<usize> {
+    if work_ids.is_empty() {
+        return Ok(0);
+    }
+    get_collection(pool, collection_id).await?;
+    let mut tx = pool.begin().await?;
+    let mut added = 0usize;
+    for work_id in work_ids {
+        let exists: Option<i64> = sqlx::query_scalar("SELECT id FROM works WHERE id = ?")
+            .bind(work_id)
+            .fetch_optional(&mut *tx)
+            .await?;
+        if exists.is_none() {
+            bail!("作品不存在：{work_id}");
+        }
+        let result = sqlx::query(
+            "INSERT OR IGNORE INTO collection_items (collection_id, work_id) VALUES (?, ?)",
+        )
+        .bind(collection_id)
+        .bind(work_id)
+        .execute(&mut *tx)
+        .await?;
+        added += result.rows_affected() as usize;
+    }
+    sqlx::query(
+        "UPDATE collections SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+    )
+    .bind(collection_id)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(added)
+}
+
+pub async fn remove_collection_work(
+    pool: &SqlitePool,
+    collection_id: i64,
+    work_id: i64,
+) -> Result<()> {
+    sqlx::query("DELETE FROM collection_items WHERE collection_id = ? AND work_id = ?")
+        .bind(collection_id)
+        .bind(work_id)
+        .execute(pool)
+        .await?;
+    sqlx::query(
+        "UPDATE collections SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+    )
+    .bind(collection_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 fn escape_like(value: &str) -> String {
     value
         .replace('\\', "\\\\")
@@ -1863,6 +2141,69 @@ mod tests {
                 .expect("cleared exclusions")
                 .is_empty()
         );
+    }
+
+    #[tokio::test]
+    async fn collections_persist_membership_and_filter_library() {
+        let (_temp, pool, work_id) = imported_pool().await;
+        let first = create_collection(&pool, "深夜推荐")
+            .await
+            .expect("create first");
+        let second = create_collection(&pool, "想再玩一遍")
+            .await
+            .expect("create second");
+        assert!(create_collection(&pool, "深夜推荐").await.is_err());
+
+        let added = add_collection_works(&pool, first.id, &[work_id, work_id])
+            .await
+            .expect("add work");
+        assert_eq!(added, 1);
+        sqlx::query(
+            "INSERT INTO assets
+               (work_id, kind, original_path, thumb_path, width, height, checksum, source)
+             VALUES (?, 'cover', '/covers/original.webp', '/covers/thumb.webp', 600, 900, 'fixture', 'manual')",
+        )
+        .bind(work_id)
+        .execute(&pool)
+        .await
+        .expect("cover fixture");
+        let page = query_library(
+            &pool,
+            LibraryQuery {
+                collection_id: Some(first.id),
+                ..LibraryQuery::default()
+            },
+        )
+        .await
+        .expect("collection query");
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].work_id, work_id);
+
+        let renamed = rename_collection(&pool, first.id, "周末短篇")
+            .await
+            .expect("rename");
+        assert_eq!(renamed.name, "周末短篇");
+        assert_eq!(renamed.work_count, 1);
+        assert_eq!(renamed.covers, vec!["/covers/thumb.webp"]);
+
+        reorder_collections(&pool, &[second.id, first.id])
+            .await
+            .expect("reorder");
+        let collections = list_collections(&pool).await.expect("list");
+        assert_eq!(collections[0].id, second.id);
+
+        remove_collection_work(&pool, first.id, work_id)
+            .await
+            .expect("remove work");
+        assert_eq!(
+            get_collection(&pool, first.id)
+                .await
+                .expect("reload")
+                .work_count,
+            0
+        );
+        delete_collection(&pool, second.id).await.expect("delete");
+        assert_eq!(list_collections(&pool).await.expect("list again").len(), 1);
     }
 
     #[tokio::test]

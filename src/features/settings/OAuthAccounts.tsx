@@ -191,7 +191,7 @@ export function OAuthAccounts() {
                 {provider.connected ? (
                   <Tag tone="status">
                     已连接
-                    {provider.accountName ? ` · ${provider.accountName}` : ""}
+                    {provider.accountName ? `，${provider.accountName}` : ""}
                   </Tag>
                 ) : provider.configured ? (
                   <Tag tone="muted">未连接</Tag>

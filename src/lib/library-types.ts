@@ -226,6 +226,8 @@ export interface LibraryQuery {
   sort: LibrarySort;
   page: number;
   pageSize: number;
+  favoriteOnly?: boolean;
+  collectionId?: number | null;
 }
 
 export interface ScanRoot {
@@ -289,7 +291,19 @@ export interface AppInfo {
   dbPath: string;
   libraryCount: number;
   exclusionCount: number;
+  rootCount: number;
+  onboardingCompleted: boolean;
   version: string;
+}
+
+export interface CollectionSummary {
+  id: number;
+  name: string;
+  sortOrder: number;
+  workCount: number;
+  covers: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ScanExclusion {

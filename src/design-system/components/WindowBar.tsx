@@ -34,8 +34,6 @@ export function WindowBar({ context, center, className }: WindowBarProps) {
         <span className="ds-window-mark" aria-hidden="true">
           M
         </span>
-        <span className="ds-window-bar__product">MiyuManager</span>
-        <span className="ds-window-bar__divider" aria-hidden="true" />
         <span className="ds-window-bar__context">{context}</span>
       </div>
       <div className="ds-window-bar__drag">

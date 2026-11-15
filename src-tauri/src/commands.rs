@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use anyhow::Context;
@@ -12,13 +12,14 @@ use tokio_util::sync::CancellationToken;
 
 use crate::assets::{self, CoverAsset, CoverCandidate};
 use crate::db::{
-    self, AppInfo, ImportCandidateInput, ImportResult, LaunchConfigInput, LaunchProfile,
-    LibraryItemDetail, LibraryPage, LibraryQuery, ScanExclusionRecord, ScanRoot, ValidationReport,
-    WorkUpdateInput,
+    self, AppInfo, CollectionSummary, ImportCandidateInput, ImportResult, LaunchConfigInput,
+    LaunchProfile, LibraryItemDetail, LibraryPage, LibraryQuery, ScanExclusionRecord, ScanRoot,
+    ValidationReport, WorkUpdateInput,
 };
 use crate::launcher::{self, LaunchManager, LaunchSnapshot};
 use crate::metadata::{self, MetadataHttp, MetadataImportRequest, MetadataImportResult};
 use crate::oauth::OAuthService;
+use crate::preferences::{self, AppPreferences, UpdateCheck};
 use crate::scan::{self, ScanCandidate, ScanCoordinator};
 use crate::steam_library;
 use crate::tracking::{
@@ -31,10 +32,28 @@ pub struct AppState {
     pub db_path: PathBuf,
     pub scan: Arc<ScanCoordinator>,
     pub launches: Arc<LaunchManager>,
-    pub metadata_http: Arc<MetadataHttp>,
+    pub metadata_http: RwLock<Arc<MetadataHttp>>,
     pub metadata_jobs: Arc<MetadataCoordinator>,
     pub batch_jobs: Arc<BatchCoordinator>,
     pub oauth: Arc<OAuthService>,
+}
+
+impl AppState {
+    pub fn http(&self) -> Arc<MetadataHttp> {
+        self.metadata_http
+            .read()
+            .expect("metadata HTTP client lock poisoned")
+            .clone()
+    }
+
+    pub fn replace_http(&self, proxy: Option<String>) -> Result<(), String> {
+        let client = Arc::new(MetadataHttp::with_proxy(proxy).map_err(|error| error.to_string())?);
+        *self
+            .metadata_http
+            .write()
+            .map_err(|_| "元数据网络锁失效".to_string())? = client;
+        Ok(())
+    }
 }
 
 #[derive(Default)]
@@ -201,7 +220,10 @@ pub async fn create_app_state(app: &AppHandle) -> anyhow::Result<AppState> {
     if recovered > 0 {
         eprintln!("recovered {recovered} interrupted play session(s)");
     }
-    let oauth = Arc::new(OAuthService::new(&data_dir)?);
+    let preferences = preferences::load(&pool).await?;
+    let proxy = preferences.effective_proxy();
+    let metadata_http = Arc::new(MetadataHttp::with_proxy(proxy.clone())?);
+    let oauth = Arc::new(OAuthService::new_with_proxy(&data_dir, proxy)?);
 
     Ok(AppState {
         pool,
@@ -209,7 +231,7 @@ pub async fn create_app_state(app: &AppHandle) -> anyhow::Result<AppState> {
         db_path,
         scan: Arc::new(ScanCoordinator::default()),
         launches: Arc::new(LaunchManager::default()),
-        metadata_http: Arc::new(MetadataHttp::new()?),
+        metadata_http: RwLock::new(metadata_http),
         metadata_jobs: Arc::new(MetadataCoordinator::default()),
         batch_jobs: Arc::new(BatchCoordinator::default()),
         oauth,
@@ -489,6 +511,78 @@ pub async fn library_remove_root(state: State<'_, AppState>, root_id: i64) -> Re
 }
 
 #[tauri::command]
+pub async fn collections_list(
+    state: State<'_, AppState>,
+) -> Result<Vec<CollectionSummary>, String> {
+    db::list_collections(&state.pool)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn collection_create(
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<CollectionSummary, String> {
+    db::create_collection(&state.pool, &name)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn collection_rename(
+    state: State<'_, AppState>,
+    collection_id: i64,
+    name: String,
+) -> Result<CollectionSummary, String> {
+    db::rename_collection(&state.pool, collection_id, &name)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn collection_delete(
+    state: State<'_, AppState>,
+    collection_id: i64,
+) -> Result<(), String> {
+    db::delete_collection(&state.pool, collection_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn collection_reorder(
+    state: State<'_, AppState>,
+    collection_ids: Vec<i64>,
+) -> Result<(), String> {
+    db::reorder_collections(&state.pool, &collection_ids)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn collection_add_works(
+    state: State<'_, AppState>,
+    collection_id: i64,
+    work_ids: Vec<i64>,
+) -> Result<usize, String> {
+    db::add_collection_works(&state.pool, collection_id, &work_ids)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn collection_remove_work(
+    state: State<'_, AppState>,
+    collection_id: i64,
+    work_id: i64,
+) -> Result<(), String> {
+    db::remove_collection_work(&state.pool, collection_id, work_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn app_info(state: State<'_, AppState>) -> Result<AppInfo, String> {
     let library_count = db::library_count(&state.pool)
         .await
@@ -497,13 +591,87 @@ pub async fn app_info(state: State<'_, AppState>) -> Result<AppInfo, String> {
         .fetch_one(&state.pool)
         .await
         .map_err(|error| error.to_string())?;
+    let root_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scan_roots")
+        .fetch_one(&state.pool)
+        .await
+        .map_err(|error| error.to_string())?;
+    let preferences = preferences::load(&state.pool)
+        .await
+        .map_err(|error| error.to_string())?;
     Ok(AppInfo {
         data_dir: state.data_dir.to_string_lossy().to_string(),
         db_path: state.db_path.to_string_lossy().to_string(),
         library_count,
         exclusion_count,
+        root_count,
+        onboarding_completed: preferences.onboarding_completed,
         version: env!("CARGO_PKG_VERSION").to_string(),
     })
+}
+
+#[tauri::command]
+pub async fn preferences_get(state: State<'_, AppState>) -> Result<AppPreferences, String> {
+    preferences::load(&state.pool)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn preferences_update(
+    state: State<'_, AppState>,
+    mut input: AppPreferences,
+) -> Result<AppPreferences, String> {
+    input.validate().map_err(|error| error.to_string())?;
+    let previous = preferences::load(&state.pool)
+        .await
+        .map_err(|error| error.to_string())?;
+    let previous_proxy = previous.effective_proxy();
+    let next_proxy = input.effective_proxy();
+    if previous_proxy != next_proxy {
+        state.replace_http(next_proxy)?;
+    }
+    preferences::save(&state.pool, &input)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(input)
+}
+
+#[tauri::command]
+pub async fn onboarding_complete(state: State<'_, AppState>) -> Result<AppPreferences, String> {
+    preferences::mark_onboarding_completed(&state.pool)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn open_data_dir(state: State<'_, AppState>) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        std::process::Command::new("explorer.exe")
+            .arg(&state.data_dir)
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| format!("无法打开数据目录：{error}"))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = state;
+        Err("当前平台不支持打开数据目录".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn update_check(state: State<'_, AppState>) -> Result<UpdateCheck, String> {
+    let preferences = preferences::load(&state.pool)
+        .await
+        .map_err(|error| error.to_string())?;
+    let http = state.http();
+    Ok(preferences::check_for_update(
+        &http,
+        &preferences.update_manifest_url,
+        env!("CARGO_PKG_VERSION"),
+    )
+    .await)
 }
 
 #[tauri::command]
@@ -772,7 +940,7 @@ pub async fn metadata_search_start(
     let job_id = uuid::Uuid::new_v4().to_string();
     let cancel = state.metadata_jobs.start(job_id.clone())?;
     let pool = state.pool.clone();
-    let http = state.metadata_http.clone();
+    let http = state.http();
     let oauth = state.oauth.clone();
     let coordinator = state.metadata_jobs.clone();
     let app_handle = app.clone();
@@ -855,9 +1023,10 @@ pub async fn metadata_candidate_preview(
     source_id: String,
 ) -> Result<metadata::MetadataPreview, String> {
     let cancel = CancellationToken::new();
+    let http = state.http();
     metadata::preview(
         &state.pool,
-        &state.metadata_http,
+        &http,
         &state.oauth,
         work_id,
         &provider,
@@ -874,10 +1043,11 @@ pub async fn metadata_import(
     request: MetadataImportRequest,
 ) -> Result<MetadataImportResult, String> {
     let cancel = CancellationToken::new();
+    let http = state.http();
     metadata::import(
         &state.pool,
         &state.data_dir,
-        &state.metadata_http,
+        &http,
         &state.oauth,
         request,
         &cancel,
@@ -946,9 +1116,10 @@ pub async fn metadata_merge_preview(
     providers: Option<Vec<String>>,
 ) -> Result<metadata::MergePreview, String> {
     let cancel = CancellationToken::new();
+    let http = state.http();
     metadata::merge_preview(
         &state.pool,
-        &state.metadata_http,
+        &http,
         &state.oauth,
         work_id,
         providers.as_deref(),
@@ -964,10 +1135,11 @@ pub async fn metadata_merge_apply(
     request: metadata::MergeApplyRequest,
 ) -> Result<metadata::MergeApplyResult, String> {
     let cancel = CancellationToken::new();
+    let http = state.http();
     metadata::merge_apply(
         &state.pool,
         &state.data_dir,
-        &state.metadata_http,
+        &http,
         &state.oauth,
         request,
         &cancel,
@@ -983,10 +1155,11 @@ pub async fn metadata_adopt_claim(
     claim_id: i64,
 ) -> Result<metadata::MergeApplyResult, String> {
     let cancel = CancellationToken::new();
+    let http = state.http();
     metadata::adopt_claim(
         &state.pool,
         &state.data_dir,
-        &state.metadata_http,
+        &http,
         &state.oauth,
         work_id,
         claim_id,
@@ -1014,7 +1187,7 @@ pub async fn metadata_batch_start(
     let job_id = uuid::Uuid::new_v4().to_string();
     let job = state.batch_jobs.start(job_id.clone())?;
     let pool = state.pool.clone();
-    let http = state.metadata_http.clone();
+    let http = state.http();
     let oauth = state.oauth.clone();
     let coordinator = state.batch_jobs.clone();
     let app_handle = app.clone();
@@ -1218,6 +1391,7 @@ pub async fn metadata_batch_apply(
     let mut applied_fields = 0usize;
     let mut cover_applied = 0usize;
     let mut works = Vec::new();
+    let http = state.http();
 
     for (work_id, preview) in previews.into_iter() {
         if !selected.contains(&work_id) {
@@ -1263,7 +1437,7 @@ pub async fn metadata_batch_apply(
             metadata::merge_apply(
                 &state.pool,
                 &state.data_dir,
-                &state.metadata_http,
+                &http,
                 &state.oauth,
                 metadata::MergeApplyRequest {
                     work_id,

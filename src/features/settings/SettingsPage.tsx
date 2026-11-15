@@ -1,13 +1,14 @@
 import {
   Database,
   Gamepad2,
+  Globe2,
   Monitor,
   Palette,
   RefreshCw,
   ShieldCheck,
   SlidersHorizontal,
-  Sparkles,
   Tv,
+  Wifi,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -16,13 +17,20 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "../../design-system/components/Button";
+import { ConfirmDialog } from "../../design-system/components/ConfirmDialog";
 import { Tag } from "../../design-system/components/Tag";
 import { useAppearance } from "../../app/useAppearance";
+import { useInvalidatePreferences, usePreferences } from "../../app/usePreferences";
 import { formatRelativeDate } from "../../lib/format";
 import { removeLibraryRoot, removeScanExclusion } from "../../lib/library-api";
 import { getBigScreenState, openBigScreen } from "../../lib/bigscreen-api";
 import { cn } from "../../lib/cn";
 import { MetadataSourceSettings } from "./MetadataSourceSettings";
+import {
+  DataAndUpdateSection,
+  LauncherDefaultsSection,
+  NetworkSettingsSection,
+} from "./PreferenceSections";
 import {
   useAppInfo,
   useInvalidateLibrary,
@@ -34,12 +42,13 @@ import "./settings.css";
 
 const settingsSections = [
   { id: "library-settings", label: "游戏库", icon: Database },
-  { id: "source-settings", label: "元数据来源", icon: Sparkles },
+  { id: "source-settings", label: "元数据来源", icon: Globe2 },
   { id: "launcher-settings", label: "启动器", icon: Monitor },
+  { id: "network-settings", label: "网络", icon: Wifi },
   { id: "bigscreen-settings", label: "大屏模式", icon: Tv },
   { id: "appearance-settings", label: "外观", icon: Palette },
   { id: "probe-settings", label: "技术探针", icon: ShieldCheck },
-  { id: "data-settings", label: "数据与备份", icon: SlidersHorizontal },
+  { id: "data-settings", label: "数据与关于", icon: SlidersHorizontal },
 ];
 
 function readGamepadState() {
@@ -55,6 +64,8 @@ export function SettingsPage() {
   const invalidate = useInvalidateLibrary();
   const roots = useLibraryRoots();
   const appInfo = useAppInfo();
+  const preferences = usePreferences();
+  const invalidatePreferences = useInvalidatePreferences();
   const exclusions = useScanExclusions();
   const monitors = useMonitors();
   const bigScreenState = useQuery({
@@ -69,22 +80,29 @@ export function SettingsPage() {
   const [gamepadSupported, setGamepadSupported] = useState(() => readGamepadState().supported);
   const [gamepadCount, setGamepadCount] = useState(() => readGamepadState().count);
   const [selectedDisplay, setSelectedDisplay] = useState<number | null>(null);
+  const [confirmRoot, setConfirmRoot] = useState<{ id: number; path: string } | null>(null);
+  const [removingRoot, setRemovingRoot] = useState(false);
   const [bigScreenBusy, setBigScreenBusy] = useState(false);
   const activeDisplay = selectedDisplay ?? bigScreenState.data?.display ?? 0;
 
-  const removeRoot = async (rootId: number, path: string) => {
-    const confirmed = window.confirm(
-      "移除扫描目录“" + path + "”？已入库的游戏会保留，只停止后续扫描这个目录。",
-    );
-    if (!confirmed) {
+  const removeRoot = (rootId: number, path: string) => {
+    setConfirmRoot({ id: rootId, path });
+  };
+
+  const confirmRemoveRoot = async () => {
+    if (!confirmRoot) {
       return;
     }
+    setRemovingRoot(true);
     try {
-      await removeLibraryRoot(rootId);
+      await removeLibraryRoot(confirmRoot.id);
       invalidate();
+      setConfirmRoot(null);
       toast.success("已移除扫描目录");
     } catch (error) {
       toast.error(String(error));
+    } finally {
+      setRemovingRoot(false);
     }
   };
 
@@ -149,14 +167,9 @@ export function SettingsPage() {
     <div className="settings-page">
       <header className="settings-head">
         <div>
-          <p className="app-kicker">
-            <span className="app-status-dot" />
-            SETTINGS / 设置
-          </p>
           <h1>设置</h1>
-          <p>库、来源、启动器、外观和数据都从这一页管理。</p>
         </div>
-        <Tag tone="status">离线可用</Tag>
+        <Tag tone="status">本机</Tag>
       </header>
 
       <div className="settings-layout">
@@ -182,7 +195,6 @@ export function SettingsPage() {
             <header>
               <div>
                 <h2>游戏库</h2>
-                <p>管理扫描根目录、忽略规则和入库策略。</p>
               </div>
               <Button variant="secondary" size="sm" onClick={() => navigate("/library?import=1")}>
                 添加目录
@@ -282,12 +294,12 @@ export function SettingsPage() {
             ) : null}
             <div className="settings-row">
               <div>
-                <b>忽略规则</b>
-                <span>临时目录、压缩包、非游戏可执行文件</span>
+                <b>扫描规则</b>
+                <span>
+                  跳过临时目录、运行库、卸载器和常见非游戏可执行文件；本轮不开放自定义规则。
+                </span>
               </div>
-              <Button variant="ghost" size="sm">
-                编辑
-              </Button>
+              <Tag tone="muted">内置</Tag>
             </div>
           </section>
 
@@ -295,7 +307,6 @@ export function SettingsPage() {
             <header>
               <div>
                 <h2>元数据来源</h2>
-                <p>来源只提供元数据，字段可以锁定和手动校正。</p>
               </div>
             </header>
             <MetadataSourceSettings />
@@ -305,23 +316,47 @@ export function SettingsPage() {
             <header>
               <div>
                 <h2>启动器</h2>
-                <p>这些是新建启动配置时的默认值。</p>
               </div>
             </header>
-            <div className="settings-row">
-              <div>
-                <b>默认显示器</b>
-                <span>按作品在详情页选择；全局默认值将在 C8 接入。</span>
+            {preferences.data ? (
+              <LauncherDefaultsSection
+                preferences={preferences.data}
+                monitors={monitors.data ?? []}
+                onSaved={invalidatePreferences}
+              />
+            ) : (
+              <div className="settings-row">
+                <div>
+                  <b>启动器默认值</b>
+                  <span>{preferences.isError ? String(preferences.error) : "正在读取设置…"}</span>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => void preferences.refetch()}>
+                  重试
+                </Button>
               </div>
-              <Tag tone="muted">按作品</Tag>
-            </div>
-            <div className="settings-row">
+            )}
+          </section>
+
+          <section id="network-settings" className="settings-section">
+            <header>
               <div>
-                <b>Locale Emulator / NTLEA</b>
-                <span>在作品详情页选择包装器 exe 和参数；不捆绑、不自动下载。</span>
+                <h2>网络</h2>
               </div>
-              <Tag tone="status">按作品配置</Tag>
-            </div>
+              <Wifi size={15} strokeWidth={1.5} />
+            </header>
+            {preferences.data ? (
+              <NetworkSettingsSection
+                preferences={preferences.data}
+                onSaved={invalidatePreferences}
+              />
+            ) : (
+              <div className="settings-row">
+                <div>
+                  <b>代理设置</b>
+                  <span>正在读取设置…</span>
+                </div>
+              </div>
+            )}
           </section>
 
           <section id="bigscreen-settings" className="settings-section">
@@ -348,7 +383,7 @@ export function SettingsPage() {
                 ) : (
                   (monitors.data ?? []).map((monitor) => (
                     <option key={monitor.index} value={monitor.index}>
-                      {monitor.name} · {monitor.width} × {monitor.height} ·{" "}
+                      {monitor.name}，{monitor.width} × {monitor.height}，
                       {Math.round(monitor.scaleFactor * 100)}%
                     </option>
                   ))
@@ -383,34 +418,30 @@ export function SettingsPage() {
                 {bigScreenBusy ? "正在打开…" : "在电视上打开"}
               </Button>
             </div>
-            <p className="settings-hint">A 确认 · B 返回 · Y 游戏菜单 · START 控制 · LB/RB 区域</p>
+            <p className="settings-hint">A 确认 / B 返回 / Y 游戏菜单 / START 控制 / LB/RB 区域</p>
           </section>
 
           <section id="appearance-settings" className="settings-section">
             <header>
               <div>
                 <h2>外观</h2>
-                <p>主题和密度通过语义 token 控制，页面组件不硬编码颜色。</p>
               </div>
             </header>
             <div className="settings-theme">
               <div className="settings-theme__card">
                 <div className="settings-theme__swatches">
-                  <i style={{ background: "#081521" }} />
-                  <i style={{ background: "#F3EAD8" }} />
-                  <i style={{ background: "#D94B3D" }} />
-                  <i style={{ background: "#8FD3C1" }} />
-                  <i style={{ background: "#D9A441" }} />
+                  <i style={{ background: "#F5EFEC" }} />
+                  <i style={{ background: "#2B2225" }} />
+                  <i style={{ background: "#B75D6C" }} />
+                  <i style={{ background: "#587563" }} />
+                  <i style={{ background: "#8C6935" }} />
                 </div>
                 <div>
-                  <b>深夜游戏盒</b>
-                  <span>当前主题 · 墨蓝 / 奶油 / 标签红</span>
+                  <b>樱纸档案</b>
+                  <span>雾粉纸面 / 墨色侧栏 / 樱红</span>
                 </div>
                 <Tag tone="status">使用中</Tag>
               </div>
-              <p className="settings-hint">
-                新增主题时只需增加一组语义 token；组件和页面布局不需要改。
-              </p>
             </div>
             <div className="settings-row">
               <div>
@@ -454,7 +485,6 @@ export function SettingsPage() {
             <header>
               <div>
                 <h2>技术探针</h2>
-                <p>运行环境诊断；大屏和手柄的产品入口已经移到对应分区。</p>
               </div>
               <Tag tone="data">DEV</Tag>
             </header>
@@ -463,7 +493,7 @@ export function SettingsPage() {
                 <b>Gamepad API</b>
                 <span>
                   {gamepadSupported
-                    ? `浏览器支持 · 已连接 ${gamepadCount} 个手柄`
+                    ? `浏览器支持，已连接 ${gamepadCount} 个手柄`
                     : "当前环境不提供 Gamepad API"}
                 </span>
               </div>
@@ -485,45 +515,46 @@ export function SettingsPage() {
           <section id="data-settings" className="settings-section">
             <header>
               <div>
-                <h2>数据与备份</h2>
-                <p>本地 SQLite 已启用 WAL 和迁移；备份、恢复和数据目录迁移会在 C9 接入。</p>
+                <h2>数据与关于</h2>
               </div>
               <SlidersHorizontal size={15} strokeWidth={1.5} />
             </header>
-            <div className="settings-row">
-              <div>
-                <b>数据库</b>
-                <span className="settings-path" title={appInfo.data?.dbPath}>
-                  {appInfo.data?.dbPath ?? "正在读取…"}
-                </span>
+            {preferences.data ? (
+              <DataAndUpdateSection
+                appInfo={appInfo.data}
+                preferences={preferences.data}
+                onSaved={invalidatePreferences}
+              />
+            ) : (
+              <div className="settings-row">
+                <div>
+                  <b>应用设置</b>
+                  <span>正在读取设置…</span>
+                </div>
               </div>
-              <Tag tone="status">SQLite · WAL</Tag>
-            </div>
-            <div className="settings-row">
-              <div>
-                <b>数据目录</b>
-                <span className="settings-path" title={appInfo.data?.dataDir}>
-                  {appInfo.data?.dataDir ?? "正在读取…"}
-                </span>
-              </div>
-              <Tag tone="muted">本机</Tag>
-            </div>
-            <div className="settings-row">
-              <div>
-                <b>版本</b>
-                <span>{appInfo.data?.version ?? "—"}</span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => toast("数据库备份与恢复将在 C9 接入。")}
-              >
-                备份
-              </Button>
-            </div>
+            )}
           </section>
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmRoot !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmRoot(null);
+          }
+        }}
+        title={"移除扫描目录？"}
+        description={
+          <>
+            <span className="settings-path">{confirmRoot?.path}</span>
+            <br />
+            已入库的游戏会保留，只停止后续扫描这个目录。
+          </>
+        }
+        confirmLabel="移除目录"
+        busy={removingRoot}
+        onConfirm={() => void confirmRemoveRoot()}
+      />
     </div>
   );
 }

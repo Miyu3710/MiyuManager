@@ -21,14 +21,19 @@ pub struct RawResponse {
 }
 
 impl MetadataHttp {
+    #[cfg(test)]
     pub fn new() -> Result<Self> {
+        Self::with_proxy(crate::net::system_proxy())
+    }
+
+    pub fn with_proxy(proxy: Option<String>) -> Result<Self> {
         let mut builder = reqwest::Client::builder()
             .user_agent("MiyuManager/0.1 (local Galgame library manager)")
             .timeout(Duration::from_secs(18))
             .connect_timeout(Duration::from_secs(10))
             .redirect(reqwest::redirect::Policy::limited(5))
             .gzip(true);
-        if let Some(proxy) = crate::net::system_proxy() {
+        if let Some(proxy) = proxy {
             builder = builder.proxy(reqwest::Proxy::all(proxy).context("元数据代理配置无效")?);
         }
         let client = builder.build().context("无法创建元数据 HTTP 客户端")?;

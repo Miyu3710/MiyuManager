@@ -253,7 +253,7 @@ export function SteamLibraryDialog({ open, onClose, onImported }: SteamLibraryDi
       <div className="steam-dialog" role="dialog" aria-modal="true" aria-labelledby="steam-title">
         <header className="steam-head">
           <div>
-            <p className="app-kicker">STEAM LIBRARY / 自动嗅探</p>
+            <p className="app-kicker">Steam 库</p>
             <h2 id="steam-title">
               {step === "scanning"
                 ? "正在扫描 Steam 库"
@@ -433,7 +433,7 @@ export function SteamLibraryDialog({ open, onClose, onImported }: SteamLibraryDi
                             >
                               {game.candidates.map((item, index) => (
                                 <option value={index} key={item.exeKey}>
-                                  {item.exePath.split("\\").slice(-1)[0]} · {item.confidence}
+                                  {item.exePath.split("\\").slice(-1)[0]}，{item.confidence}
                                 </option>
                               ))}
                             </select>

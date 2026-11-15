@@ -1,7 +1,7 @@
 # MiyuManager 项目状态
 
 > 最后更新：2026-11-15  
-> 当前阶段：C7 实现完成，待 G5 确认；独立大屏窗口、真实数据、图标分类栏、竖版海报架、Y 游戏菜单、Start 控制侧栏和启动/详情流程已接入；手柄实机与多显示器仍待验证
+> 当前阶段：C8 实现完成；首页、收藏集、全局搜索、设置和首次启动已接入真实 SQLite，并完成“樱纸档案”视觉统一。C7 大屏仍待 G5 确认；手柄实机与多显示器仍待验证。下一轮为 C9
 >
 > 计划文件：`docs/DEVELOPMENT_PLAN.md`  
 > 设计提案：`docs/DESIGN.md`
@@ -18,7 +18,7 @@
 | C5 Steam、多源合并与批量刮削          | 已完成 | Steam 来源、Steam 库自动嗅探、字段级/全局优先级、冲突采用/锁定、封面画廊、两阶段批量队列、暂停/取消/重试和局部成功已接入；详见下文         |
 | C6 自动时长统计与统计页               | 已完成 | `play_sessions`、Job Object 会话观察、前台宽限、心跳恢复、真实统计页和会话补录/修正/删除已接入；详见下文                                   |
 | C7 电视大屏与手柄导航                 | 待验收 | 正式 `bigscreen` 窗口、显示器选择、真实库、图标分类栏、竖版海报架、Y 菜单、Start 控制侧栏、启动/详情和焦点管理已接入；待 G5 确认；详见下文 |
-| C8 首页、收藏集、设置与首次启动       | 未开始 | 依赖 C5、C6、C7                                                                                                                            |
+| C8 首页、收藏集、设置与首次启动       | 已完成 | 真实首页、收藏集 CRUD/排序/作品增删、Ctrl+K 全局搜索、启动器/网络/数据设置、更新检查和首次启动向导已接入；详见下文                         |
 | C9 硬化、性能、打包与发布候选         | 未开始 | 依赖 C8                                                                                                                                    |
 
 ## 已锁定的决策
@@ -43,13 +43,44 @@
 - A 的视觉母题确定为“深夜游戏盒”：墨蓝 #081521、盒面奶油 #F3EAD8、标签红 #D94B3D、状态薄荷 #8FD3C1、数据黄铜 #D9A441。
 - 组件、图标、动画选型记录在 docs/FRONTEND_STACK.md；逐页设想记录在 docs/PAGE_VISIONS.md。
 
+### 2026-11-15 C8 视觉基线
+
+- 主应用 token 在 C8 产品化时调整为“樱纸档案”：雾粉纸面 #F5EFEC、纸白表面 #FFFAF7、墨色侧栏 #2B2225、樱红 #B75D6C、灰绿状态 #587563、黄铜数据 #8C6935。保留 A 游戏启动器的信息结构，不改变产品方向。
+- 圆角、阴影和表面层级收紧，浅纸面承载内容、深墨侧栏承载导航；设置页主题名同步为“樱纸档案”。
+- 这次修订覆盖首页、游戏库、详情、统计、设置、收藏集、搜索和首次启动；旧 C7 大屏截图仍作为 G5 验收证据保留。
+
 ## 当前环境
 
 - Node `v24.22.0`
 - pnpm `11.25.0`
 - Rust `1.100.0`
 - WebView2 Runtime `157.0.4341.46`
-- Git 仓库已有 C1 基线提交；C2 在 `codex/c2-library-import` 分支完成；C3 在 `codex/c3-detail-launch` 分支完成；C4 在 `codex/c4-metadata-providers` 分支完成；C5 在 `codex/c5-metadata-merge` 分支完成；C6 在 `codex/c6-playtime-stats` 分支完成；C7 在 `codex/c7-bigscreen` 分支完成实现，待 G5 确认
+- Git 仓库已有 C1 基线提交；C2 在 `codex/c2-library-import` 分支完成；C3 在 `codex/c3-detail-launch` 分支完成；C4 在 `codex/c4-metadata-providers` 分支完成；C5 在 `codex/c5-metadata-merge` 分支完成；C6 在 `codex/c6-playtime-stats` 分支完成；C7 在 `codex/c7-bigscreen` 分支完成实现，待 G5 确认；C8 在 `codex/c8-product-shell` 分支完成
+
+## C8 本轮产出
+
+- 数据层：`src-tauri/migrations/20261115000900_c8_collections.sql` 新增 `collections` 和 `collection_items`。收藏集名称不区分大小写唯一，支持手动排序；作品可属于多个收藏集。新增 `collections_list`、`collection_create`、`collection_rename`、`collection_delete`、`collection_reorder`、`collection_add_works` 和 `collection_remove_work`。`LibraryQuery` 增加 `favorite_only` 与 `collection_id`，游戏库查询可直接按收藏或收藏集过滤。
+- 应用设置：`src-tauri/src/preferences.rs` 使用 SQLite `settings` 的 `app.preferences` 保存代理模式/地址、默认显示器、默认全屏、包装器默认路径与参数、可选更新清单地址和首次启动完成标记。`app_info` 增加目录数量和首次启动状态；新增 `preferences_get`、`preferences_update`、`onboarding_complete`、`open_data_dir`、`update_check`。
+- 首页：`src/features/home/**` 使用真实 `library_query` 和 `play_sessions` 聚合。主视觉优先显示最近启动的作品，没有游玩记录时回退最近入库；下方显示最近启动、最近入库、收藏、想玩清单和累计/近 7 天/本周启动/收藏概览，并提供无库、加载骨架、错误重试和启动失败提示。
+- 收藏集：`src/features/collections/**`；列表显示作品数量和封面栈，支持新建、重命名、删除和上下移动；详情支持从游戏库搜索并批量添加作品、移除作品和加载更多。封面来自真实 `assets` 缩略图，没有封面时使用分组图标，不伪造封面。
+- 全局搜索：`src/features/search/GlobalSearchPalette.tsx`；Ctrl+K 打开命令面板，搜索作品标题、原题、别名、标签、开发商/路径和收藏集名称。支持方向键、Enter、Escape、中文输入法组合输入、最近 6 条搜索和“在游戏库查看全部结果”；关闭后焦点返回顶栏搜索按钮。
+- 设置：启动器默认值写入 SQLite，作品没有单独配置时用于新启动配置；网络支持跟随系统、直连和自定义 HTTP(S) 代理，元数据请求立即切换，OAuth 授权在下次启动后使用新代理；数据与关于可打开数据目录、查看数据库和版本，并读取可选 JSON 更新清单。移除了无行为的“忽略规则编辑”和“备份”占位按钮。
+- 首次启动：`src/features/onboarding/**` 和 `#/onboarding`；欢迎 → 目录扫描 → 确认主程序与显示名 → 可选来源 → 完成。选择来源步骤可以跳过；启用/停用沿用 Provider 持久化命令。空数据目录启动时自动进入向导，已有作品库或已完成标记的时候不强制重复。
+- 视觉与交互统一：主应用 token 调整为“樱纸档案”浅纸面/墨色侧栏/樱红体系，降低圆角与阴影强度；新增 `ConfirmDialog` 统一替换全部 `window.confirm`，补充跳转到主要内容链接、焦点返回、搜索和弹窗焦点管理、底部左侧 toast、加载骨架和错误恢复。
+- 验证：`pnpm format:check`、`pnpm typecheck`、`pnpm lint`、`pnpm test`（9 个文件 / 29 passed）、`pnpm build`；`cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（65 passed / 10 ignored）。真实 Tauri 使用 `MIYU_DATA_DIR=tmp/c8-appdata` 从空目录启动，扫描 10 部 fixture 游戏并导入；SQLite 确认收藏集“深夜推荐”包含 2 部作品；自定义代理保存后退回系统代理；关闭重启后直接回到上次的 `#/settings`，没有重复首次启动，收藏集与偏好仍在。
+- 可访问性：`scripts/probe-c8-a11y.mjs` 验证首个 Tab 为“跳到主要内容”、Ctrl+K 搜索获得焦点并可用方向键、Escape 关闭后焦点回到顶栏搜索、收藏集弹窗自动聚焦名称输入、网络设置跳转、减少动效后 `data-reduced-motion=true`；结果在 `outputs/app/c8/probes/a11y-result.json`。
+- 证据：`outputs/app/c8/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`，包含首页、全局搜索、收藏集、收藏集详情、启动器/网络/数据设置和首次启动各步骤；实际 Tauri 窗口截图 `outputs/app/c8/tauri-collections.png`、`tauri-collection-detail.png`、`tauri-settings.png`、`tauri-home.png`、`tauri-search.png`、`tauri-onboarding.png` 和结构化结果 `tauri-c8-result.json`；`outputs/app/c8/probes/` 保存键盘与 reduced-motion 证据；`outputs/app/redesign/` 保存全路由视觉统一后的整页截图。
+
+### C8 已知边界
+
+- 首次启动只在“未完成引导且作品库为空”时自动出现；如果用户在导入作品后、点击完成前关闭应用，下次会按已有作品库处理，不再强制进入向导。已有 C2–C7 数据升级时也不会被重新引导。
+- 来源步骤的启用/停用复用既有 Provider 命令；本轮真实 Tauri 走通的是“稍后设置来源”路径，来源开关的持久化由既有 Rust 测试覆盖。
+- 全局搜索每次最多展示 8 部作品；收藏集名称在已加载的收藏集列表中过滤。最近搜索保存在 WebView localStorage，不写入 SQLite。
+- 代理设置只影响元数据 HTTP 客户端当前实例；OAuth 服务在应用启动时创建，因此账号授权要等下次启动才使用新代理。
+- 更新检查只读取可选的 JSON 清单（`version` / `notes` / `url`），不下载、不安装，也不验证签名；没有配置更新源时明确显示开发构建状态。安装包与更新链路属于 C9。
+- 数据目录目前只提供查看和打开，不在前端直接复制或迁移数据库；备份、恢复和迁移检查属于 C9。外观偏好继续存放在 WebView localStorage，其余应用设置写入 SQLite。
+- 收藏集支持手动排序和作品增删，不包含规则引擎、自动同步或云端收藏集。没有封面资源的收藏集只显示分组图标。
+- C7 的 G5 仍未确认；物理手柄和多显示器仍需实机复测。C8 没有重做大屏布局。
 
 ## C7 本轮产出
 
@@ -213,6 +244,17 @@
 
 已通过：
 
+### C8
+
+- `pnpm format:check`、`pnpm typecheck`、`pnpm lint`、`pnpm test`（9 个文件 / 29 passed）、`pnpm build`；`cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（65 passed / 10 ignored）。
+- Rust 覆盖收藏集创建/重名拒绝/改名/排序/作品增删/封面栈、`collection_id` 和收藏过滤、5,000 条分页、旧 C2 库迁移、偏好读写和代理 URL 校验；版本比较测试覆盖带 `v` 前缀。
+- 真实 Tauri（`MIYU_DATA_DIR=tmp/c8-appdata`）从空目录进入首次启动，扫描 `tmp/c2-fixtures/library` 得到 10 个候选并全部导入；来源步骤选择“稍后设置来源”后可完成并进入游戏库。
+- SQLite 实查：`collections` 有“深夜推荐”，`collection_items` 有 2 条作品记录；`app.preferences` 保存 `onboardingCompleted=true`。自定义代理保存后切换回“跟随系统”，两次写入均可读回。
+- 关闭并重启后直接打开上次的 `#/settings`，没有重复首次启动；作品库、收藏集和偏好仍在。
+- `scripts/probe-c8-a11y.mjs`：首个 Tab 聚焦跳转链接，Ctrl+K 聚焦搜索框，方向键切换结果，Escape 关闭后焦点回到“打开全局搜索”，收藏集弹窗焦点落在名称输入，网络分区可跳转，减少动效后 `data-reduced-motion=true`；无控制台错误。
+- `outputs/app/c8/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/` 共 48 张流程截图，全部无横向溢出；`outputs/app/c8/probes/` 包含 4 张可访问性证据；`outputs/app/redesign/` 包含主路由和弹窗的统一视觉截图。
+- 构建主包 `dist/assets/index-*.js` 约 467.54 KB（gzip 142.69 KB），收藏集、首次启动和设置均为独立 lazy chunk；未引入新的运行时依赖。
+
 ### C7
 
 - `pnpm typecheck`、`pnpm lint`、`pnpm test`（8 个文件 / 26 passed）、`pnpm build`、`pnpm format:check`；`cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（62 passed / 10 ignored）。
@@ -347,12 +389,13 @@ C2/C3 不再扩展；已知边界见上文，C4 及之后内容不在本对话�
 
 ## 下一轮入口
 
-C7 已实现，等待 G5 对当前大屏布局、纯图标分类栏、竖版海报架和按键映射的确认。确认后再进入 C8：
+C8 已完成，下一轮进入 C9：
 
-1. C8 处理首页、收藏集、设置与首次启动，把现有扫描、详情、统计、大屏和启动流程串成完整产品。
-2. 大屏仍只展示本地库、会话时长、用户状态和可追溯元数据，不伪造游戏内进度。
-3. 接入物理手柄后复测 A/B/Y/Start/LB/RB 和摇杆重复节奏；有第二块显示器时复测窗口移动与主窗口恢复。
-4. 继续调整大屏或统计体验时，保持 `play_sessions` 为事实来源，并同步更新 `docs/DESIGN.md` 与 `outputs/app/c7/` 截图证据。
+1. C9 处理错误边界、结构化日志、崩溃记录、数据库备份/恢复和迁移安全检查。
+2. 收紧 Tauri capability/CSP，验证没有远程导航、任意 shell 或越权文件访问；补安装包、版本、更新清单和发布脚本。
+3. 做 10,000 作品、5,000 封面缩略图、冷启动、大屏 4K、内存和安装包的基准；完成 Windows 10/11、1080p/4K/150%、中文/日文路径、离线/断网/限流、手柄和异常退出 QA 矩阵。
+4. G5 仍待确认：有物理手柄时复测 A/B/Y/Start/LB/RB 和摇杆重复节奏；有第二块显示器时复测窗口移动与主窗口恢复。
+5. 继续调整首页、收藏集或设置时，保持 `play_sessions` 和 `collections` 为事实来源，并同步更新 `docs/DESIGN.md`、`docs/PAGE_VISIONS.md` 与 `outputs/app/c8/` 截图。
 
 ## 待决策与风险
 
@@ -362,6 +405,9 @@ C7 已实现，等待 G5 对当前大屏布局、纯图标分类栏、竖版海�
 - G4：已完成；字段级默认优先级 + 全局顺序开关，手动/锁定优先，导入默认 `only_if_empty`，采用/锁定/解锁分离。
 - G5：C7 实现已完成，待确认当前大屏布局、纯图标分类栏、竖版海报架和按键映射；物理手柄与多显示器验证仍待补齐。
 - G6：C9 安装包、签名、便携版和更新策略。
+- C8 的首次启动只在未完成引导且作品库为空时自动出现；中途导入后退出会按已有库处理。
+- C8 的更新检查只读可选 JSON 清单，不下载或安装；数据目录只支持打开，备份/恢复/迁移留给 C9。
+- C8 的代理切换对元数据即时生效，OAuth 授权需重启应用；全局搜索最近记录保存在 WebView localStorage。
 - C3 封面只支持手动选择和本地发现；C4/C5 已补充在线封面下载、多源元数据、Steam、封面画廊和批量刮削。
 - C3 的显示偏好只保存，不强制移动游戏窗口；实际窗口放置留到后续阶段。
 - C3 启动状态只在内存中，应用重启后不会恢复正在运行的进程；关闭管理器不会强制结束游戏。

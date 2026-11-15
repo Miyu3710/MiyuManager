@@ -168,7 +168,7 @@ export function ScanImportDialog({
             )}
           </div>
           <div className="scan-dialog__head-copy">
-            <p className="app-kicker">LOCAL SCAN / 本地扫描</p>
+            <p className="app-kicker">本地扫描</p>
             <h2 id="scan-dialog-title">{title}</h2>
             <p title={state.rootPath}>{state.rootPath || "尚未选择目录"}</p>
           </div>
@@ -253,8 +253,8 @@ export function ScanImportDialog({
                 </div>
                 <div className="scan-summary__tags">
                   {state.manual ? <Tag tone="data">手动导入</Tag> : null}
-                  {state.cancelled ? <Tag tone="muted">已取消 · 部分结果</Tag> : null}
-                  {state.stats?.truncated ? <Tag tone="accent">目录过多 · 提前结束</Tag> : null}
+                  {state.cancelled ? <Tag tone="muted">已取消，部分结果</Tag> : null}
+                  {state.stats?.truncated ? <Tag tone="accent">目录过多，提前结束</Tag> : null}
                   {state.candidates.some((candidate) => candidate.alreadyImported) ? (
                     <Tag tone="data">包含已在库项目</Tag>
                   ) : null}
@@ -371,7 +371,7 @@ export function ScanImportDialog({
                             <span>{formatBytes(candidate.sizeBytes)}</span>
                             <small>
                               exe {formatBytes(candidate.fileSizeBytes)}
-                              {candidate.sizeIsEstimate ? " · 估算" : ""}
+                              {candidate.sizeIsEstimate ? "，估算" : ""}
                             </small>
                             <div>
                               <Tag tone={confidenceTone(candidate.confidence)}>
