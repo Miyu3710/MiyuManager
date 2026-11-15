@@ -110,6 +110,12 @@ for (const viewport of viewports) {
       path: path.join(directory, "05-settings-priority.png"),
       animations: "disabled",
     });
+    await settingsPage.locator(".settings-oauth").scrollIntoViewIfNeeded();
+    await settingsPage.waitForTimeout(250);
+    await settingsPage.screenshot({
+      path: path.join(directory, "06-oauth-accounts.png"),
+      animations: "disabled",
+    });
     await settingsPage.close();
   }
 

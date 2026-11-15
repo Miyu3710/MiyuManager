@@ -3,6 +3,8 @@ mod commands;
 mod db;
 mod launcher;
 mod metadata;
+mod net;
+mod oauth;
 mod scan;
 
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
@@ -78,6 +80,9 @@ pub fn run() {
             commands::metadata_candidate_preview,
             commands::metadata_import,
             commands::metadata_set_field_lock,
+            commands::oauth_status,
+            commands::oauth_connect,
+            commands::oauth_disconnect,
         ])
         .setup(|app| {
             let state = tauri::async_runtime::block_on(commands::create_app_state(app.handle()))?;

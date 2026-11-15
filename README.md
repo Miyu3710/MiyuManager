@@ -58,12 +58,23 @@ cargo test
 - 真实启动使用 Windows Job Object 跟踪进程树，详情页显示运行/退出状态和退出码；自动会话和累计时长留给 C6。
 - 元数据来源支持 VNDB API v2 和 Bangumi OpenAPI：可从详情页搜索、查看候选、预览字段差异并导入标题、别名、简介、年份、标签、开发商、发行商、发行日期和封面。
 - 来源优先级保存在 SQLite，可在设置页调整顺序和启停；搜索结果按优先级排列，导入默认只填空白且未锁定字段，手动编辑会自动留下锁定记录。每个字段保留来源、来源 ID 和抓取时间，详情响应缓存 24 小时。
-- VNDB 与 Bangumi 当前使用公开接口，不需要账号；Bangumi、Kungal、Hikarinagi 的 OAuth 登录需要各站开发者应用凭证、回调地址和令牌存储，本轮只保留 Provider 认证状态字段，未伪造登录流程。
+- 账号连接已接入 OAuth：NextMoe/Kungal 使用 public client + PKCE，Bangumi 使用 OAuth 2.0；Hikarinagi 已接入授权码 + PKCE，但当前应用需要在控制台切换为 public client（或补充 clientSecret）后才能完成 token 交换。
+- OAuth 凭证从 `MIYU_OAUTH_CONFIG`、数据目录 `oauth/providers.json` 或开发目录 `tmp/oauth/providers.json` 读取；access/refresh token 使用 Windows DPAPI 加密后写入 SQLite，不写入日志或前端。
 
 开发或测试时可以用 MIYU_DATA_DIR 指向独立的数据目录，避免写入日常数据：
 
     $env:MIYU_DATA_DIR = "D:\Projects\MiyuManager\tmp\dev-data"
     pnpm tauri dev
+
+## OAuth 配置
+
+账号连接从 `MIYU_OAUTH_CONFIG` 指向的 JSON、数据目录 `oauth/providers.json`（默认 `%APPDATA%\MiyuManager\oauth\providers.json`）或开发目录 `tmp/oauth/providers.json` 读取。文件包含各来源的 `clientId`、可选 `clientSecret`、`redirectUri` 和 `scopes`，不要提交到 Git。
+
+- NextMoe/Kungal：public client + PKCE，回调 `http://127.0.0.1/callback`，不需要 secret。
+- Bangumi：OAuth 2.0，需要 client secret 和已注册的 `http://127.0.0.1:39123/callback`。
+- Hikarinagi：授权码 + PKCE；控制台需要把应用设为 public client，并启用 `openid`、`profile`、`offline_access`，回调 `http://127.0.0.1:39124/callback`。
+
+access token 和 refresh token 使用 Windows DPAPI 加密后写入 SQLite；应用不会把密码或 token 写进日志或前端。
 
 主应用截图保存在 `outputs/app/1440x900/`、`1920x1080/`、`150pct-1280x720/` 和 `4k/`；C2 扫描确认与导入证据在 `outputs/app/c2/`；C3 详情、封面、启动配置和真实启动证据在 `outputs/app/c3/`；C4 搜索、预览、导入和来源优先级证据在 `outputs/app/c4/`；焦点与 reduced-motion 证据在 `outputs/app/probes/`。
 

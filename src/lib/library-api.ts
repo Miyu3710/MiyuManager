@@ -34,6 +34,7 @@ import type {
   MetadataClaim,
   MetadataValue,
   MetadataFieldState,
+  OAuthStatus,
 } from "./library-types";
 import { formatBytes, formatPlaytime, formatRelativeDate } from "./format";
 
@@ -1295,4 +1296,67 @@ export async function setMetadataFieldLock(
     return;
   }
   await invoke("metadata_set_field_lock", { workId, field, locked });
+}
+
+const previewOAuthStatuses: OAuthStatus[] = [
+  {
+    id: "bangumi",
+    name: "Bangumi",
+    description: "Bangumi 账号、收藏与评分",
+    authKind: "oauth2",
+    configured: true,
+    connected: false,
+    accountName: null,
+    accountId: null,
+    scopes: [],
+    expiresAt: null,
+    hint: "需要 Bangumi 应用凭证和 client_secret",
+  },
+  {
+    id: "nextmoe",
+    name: "Kungal / NextMoe",
+    description: "Kungal / NextMoe 账号与用户数据",
+    authKind: "oauth2_pkce",
+    configured: true,
+    connected: false,
+    accountName: null,
+    accountId: null,
+    scopes: ["openid", "profile", "catalog:read"],
+    expiresAt: null,
+    hint: "public client + PKCE，不需要 client_secret",
+  },
+  {
+    id: "hikarinagi",
+    name: "Hikarinagi",
+    description: "Hikarinagi 账号、收藏与状态",
+    authKind: "oauth2_pkce",
+    configured: true,
+    connected: false,
+    accountName: null,
+    accountId: null,
+    scopes: ["openid", "profile", "catalog:read", "user:read", "offline_access"],
+    expiresAt: null,
+    hint: "public client + PKCE，需要 openid/profile/offline_access",
+  },
+];
+
+export async function listOAuthAccounts(): Promise<OAuthStatus[]> {
+  if (!isTauri()) {
+    return previewOAuthStatuses;
+  }
+  return invoke<OAuthStatus[]>("oauth_status");
+}
+
+export async function connectOAuth(providerId: string): Promise<OAuthStatus> {
+  if (!isTauri()) {
+    throw new Error("浏览器预览不支持 OAuth 登录；请在 Tauri 窗口中使用。");
+  }
+  return invoke<OAuthStatus>("oauth_connect", { providerId });
+}
+
+export async function disconnectOAuth(providerId: string): Promise<void> {
+  if (!isTauri()) {
+    throw new Error("浏览器预览不支持 OAuth 登录；请在 Tauri 窗口中使用。");
+  }
+  await invoke("oauth_disconnect", { providerId });
 }

@@ -403,3 +403,17 @@ export interface MetadataImportResult {
   skippedLocked: string[];
   coverApplied: boolean;
 }
+
+export interface OAuthStatus {
+  id: string;
+  name: string;
+  description: string;
+  authKind: "oauth2" | "oauth2_pkce" | string;
+  configured: boolean;
+  connected: boolean;
+  accountName: string | null;
+  accountId: string | null;
+  scopes: string[];
+  expiresAt: number | null;
+  hint: string | null;
+}

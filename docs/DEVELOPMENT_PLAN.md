@@ -399,7 +399,8 @@ C1 的设计工作必须按 `frontend-design` Skill 的流程执行：先写设�
 - UI：详情页“来源与字段”支持按全部来源或单来源搜索、候选封面/标题/年份/开发商/来源徽标、字段差异预览、选择性导入、封面导入、字段来源账本和锁定/解锁；设置页支持来源上移/下移、启停和后续适配器自动出现。
 - 保护：手动编辑写入 `manual` locked claim；导入跳过锁定字段，默认只选空白且未锁定字段；已有手动/本地封面默认保留。
 - 验证：Provider fixture 测试、优先级/启停测试、锁定字段跳过测试、真实 Tauri 窗口联合搜索（VNDB 在 Bangumi 前）、VNDB 字段导入、锁定简介后 Bangumi 导入不覆盖、在线封面下载/缩略图缓存、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`。
-- 已知边界：OAuth 登录未启用。VNDB/Bangumi 使用公开接口；Bangumi/Kungal/Hikarinagi 的 OAuth 需要各站开发者应用凭证、回调地址和令牌存储，Provider 认证状态字段已预留但不伪造登录。Steam、批量全库刮削、复杂多源冲突 UI、自动匹配和额外 HTML 来源仍不在 C4。搜索候选和封面来自在线来源；详情缓存不等于离线元数据镜像。
+- OAuth：loopback + state + PKCE、DPAPI 加密、系统代理和账号状态/断开；NextMoe/Kungal 与 Bangumi 已完成真实浏览器授权和 token 交换；Hikarinagi 已到授权回调，但控制台当前客户端认证失败，需切换为 public client 或补充 clientSecret。
+- 已知边界：OAuth 已接入 NextMoe/Kungal、Bangumi 和 Hikarinagi 的授权页/回调/token/DPAPI 存储；NextMoe/Kungal 与 Bangumi 已完成真实登录验证。Hikarinagi 当前应用返回 `client authentication failed`，需在控制台切换为 public client 或补充 clientSecret。OAuth 凭据从 `MIYU_OAUTH_CONFIG`、数据目录 `oauth/providers.json` 或 `tmp/oauth/providers.json` 读取，不进入前端或 Git。Steam、批量全库刮削、复杂多源冲突 UI、自动匹配和额外 HTML 来源仍不在 C4。搜索候选和封面来自在线来源；详情缓存不等于离线元数据镜像。
 
 ### C5 — Steam、多源合并与批量刮削
 

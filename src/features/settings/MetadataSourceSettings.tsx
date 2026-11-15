@@ -9,6 +9,7 @@ import {
   setMetadataProviderEnabled,
 } from "../../lib/library-api";
 import type { MetadataProvider } from "../../lib/library-types";
+import { OAuthAccounts } from "./OAuthAccounts";
 
 const fieldLabels: Record<string, string> = {
   title: "标题",
@@ -166,19 +167,7 @@ export function MetadataSourceSettings() {
       <p className="settings-hint">
         顺序决定搜索结果的排列和字段合并时的默认优先值。新增来源只需注册适配器，就会自动出现在这里。
       </p>
-      <div className="settings-source-auth">
-        <div>
-          <b>账号连接</b>
-          <span>
-            Bangumi / Kungal / Hikarinagi 的 OAuth
-            需要各站开发者应用凭证、回调地址和令牌存储；Provider 认证状态字段已预留， 当前 VNDB 与
-            Bangumi 使用公开接口，不要求登录。
-          </span>
-        </div>
-        <Tag tone="muted">
-          <KeyRound size={11} /> 待接入
-        </Tag>
-      </div>
+      <OAuthAccounts />
     </>
   );
 }

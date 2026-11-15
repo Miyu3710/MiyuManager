@@ -16,6 +16,7 @@ use crate::db::{
 };
 use crate::launcher::{self, LaunchManager, LaunchSnapshot};
 use crate::metadata::{self, MetadataHttp, MetadataImportRequest, MetadataImportResult};
+use crate::oauth::OAuthService;
 use crate::scan::{self, ScanCandidate, ScanCoordinator};
 
 pub struct AppState {
@@ -26,6 +27,7 @@ pub struct AppState {
     pub launches: Arc<LaunchManager>,
     pub metadata_http: Arc<MetadataHttp>,
     pub metadata_jobs: Arc<MetadataCoordinator>,
+    pub oauth: Arc<OAuthService>,
 }
 
 #[derive(Default)]
@@ -113,6 +115,7 @@ pub async fn create_app_state(app: &AppHandle) -> anyhow::Result<AppState> {
         .with_context(|| format!("无法创建数据目录 {}", data_dir.display()))?;
     let db_path = data_dir.join("miyumanager.sqlite3");
     let pool = db::open_pool(&db_path).await?;
+    let oauth = Arc::new(OAuthService::new(&data_dir)?);
 
     Ok(AppState {
         pool,
@@ -122,6 +125,7 @@ pub async fn create_app_state(app: &AppHandle) -> anyhow::Result<AppState> {
         launches: Arc::new(LaunchManager::default()),
         metadata_http: Arc::new(MetadataHttp::new()?),
         metadata_jobs: Arc::new(MetadataCoordinator::default()),
+        oauth,
     })
 }
 
@@ -681,6 +685,41 @@ pub async fn metadata_set_field_lock(
     locked: bool,
 ) -> Result<(), String> {
     metadata::set_field_lock(&state.pool, work_id, &field, locked)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn oauth_status(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::oauth::OAuthStatus>, String> {
+    state
+        .oauth
+        .statuses(&state.pool)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn oauth_connect(
+    state: State<'_, AppState>,
+    provider_id: String,
+) -> Result<crate::oauth::OAuthStatus, String> {
+    state
+        .oauth
+        .connect(&state.pool, &provider_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn oauth_disconnect(
+    state: State<'_, AppState>,
+    provider_id: String,
+) -> Result<(), String> {
+    state
+        .oauth
+        .disconnect(&state.pool, &provider_id)
         .await
         .map_err(|error| error.to_string())
 }

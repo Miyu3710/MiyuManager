@@ -13,7 +13,7 @@
 | C1 基础工程、设计系统与可点击壳       | 已完成 | 设计系统、应用壳、Home/Library/Detail/Big Screen、Stats/Settings 和探针已完成；2026-11-15 通过 G2 视觉确认                             |
 | C2 SQLite、目录扫描与真实游戏库       | 已完成 | SQLite/WAL/FTS5、目录扫描、候选确认、汉化 exe 识别、扫描排除/手动导入、真实游戏库、搜索筛选排序、持久化和 5,000 条查询已接入；详见下文 |
 | C3 作品详情、图片缓存与启动器         | 已完成 | 真实详情编辑、封面缓存/发现、启动配置、包装器、路径校验、Job Object 启动跟踪与运行状态已接入；详见下文                                 |
-| C4 Metadata Provider、VNDB 与 Bangumi | 已完成 | Provider 框架、来源优先级、VNDB/Bangumi 搜索与导入、字段 claim/锁定、封面下载和来源账本已接入；详见下文                                |
+| C4 Metadata Provider、VNDB 与 Bangumi | 已完成 | Provider 框架、来源优先级、VNDB/Bangumi 搜索与导入、字段 claim/锁定、封面下载、来源账本和 OAuth 账号连接已接入；详见下文               |
 | C5 Steam、多源合并与批量刮削          | 未开始 | 依赖 C4                                                                                                                                |
 | C6 自动时长统计与统计页               | 未开始 | 依赖 C3；可与 C4/C5 在不同 worktree 并行                                                                                               |
 | C7 电视大屏与手柄导航                 | 未开始 | 依赖 C6                                                                                                                                |
@@ -58,12 +58,14 @@
 - 搜索与导入 UI：`src/features/work-detail/MetadataPanel.tsx`；详情页“来源与字段”支持全部来源或单来源搜索、候选封面/标题/年份/开发商/来源徽标、字段差异预览、选择性导入、封面导入、来源账本和锁定/解锁。
 - 字段保护：手动编辑通过 `work_update` 写入 `manual` locked claim；导入跳过锁定字段，默认只选空白且未锁定字段；已有手动/本地封面默认保留；锁定字段在重新导入时保持原值。
 - 封面：在线候选封面可下载到现有资产缓存，生成 WebP 缩略图；资产来源标记 `online`，详情页区分手动/本地/在线封面。
+- OAuth：`src-tauri/src/oauth/**`、`20261115000500_oauth.sql`；支持系统浏览器 + 本机环回回调、state、PKCE、token 交换、Windows DPAPI 加密存储、账号状态和断开连接。NextMoe/Kungal 与 Bangumi 已用真实账号完成授权验证；Hikarinagi 授权页和回调已完成，但当前应用被识别为机密客户端，需要控制台切换为 public client 或补充 secret。
+- OAuth 设置：`src/features/settings/OAuthAccounts.tsx`；设置页显示三个来源的配置/连接状态、账号名、scope，并提供连接和断开。凭据从 `MIYU_OAUTH_CONFIG`、数据目录 `oauth/providers.json` 或 `tmp/oauth/providers.json` 读取，不进入前端或 Git。
 - 验证：Provider fixture 测试、优先级/启停测试、锁定字段跳过测试、真实 Tauri 窗口联合搜索（VNDB 在 Bangumi 前）、VNDB 字段导入、锁定简介后 Bangumi 导入不覆盖、在线封面下载和缩略图缓存。
-- 证据：`outputs/app/c4/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`，包含 `01-sources-empty.png`、`02-search-results.png`、`03-preview.png`、`04-imported.png`、`04b-locked.png`、`05-settings-priority.png`。
+- 证据：`outputs/app/c4/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`，包含 `01-sources-empty.png`、`02-search-results.png`、`03-preview.png`、`04-imported.png`、`04b-locked.png`、`05-settings-priority.png`、`06-oauth-accounts.png`。
 
 ### C4 已知边界
 
-- OAuth 登录未启用。VNDB/Bangumi 当前使用公开接口，不需要账号；Bangumi、Kungal、Hikarinagi 的 OAuth 需要各站开发者应用凭证、回调地址和令牌存储，Provider 认证状态字段已预留，但本轮没有伪造登录流程。
+- OAuth 登录已接入 NextMoe/Kungal、Bangumi 和 Hikarinagi 的授权流程；NextMoe/Kungal 与 Bangumi 已完成真实登录。Hikarinagi 当前 token 交换返回 `client authentication failed`，需要在开发者控制台把应用切换为 public client，或提供 clientSecret；这不影响公开目录数据和其余来源。
 - 不包含 Steam、批量全库刮削、复杂多源冲突 UI、自动匹配和额外 HTML 来源；这些留到 C5。
 - 搜索结果和候选封面来自在线来源；只为详情响应做 24 小时缓存，不构成离线元数据镜像。断网时本地库、详情和启动仍可用，但搜索会失败并给出重试。
 - VNDB 的关联作品只在候选详情展示，不自动建立本地作品关系或合并作品。
@@ -147,13 +149,14 @@
 ### C4
 
 - `pnpm lint`、`pnpm typecheck`、`pnpm test`（10 个前端测试，新增元数据搜索/导入和来源排序测试）、`pnpm build`、`pnpm format:check`。
-- `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（24 个 Rust 测试；22 个通过，2 个需要网络的 live 测试默认忽略）。
+- `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（35 个 Rust 测试；28 个通过，7 个需要网络或人工授权的 live 测试默认忽略）。
 - 网络 smoke：`cargo test live_provider_smoke -- --ignored` 通过；VNDB/Bangumi 联合搜索、详情解析均返回真实数据。
 - 网络导入 smoke：`cargo test live_search_priority_and_cover_import -- --ignored` 通过；VNDB 结果优先于 Bangumi，在线封面下载、原图和 WebP 缩略图写入成功。
+- OAuth smoke：`live_nextmoe_login_persists_account` 与 `live_bangumi_login_persists_account` 通过；真实浏览器同意授权后 token 交换成功、账号写入内存库。`live_hikarinagi_login_persists_account` 已完成浏览器授权和回调，但 token 端点返回 `client authentication failed`，需要把 Hikarinagi 应用切换为 public client。
 - 实际 Tauri 窗口（`MIYU_DATA_DIR=tmp/c4-appdata-1`）：在作品详情“来源与字段”搜索“月影”得到 29 条候选，VNDB 12 条在前、Bangumi 17 条在后；选择 VNDB 候选导入 4 个空白字段；锁定简介后切换 Bangumi 候选，预览显示“已锁定”且不可勾选，导入只应用到未锁定字段，简介保持 VNDB 值。
 - SQLite 证据：`metadata_claims` 中 VNDB 的 `aliases`、`description`、`publisher`、`release_date` 有来源和时间；`description` 的 `locked=1`；Bangumi 只写入了未锁定的 `developer`。
-- 截图证据：`outputs/app/c4/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`；所有尺寸无横向溢出，4K 来源面板已完成加载；设置页来源顺序和启停按钮可用。
-- 主包约 391.27 KB（gzip 119.34 KB）；详情页 lazy chunk 约 165.02 KB（gzip 49.04 KB）。
+- 截图证据：`outputs/app/c4/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`；所有尺寸无横向溢出，4K 来源面板已完成加载；设置页来源顺序、启停和 OAuth 账号卡可用。
+- 主包约 392.52 KB（gzip 119.69 KB）；详情页 lazy chunk 约 165.02 KB（gzip 49.03 KB）。
 
 ### C3
 
@@ -238,7 +241,7 @@ C2/C3 不再扩展；已知边界见上文，C4 及之后内容不在本对话�
 
 - 完成日期：2026-11-15
 - 分支：`codex/c4-metadata-providers`
-- 结论：C4 已完成；Provider 框架、VNDB/Bangumi 搜索与字段导入、来源优先级、字段 claim/锁定、在线封面缓存和来源账本均有自动化或实际窗口证据。
+- 结论：C4 已完成；Provider 框架、VNDB/Bangumi 搜索与字段导入、来源优先级、字段 claim/锁定、在线封面缓存、来源账本和 OAuth 账号连接均有自动化或实际窗口证据。
 
 ## 下一轮入口
 
@@ -262,9 +265,9 @@ C4 已完成，本对话到此结束，不启动 C5。若后续另开对话并�
 - C3 启动状态只在内存中，应用重启后不会恢复正在运行的进程；关闭管理器不会强制结束游戏。
 - 统计页仍是 C1 mock 视觉占位；`play_sessions` 表和真实会话在 C6 接入。
 - 4K、150% 缩放和 1440/1920 截图已覆盖主路由；C3 详情、启动配置、编辑弹窗和游戏库缩略图已覆盖。扫描弹窗的 4K 单独手测仍属于 C9 回归范围。
-- Bangumi/Kungal/Hikarinagi 的 OAuth 登录尚未启用；需要各站开发者应用凭证、回调地址和令牌存储，C4 只预留 Provider 认证状态字段，未伪造登录。
+- Hikarinagi OAuth 还需要在控制台切换为 public client（或补 clientSecret）；NextMoe/Kungal 与 Bangumi 已完成真实登录。OAuth 配置和 DPAPI 已接入，不依赖明文令牌文件。
 
-当前没有阻塞项。OAuth 登录需要用户提供或注册各站开发者应用凭证，属于后续可选增强，不影响 C4 的公开来源搜索与导入。
+当前没有阻塞项。Hikarinagi 的剩余动作是控制台把应用改为 public client；其余公开来源搜索和已完成的 OAuth 连接不受影响。
 
 ## 更新规则
 
