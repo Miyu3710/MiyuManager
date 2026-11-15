@@ -1,6 +1,7 @@
 # MiyuManager 开发规划
 
-> 状态：v1 规划已锁定；C1、C2、C3、C4 已完成，G2 已确认；C5 尚未启动  
+> 状态：v1 规划已锁定；C1、C2、C3、C4、C5 已完成，G2/G4 已确认；C6 尚未启动
+>
 > 更新日期：2026-11-15  
 > 目标平台：Windows 10 22H2 / Windows 11，x64 优先  
 > 产品形态：本地优先的 Windows Galgame / AVG 游戏库管理器  
@@ -84,7 +85,7 @@ v1 明确不做：
 - 作品模型采用 Work → Release → LocalCopy，而不是单一 Game 表。
 - 默认数据目录为 `%APPDATA%\MiyuManager`；C8 提供自定义数据目录设置，便携版在 C9 再决定。
 - v1 UI 语言为简体中文，代码从 C1 开始预留 i18n key；日文/英文翻译不阻塞 v1。
-- v1 默认来源优先级按字段决定：中文标题/简介优先 Bangumi，原始标题/标签/关联作品优先 VNDB，商店信息和发行日期优先 Steam。C4 已提供来源顺序、字段锁定和手动字段保护；C5 处理多源冲突和更细的字段优先级。
+- v1 默认来源优先级按字段决定：中文标题/简介优先 Bangumi，原始标题/标签/关联作品优先 VNDB，商店信息和发行日期优先 Steam。C4 已提供来源顺序、字段锁定和手动字段保护；C5 已提供字段级排序、全局顺序开关、多源冲突和批量刮削。
 - 默认不采集匿名使用数据，不发送遥测。
 - 游戏内进度、路线、章节、存档状态不由管理器自动读取；用户状态、评分、收藏和备注由用户维护。
 
@@ -387,7 +388,7 @@ C1 的设计工作必须按 `frontend-design` Skill 的流程执行：先写设�
 - 任务进度可见，可取消；失败有重试。
 - 来源顺序调整后，搜索排列和字段合并默认优先级同步变化。
 
-**不包含**：Steam、批量全库刮削、复杂冲突 UI、额外 HTML 来源。
+**不包含**：额外 HTML 来源；Steam、批量队列和复杂冲突已在 C5 完成。
 
 **主要产出**：`src-tauri/src/metadata/**`、`src-tauri/migrations/**`、`src/features/work-detail/**`、`src/features/settings/**`。
 
@@ -395,18 +396,19 @@ C1 的设计工作必须按 `frontend-design` Skill 的流程执行：先写设�
 
 - 完成日期：2026-11-15；分支：`codex/c4-metadata-providers`。
 - 数据层：`20261115000400_c4_metadata.sql` 新增 `metadata_providers`、`source_records`、`metadata_claims`；Provider 顺序和启停持久化，详情响应缓存 24 小时。
-- Provider：Rust `MetadataProvider` trait、VNDB API v2、Bangumi OpenAPI；统一搜索结果、候选详情、字段 claim、错误和取消；HTTP 客户端包含 User-Agent、超时、重试/退避、按来源限速和大小限制。
+- Provider：Rust `MetadataProvider` trait、VNDB API v2、Bangumi OpenAPI、Kungal / NextMoe Catalog 和 Hikarinagi；统一搜索结果、候选详情、字段 claim、错误和取消；HTTP 客户端包含 User-Agent、超时、重试/退避、按来源限速和大小限制。Kungal 可匿名读取 Catalog；Hikarinagi 使用 `catalog:read` 令牌。
 - UI：详情页“来源与字段”支持按全部来源或单来源搜索、候选封面/标题/年份/开发商/来源徽标、字段差异预览、选择性导入、封面导入、字段来源账本和锁定/解锁；设置页支持来源上移/下移、启停和后续适配器自动出现。
 - 保护：手动编辑写入 `manual` locked claim；导入跳过锁定字段，默认只选空白且未锁定字段；已有手动/本地封面默认保留。
 - 验证：Provider fixture 测试、优先级/启停测试、锁定字段跳过测试、真实 Tauri 窗口联合搜索（VNDB 在 Bangumi 前）、VNDB 字段导入、锁定简介后 Bangumi 导入不覆盖、在线封面下载/缩略图缓存、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`。
-- OAuth：loopback + state + PKCE、DPAPI 加密、系统代理和账号状态/断开；NextMoe/Kungal 与 Bangumi 已完成真实浏览器授权和 token 交换；Hikarinagi 已到授权回调，但控制台当前客户端认证失败，需切换为 public client 或补充 clientSecret。
-- 已知边界：OAuth 已接入 NextMoe/Kungal、Bangumi 和 Hikarinagi 的授权页/回调/token/DPAPI 存储；NextMoe/Kungal 与 Bangumi 已完成真实登录验证。Hikarinagi 当前应用返回 `client authentication failed`，需在控制台切换为 public client 或补充 clientSecret。OAuth 凭据从 `MIYU_OAUTH_CONFIG`、数据目录 `oauth/providers.json` 或 `tmp/oauth/providers.json` 读取，不进入前端或 Git。Steam、批量全库刮削、复杂多源冲突 UI、自动匹配和额外 HTML 来源仍不在 C4。搜索候选和封面来自在线来源；详情缓存不等于离线元数据镜像。
+- OAuth：loopback + state + PKCE、DPAPI 加密、系统代理、账号状态/断开、访问令牌读取和 refresh token 轮换；NextMoe/Kungal、Bangumi 与 Hikarinagi 均已完成真实浏览器授权和 token 交换。
+- 已知边界：OAuth 已接入 NextMoe/Kungal、Bangumi 和 Hikarinagi 的授权页/回调/token/DPAPI 存储，三者均已完成真实登录验证。Hikarinagi 数据源需要 `catalog:read`；已连接账号直接复用访问令牌，未连接时可用 `clientSecret` 换取应用级令牌。OAuth 凭据从 `MIYU_OAUTH_CONFIG`、数据目录 `oauth/providers.json` 或 `tmp/oauth/providers.json` 读取，不进入前端或 Git。搜索候选和封面来自在线来源；详情缓存不等于离线元数据镜像。
 
 ### C5 — Steam、多源合并与批量刮削
 
 **规模**：M  
 **依赖**：C4  
 **目标**：让多源刮削成为真正可用的产品功能，而不是单次 API 调用演示。
+**当前状态**：已完成；Steam Store、多源合并、字段级/全局优先级、冲突处理、封面画廊和两阶段批量队列均已接入。
 
 **工作**
 
@@ -433,7 +435,7 @@ C1 的设计工作必须按 `frontend-design` Skill 的流程执行：先写设�
 
 **不包含**：EGS/Getchu/DLsite、插件 SDK、云端元数据服务。
 
-**主要产出**：`src-tauri/src/scrapers/steam.rs`、`src-tauri/src/scrapers/merge.rs`、`src/features/metadata/merge/**`。
+**主要产出**：`src-tauri/src/metadata/steam.rs`、`src-tauri/src/metadata/merge.rs`、`src-tauri/migrations/20261115000600_c5_metadata_merge.sql`、`src/features/metadata/**`、`src/features/settings/FieldPrioritySettings.tsx`。
 
 ### C6 — 自动时长统计与统计页
 
@@ -661,7 +663,7 @@ UI 变更额外要求：
 - **G1**：已完成；A 已选，“深夜游戏盒”配色与逐页设想已确认。
 - **G2**：已完成；C1 四个静态界面已确认后进入数据层。
 - **G3**：已完成；C3 默认直接启动，不捆绑/不自动下载 Locale Emulator 或 NTLEA；按作品可选包装器 exe 和参数数组。
-- **G4**：C5 多源冲突和字段优先级确认。
+- **G4**：已完成；字段级默认优先级 + 全局顺序开关，手动/锁定优先，采用/锁定/解锁分离，批量默认 `only_if_empty`。
 - **G5**：C7 大屏布局和手柄映射确认。
 - **G6**：C9 安装包、签名、便携版和更新策略确认。
 

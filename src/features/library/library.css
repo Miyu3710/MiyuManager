@@ -294,6 +294,44 @@
   min-width: 0;
 }
 
+.library-card-wrap.is-selected .library-card {
+  border-color: rgba(143, 211, 193, 0.42);
+  background: rgba(143, 211, 193, 0.045);
+}
+
+.library-card-wrap.is-selectable .library-card {
+  cursor: pointer;
+}
+
+.library-select {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 7;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 1px solid rgba(243, 234, 216, 0.45);
+  border-radius: 50%;
+  background: rgba(8, 21, 33, 0.82);
+  color: transparent;
+  transition:
+    background-color var(--motion-fast) linear,
+    border-color var(--motion-fast) linear,
+    color var(--motion-fast) linear;
+}
+
+.library-select.is-on {
+  border-color: var(--color-status);
+  background: var(--color-status);
+  color: var(--color-bg);
+}
+
+.library-card-wrap.is-selectable .library-status {
+  left: 34px;
+}
+
 .library-grid {
   display: grid;
   grid-template-columns: repeat(var(--library-columns), minmax(0, 1fr));
@@ -521,6 +559,20 @@
   white-space: nowrap;
 }
 
+.library-row.is-selectable {
+  grid-template-columns: 24px 46px minmax(160px, 1.4fr) 0.8fr 0.8fr 0.7fr 0.9fr auto;
+  padding-left: 10px;
+}
+
+.library-row.is-selectable .library-select {
+  position: static;
+}
+
+.library-row.is-selected {
+  border-color: rgba(143, 211, 193, 0.28);
+  background: rgba(143, 211, 193, 0.045);
+}
+
 .library-foot {
   display: flex;
   flex: none;
@@ -532,6 +584,50 @@
   color: var(--color-text-faint);
   font-family: var(--font-mono);
   font-size: 10.5px;
+}
+
+.library-batch-bar {
+  position: sticky;
+  bottom: 10px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(143, 211, 193, 0.3);
+  border-radius: var(--radius-card);
+  background: rgba(8, 21, 33, 0.92);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(12px);
+}
+
+.library-batch-bar > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.library-batch-bar > div:first-child {
+  color: var(--color-status);
+}
+
+.library-batch-bar > div:first-child span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.library-batch-bar > div:first-child b {
+  color: var(--color-data);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.library-batch-bar__actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .library-skeleton {

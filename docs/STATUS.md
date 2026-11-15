@@ -1,7 +1,8 @@
 # MiyuManager 项目状态
 
 > 最后更新：2026-11-15  
-> 当前阶段：C4 已完成；C5 尚未启动  
+> 当前阶段：C5 已完成；C6 尚未启动
+>
 > 计划文件：`docs/DEVELOPMENT_PLAN.md`  
 > 设计提案：`docs/DESIGN.md`
 
@@ -14,7 +15,7 @@
 | C2 SQLite、目录扫描与真实游戏库       | 已完成 | SQLite/WAL/FTS5、目录扫描、候选确认、汉化 exe 识别、扫描排除/手动导入、真实游戏库、搜索筛选排序、持久化和 5,000 条查询已接入；详见下文 |
 | C3 作品详情、图片缓存与启动器         | 已完成 | 真实详情编辑、封面缓存/发现、启动配置、包装器、路径校验、Job Object 启动跟踪与运行状态已接入；详见下文                                 |
 | C4 Metadata Provider、VNDB 与 Bangumi | 已完成 | Provider 框架、来源优先级、VNDB/Bangumi 搜索与导入、字段 claim/锁定、封面下载、来源账本和 OAuth 账号连接已接入；详见下文               |
-| C5 Steam、多源合并与批量刮削          | 未开始 | 依赖 C4                                                                                                                                |
+| C5 Steam、多源合并与批量刮削          | 已完成 | Steam 来源、字段级/全局优先级、冲突采用/锁定、封面画廊、两阶段批量队列、暂停/取消/重试和局部成功已接入；详见下文                       |
 | C6 自动时长统计与统计页               | 未开始 | 依赖 C3；可与 C4/C5 在不同 worktree 并行                                                                                               |
 | C7 电视大屏与手柄导航                 | 未开始 | 依赖 C6                                                                                                                                |
 | C8 首页、收藏集、设置与首次启动       | 未开始 | 依赖 C5、C6、C7                                                                                                                        |
@@ -48,28 +49,50 @@
 - pnpm `11.25.0`
 - Rust `1.100.0`
 - WebView2 Runtime `157.0.4341.46`
-- Git 仓库已有 C1 基线提交；C2 在 `codex/c2-library-import` 分支完成；C3 在 `codex/c3-detail-launch` 分支完成；C4 在 `codex/c4-metadata-providers` 分支完成
+- Git 仓库已有 C1 基线提交；C2 在 `codex/c2-library-import` 分支完成；C3 在 `codex/c3-detail-launch` 分支完成；C4 在 `codex/c4-metadata-providers` 分支完成；C5 在 `codex/c5-metadata-merge` 分支完成
+
+## C5 本轮产出
+
+- 数据层：`src-tauri/migrations/20261115000600_c5_metadata_merge.sql`；新增 `metadata_field_priorities`，保存每个字段的来源顺序；`settings` 增加 `metadata.field_priority_global` 开关。旧库迁移通过。
+- Steam：`src-tauri/src/metadata/steam.rs`；支持名称搜索、AppID、`store.steampowered.com/app/...` 商店链接，过滤原声带/画集/漫画等附加内容，解析中英文发售日期、开发商、发行商、简介、类型标签，提供 600×900 封面、横幅和胶囊图。请求按来源限速、缓存详情并处理 429/重试；真实测试 AppID 324160 通过。
+- 来源优先级：设置页支持全局来源顺序、字段级顺序，以及“全部字段跟随全局来源顺序”开关。字段开关持久化；打开后所有字段使用全局顺序，字段级覆盖保留但暂不生效，关闭后恢复。全局顺序缺失字段时按来源能力过滤，新增来源会自动出现。
+- 合并与冲突：`src-tauri/src/metadata/merge.rs`；按标题/别名/年份相似度为每个启用的来源选最可能的候选，聚合同一字段的多个来源值，默认只勾选空白且未锁定字段；支持逐字段改选、采用来源值、锁定/解锁。手动/锁定 claim 始终优先，字段账本显示冲突徽标、来源、时间和“采用此值”。
+- 封面：合并预览和手动搜索都改为图片画廊；支持封面、横幅、胶囊图，显示来源和类型。选择哪张图就下载哪张，原图与 WebP 缩略图缓存；已有封面默认不选，锁定封面跳过。每个来源最多展示 4 张、总计最多 12 张。
+- 批量刮削：`src/features/metadata/BatchScrapeDialog.tsx`、`src-tauri/src/commands.rs`；游戏库多选后两阶段执行（匹配提案 → 确认应用）。支持来源选择、每部作品状态、总进度、暂停/继续、取消、失败项重试和局部成功；应用时再次检查锁定和空字段，`only_if_empty` 防止提案生成后值变化被覆盖；封面为可选项。
+- UI：`src/features/metadata/MergePanel.tsx`、`FieldPrioritySettings.tsx`、`BatchScrapeDialog.tsx`；详情页新增多源合并工作台，设置页新增字段优先级/全局开关，游戏库新增批量选择条，来源账本新增封面缩略图和冲突处理。
+- 验证：`pnpm lint`、`pnpm typecheck`、`pnpm test`（14 passed）、`pnpm build`、`pnpm format:check`；`cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（42 passed / 8 ignored）。主包约 407.86 KB（gzip 123.50 KB），详情页 lazy chunk 约 175.91 KB（gzip 51.74 KB）。Steam live AppID/详情测试通过。实际 Tauri 窗口（`MIYU_DATA_DIR=tmp/c5-appdata`）匹配 VNDB v4、Bangumi 13、NextMoe 86、Steam 324160，应用 6 个字段和 1 张封面；Bangumi 日期导入后采用 Steam 值并锁定；批量 1 部作品应用 6 个字段和封面；暂停、取消、失败重试路径可用；手动选择 Steam 横幅后缓存原图 460×215 和 WebP 缩略图；全局字段优先级开关写入 SQLite 并即时生效。50 条提案的批量对话框通过 Vitest 验证仍可操作。
+- 证据：`outputs/app/c5/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`，包含 `01-merge-preview`、`01b-merge-covers`、`01c-manual-cover-gallery`、`02-field-priorities`、`02b-field-priorities-global`、`03-library-selection`、`04-batch-setup`、`05-batch-review`；实际 Tauri 截图 `tauri-merge-preview.png`、`tauri-conflict-adopt.png`、`tauri-batch-review.png`、`tauri-batch-done.png`、`tauri-batch-paused.png`、`tauri-steam-appid.png`、`tauri-manual-cover-gallery.png`、`tauri-global-priority.png`、`tauri-ledger-cover.png`。
+
+### C5 已知边界
+
+- Steam Store 的搜索和应用详情接口不是正式稳定 API；商店名称/日期会随语言和区域变化，原题可能只得到本地化名称。失败会作为单来源错误展示，其他来源继续。
+- 批量提案保存在内存中，应用重启会丢失未应用的队列；任务不跨重启继续。
+- 自动匹配为每个来源取一个最高相似度候选，默认勾选要求置信度 ≥ 0.6；低于阈值仍可在合并预览中手动选择，但批量默认跳过。没有多候选自动合并或人工逐 claim 冲突向导。
+- 批量只按作品标题/原题/别名搜索，不读取游戏内信息；来源限速决定 50 部作品需要较长时间，UI 保持可操作。
+- 封面画廊有 4/来源、12/总数上限；选择非主封面会下载对应图片，但来源记录仍以 URL 形式保存，不在账本中直接展示 URL。
+- 没有 EGS/Getchu/DLsite、定时批次、后台队列持久化、云端元数据服务或插件 SDK。
 
 ## C4 本轮产出
 
 - 数据层：`src-tauri/migrations/20261115000400_c4_metadata.sql`；新增 `metadata_providers`、`source_records`、`metadata_claims`，保存 Provider 顺序/启停、原始响应、字段值、来源 ID、抓取时间和锁定状态。详情响应缓存 24 小时。
 - Provider：`src-tauri/src/metadata/**`；`MetadataProvider` trait、VNDB API v2、Bangumi OpenAPI、统一搜索结果/候选详情/字段 claim/错误/取消；HTTP 客户端包含 User-Agent、18 秒超时、3 次退避重试、按来源限速、响应大小限制和取消。
+- 来源扩展：Kungal / NextMoe Catalog（匿名读取 `/v2/catalog/works`，映射标题、原题、别名、简介、年份、公司、标签、发行日期、关联作品和多封面）与 Hikarinagi（`/v3/search`、`/v3/galgames/{id}`、`/v3/galgames/{id}/producers`，需要 `catalog:read` Bearer 令牌，映射标题、原题、别名、简介、开发商、发行商、标签、发行日期和封面）。Hikarinagi 优先使用已连接账号的访问令牌，过期时刷新并保存轮换后的 refresh token；配置 `clientSecret` 时也可用 `client_credentials` 应用级令牌。
 - 来源优先级：设置页支持上移/下移和启停，顺序持久化到 SQLite；搜索按优先级排列，字段预览的默认选中按候选来源与已有 claim 的优先级判断。后续新增来源只需注册适配器并自动出现在设置页。
 - 搜索与导入 UI：`src/features/work-detail/MetadataPanel.tsx`；详情页“来源与字段”支持全部来源或单来源搜索、候选封面/标题/年份/开发商/来源徽标、字段差异预览、选择性导入、封面导入、来源账本和锁定/解锁。
 - 字段保护：手动编辑通过 `work_update` 写入 `manual` locked claim；导入跳过锁定字段，默认只选空白且未锁定字段；已有手动/本地封面默认保留；锁定字段在重新导入时保持原值。
 - 封面：在线候选封面可下载到现有资产缓存，生成 WebP 缩略图；资产来源标记 `online`，详情页区分手动/本地/在线封面。
-- OAuth：`src-tauri/src/oauth/**`、`20261115000500_oauth.sql`；支持系统浏览器 + 本机环回回调、state、PKCE、token 交换、Windows DPAPI 加密存储、账号状态和断开连接。NextMoe/Kungal 与 Bangumi 已用真实账号完成授权验证；Hikarinagi 授权页和回调已完成，但当前应用被识别为机密客户端，需要控制台切换为 public client 或补充 secret。
+- OAuth：`src-tauri/src/oauth/**`、`20261115000500_oauth.sql`；支持系统浏览器 + 本机环回回调、state、PKCE、token 交换、Windows DPAPI 加密存储、账号状态、断开连接、访问令牌读取和 refresh token 轮换。NextMoe/Kungal、Bangumi 与 Hikarinagi 均已用真实账号完成授权验证。
 - OAuth 设置：`src/features/settings/OAuthAccounts.tsx`；设置页显示三个来源的配置/连接状态、账号名、scope，并提供连接、断开、重新读取和导入 `providers.json`。凭据从 `MIYU_OAUTH_CONFIG`、数据目录 `oauth/providers.json` 或开发目录 `tmp/oauth/providers.json` 读取，不进入前端或 Git；开发构建会额外查找仓库根目录的 `tmp/oauth/providers.json`，配置保存后即时生效，不需要重启。
-- 验证：Provider fixture 测试、优先级/启停测试、锁定字段跳过测试、OAuth 配置读取/导入测试、真实 Tauri 窗口联合搜索（VNDB 在 Bangumi 前）、VNDB 字段导入、锁定简介后 Bangumi 导入不覆盖、在线封面下载和缩略图缓存。
+- 验证：Provider fixture 测试、优先级/启停测试、锁定字段跳过测试、OAuth 配置读取/导入测试、真实 Tauri 窗口联合搜索（VNDB 在 Bangumi 前）、VNDB 字段导入、锁定简介后 Bangumi 导入不覆盖、在线封面下载和缩略图缓存。Kungal 在线 smoke 返回真实候选和详情；Hikarinagi 使用本机已连接账号实测搜索返回 20 条候选，CLANNAD 详情含开发商 Key、发行商、11 个标签和封面。
 - 证据：`outputs/app/c4/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`，包含 `01-sources-empty.png`、`02-search-results.png`、`03-preview.png`、`04-imported.png`、`04b-locked.png`、`05-settings-priority.png`、`06-oauth-accounts.png`。
 
 ### C4 已知边界
 
-- OAuth 登录已接入 NextMoe/Kungal、Bangumi 和 Hikarinagi 的授权流程；NextMoe/Kungal 与 Bangumi 已完成真实登录。Hikarinagi 当前 token 交换返回 `client authentication failed`，需要在开发者控制台把应用切换为 public client，或提供 clientSecret；这不影响公开目录数据和其余来源。
-- 不包含 Steam、批量全库刮削、复杂多源冲突 UI、自动匹配和额外 HTML 来源；这些留到 C5。
+- OAuth 登录已接入 NextMoe/Kungal、Bangumi 和 Hikarinagi 的授权流程，三者均已完成真实登录。Hikarinagi 数据源需要 `catalog:read`：已连接账号会直接复用访问令牌；未连接时可在 `providers.json` 配置 `clientSecret` 使用应用级令牌。
+- 不包含 Steam、批量全库刮削、复杂多源冲突 UI、自动匹配和额外 HTML 来源；这些已在 C5 补齐（额外 HTML 来源仍不在 v1）。
 - 搜索结果和候选封面来自在线来源；只为详情响应做 24 小时缓存，不构成离线元数据镜像。断网时本地库、详情和启动仍可用，但搜索会失败并给出重试。
 - VNDB 的关联作品只在候选详情展示，不自动建立本地作品关系或合并作品。
-- 锁定是字段级：锁定后该字段的所有 claim 都跳过导入；暂不提供逐 claim 选择“采用此值/解锁”的冲突处理界面。
+- 锁定是字段级：锁定后该字段的所有 claim 都跳过导入；C5 已补上逐 claim“采用此值”和冲突处理界面。
 - 搜索一次只导入一个候选；字段预览默认只选空白且未锁定字段，非空字段需要用户显式勾选。
 - 浏览器预览使用固定 mock 候选；真实网络搜索、封面下载和 SQLite 写入只在 Tauri 窗口可用。
 
@@ -88,7 +111,7 @@
 ### C3 已知边界
 
 - 自动游玩会话、累计时长和统计页仍在 C6；C3 只记录启动次数和最近启动时间，不生成 `play_sessions`。
-- 封面只支持手动选择和本地发现，不支持在线封面候选或 VNDB/Bangumi/Steam 下载；来源面板仍为本地占位。
+- 封面只支持手动选择和本地发现；C4/C5 已补充在线封面候选、下载和画廊。
 - 包装器是通用模型：用户选择 exe 并填写参数，参数后接游戏 exe 与游戏参数；不内置 Locale Emulator/NTLEA，不自动检测安装路径，不提供 profile 选择器。
 - 显示器与全屏偏好只保存并展示，不强制移动游戏窗口；实际窗口放置留给大屏/后续阶段。
 - 启动状态保存在内存中，应用重启后不会恢复“正在运行”；进程树跟踪只在本次应用运行期间有效。关闭管理器不会强制结束游戏（Job Object 未设置 kill-on-close）。
@@ -112,7 +135,7 @@
 
 ### C2 已知边界
 
-- C2 阶段封面仍是标题排印占位；C3 已补充手动/本地封面缓存，C4 已补充 VNDB/Bangumi 在线封面和元数据，Steam 与复杂多源冲突留到 C5。
+- C2 阶段封面仍是标题排印占位；C3 已补充手动/本地封面缓存，C4 已补充 VNDB/Bangumi 在线封面和元数据，C5 已补充 Steam、多源冲突和批量刮削。
 - C2 阶段详情页只展示本地安装与启动路径；C3 已补上启动配置、路径校验和真实启动。
 - `play_sessions` 尚未建表；统计页仍是 C1 视觉占位，C6 接入真实会话。
 - C2 阶段 `install_status` 只写 installed；C3 已补充 exe/工作目录校验和 missing 状态。
@@ -149,11 +172,11 @@
 ### C4
 
 - `pnpm lint`、`pnpm typecheck`、`pnpm test`（10 个前端测试，新增元数据搜索/导入和来源排序测试）、`pnpm build`、`pnpm format:check`。
-- `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（37 个 Rust 测试；30 个通过，7 个需要网络或人工授权的 live 测试默认忽略）。
-- 网络 smoke：`cargo test live_provider_smoke -- --ignored` 通过；VNDB/Bangumi 联合搜索、详情解析均返回真实数据。
+- `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（49 个 Rust 测试；41 个通过，8 个需要网络或人工授权的 live 测试默认忽略）。
+- 网络 smoke：`cargo test live_provider_smoke -- --ignored` 通过；VNDB、Bangumi、Kungal 联合搜索和详情解析均返回真实数据。
 - 网络导入 smoke：`cargo test live_search_priority_and_cover_import -- --ignored` 通过；VNDB 结果优先于 Bangumi，在线封面下载、原图和 WebP 缩略图写入成功。
-- OAuth smoke：`live_nextmoe_login_persists_account` 与 `live_bangumi_login_persists_account` 通过；真实浏览器同意授权后 token 交换成功、账号写入内存库。`live_hikarinagi_login_persists_account` 已完成浏览器授权和回调，但 token 端点返回 `client authentication failed`，需要把 Hikarinagi 应用切换为 public client。
-- OAuth 配置 smoke：真实开发版窗口从仓库 `tmp/oauth/providers.json` 自动读取配置，设置页显示“OAuth 配置已读取”和文件路径，三个来源均显示“未连接”且连接按钮可用；`reads_config_from_data_directory` 和 `installs_config_and_reloads_it_immediately` 覆盖数据目录读取和设置页导入。
+- OAuth smoke：`live_nextmoe_login_persists_account`、`live_bangumi_login_persists_account` 与 `live_hikarinagi_login_persists_account` 均通过；真实浏览器同意授权后 token 交换成功、账号写入内存库。
+- OAuth 配置 smoke：真实开发版窗口从仓库 `tmp/oauth/providers.json` 自动读取配置，设置页显示“OAuth 配置已读取”和文件路径，三个来源均显示“已连接”；`reads_config_from_data_directory` 和 `installs_config_and_reloads_it_immediately` 覆盖数据目录读取和设置页导入。
 - 实际 Tauri 窗口（`MIYU_DATA_DIR=tmp/c4-appdata-1`）：在作品详情“来源与字段”搜索“月影”得到 29 条候选，VNDB 12 条在前、Bangumi 17 条在后；选择 VNDB 候选导入 4 个空白字段；锁定简介后切换 Bangumi 候选，预览显示“已锁定”且不可勾选，导入只应用到未锁定字段，简介保持 VNDB 值。
 - SQLite 证据：`metadata_claims` 中 VNDB 的 `aliases`、`description`、`publisher`、`release_date` 有来源和时间；`description` 的 `locked=1`；Bangumi 只写入了未锁定的 `developer`。
 - 截图证据：`outputs/app/c4/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`；所有尺寸无横向溢出，4K 来源面板已完成加载；设置页来源顺序、启停和 OAuth 账号卡可用。
@@ -238,6 +261,12 @@ C2/C3 不再扩展；已知边界见上文，C4 及之后内容不在本对话�
 - 提交：`71be766`（作品详情、封面缓存、启动配置与启动器）
 - 结论：C3 已完成；详情编辑、封面缓存/发现、启动配置、包装器、路径校验、真实启动、Job Object 跟踪和运行状态均有自动化或实际窗口证据。
 
+## C5 完成记录
+
+- 完成日期：2026-11-15
+- 分支：`codex/c5-metadata-merge`
+- 结论：C5 已完成；Steam 来源、字段级/全局来源优先级、冲突采用/锁定、封面画廊、两阶段批量队列、暂停/取消/重试、`only_if_empty` 保护和 50 条提案 UI 均有自动化或实际窗口证据。
+
 ## C4 完成记录
 
 - 完成日期：2026-11-15
@@ -246,29 +275,29 @@ C2/C3 不再扩展；已知边界见上文，C4 及之后内容不在本对话�
 
 ## 下一轮入口
 
-C4 已完成，本对话到此结束，不启动 C5。若后续另开对话并明确要求 C5，再按以下入口执行：
+C5 已完成，本对话到此结束，不启动 C6。若后续另开对话并明确要求 C6，再按以下入口执行：
 
-1. C5 处理 Steam、多源字段冲突、字段级优先级和批量刮削；本轮不修改 C5 范围。
-2. C5 开始前确认 G4 的多源字段优先级和冲突处理语义；C4 的 Provider 顺序、字段锁定和手动 claim 必须继续受保护。
-3. 只有用户明确要求进入 C5 时，才开始 Steam、批量队列和复杂冲突 UI。
-4. 继续调整 C4 视觉或来源设置时，按 token/密度/布局修正，并同步更新 `docs/DESIGN.md` 与 `outputs/app/c4/` 截图证据。
+1. C6 处理自动游玩会话、时长统计、统计页和手动修正；本轮不修改 C6 范围。
+2. C6 继续遵守 C5 的锁定字段和 `only_if_empty` 语义；时长统计不得改变元数据 claim。
+3. 只有用户明确要求进入 C6 时，才开始 `play_sessions` 迁移、Windows 进程观察器、统计查询和统计页。
+4. 继续调整 C5 视觉或来源设置时，按 token/密度/布局修正，并同步更新 `docs/DESIGN.md` 与 `outputs/app/c5/` 截图证据。
 
 ## 待决策与风险
 
 - G1：已完成；A 已选，“深夜游戏盒”配色和逐页设想已确认。
 - G2：已完成；当前视觉基线已确认，后续修改不改变 C1 验收结论。
 - G3：已完成；默认直接启动，不捆绑/不自动下载 Locale Emulator 或 NTLEA；按作品可选包装器 exe 和参数数组。
-- G4：C5 多源冲突和字段优先级。
+- G4：已完成；字段级默认优先级 + 全局顺序开关，手动/锁定优先，导入默认 `only_if_empty`，采用/锁定/解锁分离。
 - G5：C7 大屏布局和手柄映射。
 - G6：C9 安装包、签名、便携版和更新策略。
-- C3 封面只支持手动选择和本地发现；C4 已补充在线封面下载和 VNDB/Bangumi 元数据，Steam 和复杂多源冲突仍留到 C5。
+- C3 封面只支持手动选择和本地发现；C4/C5 已补充在线封面下载、多源元数据、Steam、封面画廊和批量刮削。
 - C3 的显示偏好只保存，不强制移动游戏窗口；实际窗口放置留到后续阶段。
 - C3 启动状态只在内存中，应用重启后不会恢复正在运行的进程；关闭管理器不会强制结束游戏。
 - 统计页仍是 C1 mock 视觉占位；`play_sessions` 表和真实会话在 C6 接入。
 - 4K、150% 缩放和 1440/1920 截图已覆盖主路由；C3 详情、启动配置、编辑弹窗和游戏库缩略图已覆盖。扫描弹窗的 4K 单独手测仍属于 C9 回归范围。
-- Hikarinagi OAuth 还需要在控制台切换为 public client（或补 clientSecret）；NextMoe/Kungal 与 Bangumi 已完成真实登录。OAuth 配置和 DPAPI 已接入，不依赖明文令牌文件。
+- NextMoe/Kungal、Bangumi 与 Hikarinagi 均已完成真实登录；OAuth 配置和 DPAPI 已接入，不依赖明文令牌文件。
 
-当前没有阻塞项。Hikarinagi 的剩余动作是控制台把应用改为 public client；其余公开来源搜索和已完成的 OAuth 连接不受影响。
+当前没有阻塞项。
 
 ## 更新规则
 

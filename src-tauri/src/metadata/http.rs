@@ -46,12 +46,26 @@ impl MetadataHttp {
         etag: Option<&str>,
         cancel: &CancellationToken,
     ) -> Result<RawResponse> {
+        self.get_json_with_token(provider, url, min_interval, etag, None, cancel)
+            .await
+    }
+
+    pub async fn get_json_with_token(
+        &self,
+        provider: &str,
+        url: &str,
+        min_interval: Duration,
+        etag: Option<&str>,
+        bearer: Option<&str>,
+        cancel: &CancellationToken,
+    ) -> Result<RawResponse> {
         let response = self
             .request(
                 provider,
                 url,
                 min_interval,
                 etag,
+                bearer,
                 cancel,
                 RequestBody::None,
                 MAX_JSON_BYTES,
@@ -76,6 +90,7 @@ impl MetadataHttp {
                 url,
                 min_interval,
                 None,
+                None,
                 cancel,
                 RequestBody::Json(body),
                 MAX_JSON_BYTES,
@@ -98,6 +113,7 @@ impl MetadataHttp {
                 url,
                 Duration::from_millis(250),
                 None,
+                None,
                 cancel,
                 RequestBody::None,
                 MAX_IMAGE_BYTES,
@@ -113,6 +129,7 @@ impl MetadataHttp {
         url: &str,
         min_interval: Duration,
         etag: Option<&str>,
+        bearer: Option<&str>,
         cancel: &CancellationToken,
         body: RequestBody<'_>,
         max_bytes: usize,
@@ -136,6 +153,9 @@ impl MetadataHttp {
             }
             if let Some(etag) = etag {
                 request = request.header(IF_NONE_MATCH, etag);
+            }
+            if let Some(token) = bearer {
+                request = request.bearer_auth(token);
             }
 
             let result = tokio::select! {

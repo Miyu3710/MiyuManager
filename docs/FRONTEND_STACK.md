@@ -1,6 +1,7 @@
 # 前端组件与依赖选型
 
-> 状态：C4 已完成；C2 已接入 TanStack Query、TanStack Virtual 和 Tauri dialog；C3 详情/启动表单已接入 React Hook Form + Zod；C4 元数据搜索、事件进度、候选预览和来源排序复用 TanStack Query，不新增前端依赖；Motion、cmdk 仍待页面需要时加入并锁定版本  
+> 状态：C5 已完成；C2 已接入 TanStack Query、TanStack Virtual 和 Tauri dialog；C3 详情/启动表单已接入 React Hook Form + Zod；C4/C5 元数据搜索、合并、冲突、字段优先级、批量队列、事件进度和封面画廊复用 TanStack Query，不新增前端依赖；Motion、cmdk 仍待页面需要时加入并锁定版本
+>
 > 日期：2026-11-15  
 > 目标：为 MiyuManager 的桌面与大屏界面建立一致的组件、图标、动画和交互规范
 

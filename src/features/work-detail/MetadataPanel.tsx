@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowRight,
+  Check,
   ChevronRight,
   Image as ImageIcon,
   Loader2,
@@ -21,6 +22,8 @@ import { EmptyState } from "../../design-system/components/EmptyState";
 import { Tag } from "../../design-system/components/Tag";
 import {
   cancelMetadataSearch,
+  adoptMetadataClaim,
+  assetUrl,
   getMetadataPreview,
   getMetadataWorkState,
   importMetadata,
@@ -32,6 +35,7 @@ import {
 import type {
   LibraryItemDetail,
   MetadataFieldState,
+  MetadataClaim,
   MetadataPreview,
   MetadataProvider,
   MetadataProviderFailure,
@@ -150,20 +154,39 @@ function LedgerRow({
   field,
   providers,
   onLock,
+  onAdopt,
+  adoptingId,
+  coverPreviewUrl,
 }: {
   field: MetadataFieldState;
   providers: MetadataProvider[] | undefined;
   onLock: () => void;
+  onAdopt: (claim: MetadataClaim) => void;
+  adoptingId: number | null;
+  coverPreviewUrl: string | null;
 }) {
+  const [open, setOpen] = useState(false);
   const latest = field.claims[0];
   const currentText =
     field.field === "cover" ? coverValueText(field.current) : valueText(field.current, 70);
   return (
     <div className="metadata-ledger__row-wrap">
       <div className="metadata-ledger__row">
-        <span>{field.label}</span>
+        <span className="metadata-ledger__field">
+          {field.label}
+          {field.conflict ? <Tag tone="accent">冲突</Tag> : null}
+        </span>
         <span className="metadata-ledger__value" title={currentText}>
-          {currentText}
+          {field.field === "cover" ? (
+            <span className="metadata-ledger__cover-current">
+              <span className="metadata-claim-cover">
+                <RemoteCover url={coverPreviewUrl} title={field.label} />
+              </span>
+              <em>{coverValueText(field.current)}</em>
+            </span>
+          ) : (
+            currentText
+          )}
         </span>
         <span>{providerName(providers, field.source)}</span>
         <span>{latest ? formatRelativeDate(latest.fetchedAt) : "—"}</span>
@@ -178,13 +201,75 @@ function LedgerRow({
         </button>
       </div>
       {field.claims.length > 0 ? (
-        <div className="metadata-ledger__claims">
-          {field.claims.map((claim) => (
-            <span key={claim.id} className={cn("metadata-claim-chip", claim.locked && "is-locked")}>
-              {claim.providerName}:{" "}
-              {field.field === "cover" ? coverValueText(claim.value) : valueText(claim.value, 46)}
+        <div className="metadata-ledger__claims-wrap">
+          <button
+            type="button"
+            className="metadata-ledger__claims-toggle"
+            aria-expanded={open}
+            onClick={() => setOpen((current) => !current)}
+          >
+            <span>
+              {field.claims.length} 个来源值
+              {field.conflict ? " · 需要确认" : ""}
             </span>
-          ))}
+            <ChevronRight size={12} className={cn(open && "is-open")} />
+          </button>
+          {open ? (
+            <div className="metadata-ledger__claim-list">
+              {field.claims.map((claim) => (
+                <div
+                  key={claim.id}
+                  className={cn(
+                    "metadata-ledger__claim-row",
+                    claim.id === field.currentClaimId && "is-current",
+                    claim.locked && "is-locked",
+                  )}
+                >
+                  <span className="metadata-ledger__claim-source">
+                    <b>{claim.providerName}</b>
+                    <em>#{claim.sourceId || "手动"}</em>
+                  </span>
+                  <span
+                    className="metadata-ledger__claim-value"
+                    title={field.field === "cover" ? undefined : valueText(claim.value, 400)}
+                  >
+                    {field.field === "cover" ? (
+                      <span className="metadata-claim-cover">
+                        <RemoteCover
+                          url={typeof claim.value === "string" ? claim.value : null}
+                          title={claim.providerName}
+                        />
+                      </span>
+                    ) : (
+                      valueText(claim.value, 120)
+                    )}
+                  </span>
+                  <span className="metadata-ledger__claim-time">
+                    {formatRelativeDate(claim.fetchedAt)}
+                  </span>
+                  {claim.id === field.currentClaimId ? (
+                    <Tag tone="status">当前</Tag>
+                  ) : field.locked ? (
+                    <Tag tone="muted">
+                      <Lock size={10} /> 已锁定
+                    </Tag>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={adoptingId === claim.id}
+                      onClick={() => onAdopt(claim)}
+                    >
+                      {adoptingId === claim.id ? (
+                        <Loader2 size={11} className="metadata-spin" />
+                      ) : null}
+                      采用此值
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -214,11 +299,13 @@ export function MetadataPanel({ detail, onChanged }: MetadataPanelProps) {
   const [preview, setPreview] = useState<MetadataPreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set());
-  const [coverSelected, setCoverSelected] = useState(false);
+  const [selectedCoverUrl, setSelectedCoverUrl] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [adoptingClaim, setAdoptingClaim] = useState<number | null>(null);
   const activeJob = useRef<string | null>(null);
 
   const providers = stateQuery.data?.providers ?? providersQuery.data;
+  const coverPreviewUrl = assetUrl(detail.coverThumbPath) ?? assetUrl(detail.coverPath);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -287,7 +374,7 @@ export function MetadataPanel({ detail, onChanged }: MetadataPanelProps) {
     setSelected(null);
     setPreview(null);
     setSelectedFields(new Set());
-    setCoverSelected(false);
+    setSelectedCoverUrl(null);
   };
 
   const handleSearch = async () => {
@@ -350,7 +437,10 @@ export function MetadataPanel({ detail, onChanged }: MetadataPanelProps) {
       setSelectedFields(
         new Set(next.fields.filter((field) => field.defaultSelected).map((field) => field.field)),
       );
-      setCoverSelected(next.cover?.defaultSelected ?? false);
+      const coverOptions = next.coverOptions ?? (next.cover ? [next.cover] : []);
+      setSelectedCoverUrl(
+        coverOptions.find((cover) => cover.defaultSelected)?.candidateUrl ?? null,
+      );
     } catch (error) {
       toast.error(String(error));
       setSelected(null);
@@ -385,7 +475,8 @@ export function MetadataPanel({ detail, onChanged }: MetadataPanelProps) {
         provider: preview.provider,
         sourceId: preview.sourceId,
         selectedFields: Array.from(selectedFields),
-        selectedCover: coverSelected,
+        selectedCover: Boolean(selectedCoverUrl),
+        coverUrl: selectedCoverUrl,
       });
       if (result.applied.length === 0 && !result.coverApplied) {
         toast.message("没有选择可导入的字段");
@@ -420,7 +511,31 @@ export function MetadataPanel({ detail, onChanged }: MetadataPanelProps) {
     }
   };
 
+  const handleAdopt = async (claim: MetadataClaim) => {
+    setAdoptingClaim(claim.id);
+    try {
+      const result = await adoptMetadataClaim(workId, claim.id);
+      toast.success(
+        result.applied.length > 0
+          ? `已采用 ${claim.providerName} 的${claim.field === "cover" ? "封面" : "值"}`
+          : "已采用该来源值",
+      );
+      if (result.skippedLocked.length > 0) {
+        toast.message("字段已锁定，请先解锁");
+      }
+      await stateQuery.refetch();
+      onChanged();
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setAdoptingClaim(null);
+    }
+  };
+
   const providerOptions = providers ?? [];
+  const previewCoverOptions = preview
+    ? (preview.coverOptions ?? (preview.cover ? [preview.cover] : []))
+    : [];
   const progressPercent = progress
     ? Math.round((progress.completed / Math.max(1, progress.total)) * 100)
     : 0;
@@ -474,7 +589,7 @@ export function MetadataPanel({ detail, onChanged }: MetadataPanelProps) {
               void handleSearch();
             }
           }}
-          placeholder="中文标题、日文原题或别名"
+          placeholder="标题、别名，或 Steam AppID / 商店链接"
           aria-label="元数据搜索词"
         />
         <select
@@ -505,6 +620,12 @@ export function MetadataPanel({ detail, onChanged }: MetadataPanelProps) {
           </Button>
         ) : null}
       </div>
+      {providerFilter === "steam" ? (
+        <p className="metadata-search-hint">
+          Steam 可以直接输入 AppID（如
+          324160）或粘贴商店链接；名称搜索会过滤原声带、画集等附加内容。
+        </p>
+      ) : null}
 
       {progress ? (
         <div className="metadata-progress" role="status">
@@ -637,23 +758,60 @@ export function MetadataPanel({ detail, onChanged }: MetadataPanelProps) {
                   </span>
                 </div>
               </div>
-              {preview.cover ? (
-                <label className="metadata-cover-choice">
-                  <input
-                    type="checkbox"
-                    checked={coverSelected}
-                    disabled={preview.cover.locked}
-                    onChange={() => setCoverSelected((current) => !current)}
-                  />
-                  <span>{preview.cover.locked ? "封面已锁定" : "使用这个封面"}</span>
-                  <em>
-                    {preview.cover.locked
-                      ? "导入时跳过封面"
-                      : preview.cover.currentSource
-                        ? `已有${preview.cover.currentSource === "online" ? "在线" : "本地"}封面`
-                        : "当前没有封面"}
-                  </em>
-                </label>
+              {previewCoverOptions.length > 0 ? (
+                <div className="metadata-cover-picker">
+                  <div className="metadata-cover-picker__head">
+                    <div>
+                      <b>封面候选</b>
+                      <span>
+                        {previewCoverOptions[0]?.locked
+                          ? "封面字段已锁定，导入时跳过"
+                          : previewCoverOptions[0]?.currentSource
+                            ? `已有${previewCoverOptions[0].currentSource === "online" ? "在线" : "本地"}封面，默认不替换`
+                            : `共 ${previewCoverOptions.length} 张，选择要使用的图片`}
+                      </span>
+                    </div>
+                    {selectedCoverUrl ? (
+                      <Button variant="ghost" size="sm" onClick={() => setSelectedCoverUrl(null)}>
+                        <X size={12} /> 不更换封面
+                      </Button>
+                    ) : null}
+                  </div>
+                  <div className="metadata-cover-grid">
+                    {previewCoverOptions.map((cover) => {
+                      const selected = selectedCoverUrl === cover.candidateUrl;
+                      return (
+                        <button
+                          type="button"
+                          key={cover.candidateUrl}
+                          className={cn("metadata-cover-option", selected && "is-selected")}
+                          aria-pressed={selected}
+                          disabled={cover.locked}
+                          onClick={() => setSelectedCoverUrl(selected ? null : cover.candidateUrl)}
+                        >
+                          <span className="metadata-cover-option__image">
+                            <RemoteCover url={cover.candidateUrl} title={preview.candidate.title} />
+                            {selected ? (
+                              <i className="metadata-cover-option__check">
+                                <Check size={12} />
+                              </i>
+                            ) : null}
+                          </span>
+                          <span className="metadata-cover-option__meta">
+                            <b>{preview.providerName}</b>
+                            <em>
+                              {cover.kind === "header"
+                                ? "横幅"
+                                : cover.kind === "capsule"
+                                  ? "胶囊"
+                                  : "封面"}
+                            </em>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               ) : null}
               <div className="metadata-preview__fields">
                 {preview.fields.map((field) => (
@@ -680,7 +838,7 @@ export function MetadataPanel({ detail, onChanged }: MetadataPanelProps) {
                   variant="primary"
                   size="sm"
                   onClick={() => void handleImport()}
-                  disabled={importing || (selectedFields.size === 0 && !coverSelected)}
+                  disabled={importing || (selectedFields.size === 0 && !selectedCoverUrl)}
                 >
                   {importing ? <Loader2 size={14} className="metadata-spin" /> : null}
                   {importing ? "导入中" : `导入 ${selectedFields.size} 个字段`}
@@ -741,6 +899,9 @@ export function MetadataPanel({ detail, onChanged }: MetadataPanelProps) {
                 field={field}
                 providers={providers}
                 onLock={() => void handleLock(field)}
+                onAdopt={(claim) => void handleAdopt(claim)}
+                adoptingId={adoptingClaim}
+                coverPreviewUrl={coverPreviewUrl}
               />
             ))}
           </div>

@@ -6,6 +6,13 @@ use sqlx::{Row, SqlitePool};
 use super::crypto;
 use super::types::{AccountInfo, OAuthAccountRow, TokenResponse};
 
+#[derive(Debug, Clone)]
+pub struct StoredTokens {
+    pub access_token_enc: Vec<u8>,
+    pub refresh_token_enc: Option<Vec<u8>>,
+    pub expires_at: i64,
+}
+
 pub async fn save_account(
     pool: &SqlitePool,
     provider: &str,
@@ -71,6 +78,60 @@ pub async fn list_accounts(pool: &SqlitePool) -> Result<Vec<OAuthAccountRow>> {
             expires_at: row.get("expires_at"),
         })
         .collect())
+}
+
+pub async fn load_tokens(pool: &SqlitePool, provider: &str) -> Result<Option<StoredTokens>> {
+    let row = sqlx::query(
+        "SELECT access_token_enc, refresh_token_enc, expires_at
+         FROM oauth_accounts WHERE provider = ?",
+    )
+    .bind(provider)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| StoredTokens {
+        access_token_enc: row.get("access_token_enc"),
+        refresh_token_enc: row.get("refresh_token_enc"),
+        expires_at: row.get("expires_at"),
+    }))
+}
+
+pub async fn update_tokens(
+    pool: &SqlitePool,
+    provider: &str,
+    tokens: &TokenResponse,
+    scopes: &[String],
+) -> Result<()> {
+    let access_encrypted = crypto::protect(tokens.access_token.as_bytes())?;
+    let refresh_encrypted = tokens
+        .refresh_token
+        .as_deref()
+        .map(|token| crypto::protect(token.as_bytes()))
+        .transpose()?;
+    let expires_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+        + tokens.expires_in_seconds();
+    let result = sqlx::query(
+        "UPDATE oauth_accounts SET
+           scopes_json = ?,
+           access_token_enc = ?,
+           refresh_token_enc = COALESCE(?, refresh_token_enc),
+           expires_at = ?,
+           updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+         WHERE provider = ?",
+    )
+    .bind(serde_json::to_string(scopes)?)
+    .bind(access_encrypted)
+    .bind(refresh_encrypted)
+    .bind(expires_at)
+    .bind(provider)
+    .execute(pool)
+    .await?;
+    if result.rows_affected() == 0 {
+        anyhow::bail!("账号不存在");
+    }
+    Ok(())
 }
 
 pub async fn delete_account(pool: &SqlitePool, provider: &str) -> Result<()> {

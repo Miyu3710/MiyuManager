@@ -1,22 +1,32 @@
 mod bangumi;
+mod hikarinagi;
 mod http;
+mod merge;
+mod nextmoe;
+mod steam;
 mod store;
 mod types;
 mod vndb;
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use serde_json::Value;
-use sqlx::SqlitePool;
 use sqlx::sqlite::SqliteConnection;
+use sqlx::{Row, SqlitePool};
 use tokio_util::sync::CancellationToken;
 
 use crate::assets;
 use crate::db;
+use crate::oauth::OAuthService;
 
 pub use http::MetadataHttp;
+pub use merge::{
+    adopt_claim, field_priority_states, merge_apply, merge_preview, reorder_field_priorities,
+    reset_field_priority, set_field_priority_global,
+};
 pub use store::ProviderDescriptor;
 pub use types::*;
 
@@ -57,20 +67,59 @@ const BANGUMI_FIELDS: &[&str] = &[
     "release_date",
     "cover",
 ];
+const NEXTMOE_FIELDS: &[&str] = &[
+    "title",
+    "original_title",
+    "aliases",
+    "description",
+    "year",
+    "tags",
+    "developer",
+    "publisher",
+    "release_date",
+    "cover",
+    "related",
+];
+const HIKARINAGI_FIELDS: &[&str] = &[
+    "title",
+    "original_title",
+    "aliases",
+    "description",
+    "year",
+    "tags",
+    "developer",
+    "publisher",
+    "release_date",
+    "cover",
+];
+const STEAM_FIELDS: &[&str] = &[
+    "title",
+    "original_title",
+    "aliases",
+    "description",
+    "year",
+    "tags",
+    "developer",
+    "publisher",
+    "release_date",
+    "cover",
+];
 
 #[async_trait]
-trait MetadataProvider: Send + Sync {
+pub(crate) trait MetadataProvider: Send + Sync {
     fn descriptor(&self) -> ProviderDescriptor;
     async fn search(
         &self,
         http: &MetadataHttp,
         query: &str,
+        token: Option<&str>,
         cancel: &CancellationToken,
     ) -> Result<Vec<SearchCandidate>>;
     async fn detail(
         &self,
         http: &MetadataHttp,
         source_id: &str,
+        token: Option<&str>,
         cancel: &CancellationToken,
     ) -> Result<CandidateDetail>;
     fn parse_detail(&self, raw: &str) -> Result<CandidateDetail>;
@@ -88,6 +137,7 @@ impl MetadataProvider for VndbProvider {
             fields: VNDB_FIELDS,
             requires_auth: false,
             auth_kind: "none",
+            oauth_provider: None,
         }
     }
 
@@ -95,6 +145,7 @@ impl MetadataProvider for VndbProvider {
         &self,
         http: &MetadataHttp,
         query: &str,
+        _token: Option<&str>,
         cancel: &CancellationToken,
     ) -> Result<Vec<SearchCandidate>> {
         vndb::search(http, query, cancel).await
@@ -104,6 +155,7 @@ impl MetadataProvider for VndbProvider {
         &self,
         http: &MetadataHttp,
         source_id: &str,
+        _token: Option<&str>,
         cancel: &CancellationToken,
     ) -> Result<CandidateDetail> {
         vndb::detail(http, source_id, cancel).await
@@ -126,6 +178,7 @@ impl MetadataProvider for BangumiProvider {
             fields: BANGUMI_FIELDS,
             requires_auth: false,
             auth_kind: "none",
+            oauth_provider: None,
         }
     }
 
@@ -133,6 +186,7 @@ impl MetadataProvider for BangumiProvider {
         &self,
         http: &MetadataHttp,
         query: &str,
+        _token: Option<&str>,
         cancel: &CancellationToken,
     ) -> Result<Vec<SearchCandidate>> {
         bangumi::search(http, query, cancel).await
@@ -142,6 +196,7 @@ impl MetadataProvider for BangumiProvider {
         &self,
         http: &MetadataHttp,
         source_id: &str,
+        _token: Option<&str>,
         cancel: &CancellationToken,
     ) -> Result<CandidateDetail> {
         bangumi::detail(http, source_id, cancel).await
@@ -152,31 +207,176 @@ impl MetadataProvider for BangumiProvider {
     }
 }
 
-fn all_providers() -> Vec<Box<dyn MetadataProvider>> {
-    vec![Box::new(VndbProvider), Box::new(BangumiProvider)]
+struct NextMoeProvider;
+
+#[async_trait]
+impl MetadataProvider for NextMoeProvider {
+    fn descriptor(&self) -> ProviderDescriptor {
+        ProviderDescriptor {
+            id: "nextmoe",
+            name: "Kungal / NextMoe",
+            description: "六源对齐的标题、简介、厂商、标签和关联作品",
+            fields: NEXTMOE_FIELDS,
+            requires_auth: false,
+            auth_kind: "none",
+            oauth_provider: None,
+        }
+    }
+
+    async fn search(
+        &self,
+        http: &MetadataHttp,
+        query: &str,
+        _token: Option<&str>,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<SearchCandidate>> {
+        nextmoe::search(http, query, cancel).await
+    }
+
+    async fn detail(
+        &self,
+        http: &MetadataHttp,
+        source_id: &str,
+        _token: Option<&str>,
+        cancel: &CancellationToken,
+    ) -> Result<CandidateDetail> {
+        nextmoe::detail(http, source_id, cancel).await
+    }
+
+    fn parse_detail(&self, raw: &str) -> Result<CandidateDetail> {
+        nextmoe::parse_detail(raw)
+    }
 }
 
-fn provider_by_id(id: &str) -> Option<Box<dyn MetadataProvider>> {
+struct HikarinagiProvider;
+
+#[async_trait]
+impl MetadataProvider for HikarinagiProvider {
+    fn descriptor(&self) -> ProviderDescriptor {
+        ProviderDescriptor {
+            id: "hikarinagi",
+            name: "Hikarinagi",
+            description: "Galgame 标题、简介、开发商、标签和封面（需要授权）",
+            fields: HIKARINAGI_FIELDS,
+            requires_auth: true,
+            auth_kind: "oauth2",
+            oauth_provider: Some("hikarinagi"),
+        }
+    }
+
+    async fn search(
+        &self,
+        http: &MetadataHttp,
+        query: &str,
+        token: Option<&str>,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<SearchCandidate>> {
+        hikarinagi::search(http, query, token, cancel).await
+    }
+
+    async fn detail(
+        &self,
+        http: &MetadataHttp,
+        source_id: &str,
+        token: Option<&str>,
+        cancel: &CancellationToken,
+    ) -> Result<CandidateDetail> {
+        hikarinagi::detail(http, source_id, token, cancel).await
+    }
+
+    fn parse_detail(&self, raw: &str) -> Result<CandidateDetail> {
+        hikarinagi::parse_detail(raw)
+    }
+}
+
+struct SteamProvider;
+
+#[async_trait]
+impl MetadataProvider for SteamProvider {
+    fn descriptor(&self) -> ProviderDescriptor {
+        ProviderDescriptor {
+            id: "steam",
+            name: "Steam",
+            description: "商店页、发行信息、类型标签和封面",
+            fields: STEAM_FIELDS,
+            requires_auth: false,
+            auth_kind: "none",
+            oauth_provider: None,
+        }
+    }
+
+    async fn search(
+        &self,
+        http: &MetadataHttp,
+        query: &str,
+        _token: Option<&str>,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<SearchCandidate>> {
+        steam::search(http, query, cancel).await
+    }
+
+    async fn detail(
+        &self,
+        http: &MetadataHttp,
+        source_id: &str,
+        _token: Option<&str>,
+        cancel: &CancellationToken,
+    ) -> Result<CandidateDetail> {
+        steam::detail(http, source_id, cancel).await
+    }
+
+    fn parse_detail(&self, raw: &str) -> Result<CandidateDetail> {
+        steam::parse_detail(raw)
+    }
+}
+
+fn all_providers() -> Vec<Box<dyn MetadataProvider>> {
+    vec![
+        Box::new(VndbProvider),
+        Box::new(BangumiProvider),
+        Box::new(NextMoeProvider),
+        Box::new(HikarinagiProvider),
+        Box::new(SteamProvider),
+    ]
+}
+
+pub(crate) fn provider_by_id(id: &str) -> Option<Box<dyn MetadataProvider>> {
     all_providers()
         .into_iter()
         .find(|provider| provider.descriptor().id == id)
 }
 
-fn descriptors() -> Vec<ProviderDescriptor> {
+pub(crate) fn descriptors() -> Vec<ProviderDescriptor> {
     all_providers()
         .into_iter()
         .map(|provider| provider.descriptor())
         .collect()
 }
 
-pub async fn list_providers(pool: &SqlitePool) -> Result<Vec<ProviderInfo>> {
+pub async fn list_providers(pool: &SqlitePool, oauth: &OAuthService) -> Result<Vec<ProviderInfo>> {
     let descriptors = descriptors();
     store::ensure_providers(pool, &descriptors).await?;
     let rows = store::list_providers(pool).await?;
+    let accounts = sqlx::query("SELECT provider, account_name FROM oauth_accounts")
+        .fetch_all(pool)
+        .await?
+        .into_iter()
+        .map(|row| {
+            (
+                row.get::<String, _>("provider"),
+                row.get::<Option<String>, _>("account_name"),
+            )
+        })
+        .collect::<HashMap<_, _>>();
     Ok(rows
         .into_iter()
         .map(|row| {
             let descriptor = descriptors.iter().find(|item| item.id == row.id);
+            let oauth_id = descriptor.and_then(|item| item.oauth_provider);
+            let has_account = oauth_id.is_some_and(|id| accounts.contains_key(id));
+            let connected = descriptor.is_none_or(|item| !item.requires_auth)
+                || oauth_id.is_some_and(|id| oauth.has_usable_credentials(id))
+                || has_account;
             ProviderInfo {
                 id: row.id.clone(),
                 name: row.name.clone(),
@@ -192,8 +392,8 @@ pub async fn list_providers(pool: &SqlitePool) -> Result<Vec<ProviderInfo>> {
                 auth_kind: descriptor
                     .map(|item| item.auth_kind.to_string())
                     .unwrap_or_else(|| "none".to_string()),
-                connected: descriptor.is_none_or(|item| !item.requires_auth),
-                account_name: None,
+                connected,
+                account_name: oauth_id.and_then(|id| accounts.get(id).cloned().flatten()),
             }
         })
         .collect())
@@ -216,6 +416,7 @@ pub struct SearchOutcome {
 pub async fn search_all<F>(
     pool: &SqlitePool,
     http: &MetadataHttp,
+    oauth: &OAuthService,
     query: &str,
     provider_filter: Option<&str>,
     cancel: &CancellationToken,
@@ -231,7 +432,7 @@ where
     if query.chars().count() > 120 {
         bail!("搜索词不能超过 120 个字符");
     }
-    let providers = list_providers(pool).await?;
+    let providers = list_providers(pool, oauth).await?;
     let providers = if let Some(filter) = provider_filter {
         let provider = providers
             .into_iter()
@@ -269,7 +470,23 @@ where
             });
             continue;
         };
-        let provider_results = provider.search(http, query, cancel).await;
+        let token = if provider.descriptor().requires_auth {
+            match oauth.access_token(pool, &provider_info.id).await {
+                Ok(token) => Some(token),
+                Err(error) => {
+                    errors.push(ProviderFailure {
+                        provider: provider_info.id.clone(),
+                        provider_name: provider_info.name.clone(),
+                        message: error.to_string(),
+                    });
+                    progress(&provider_info.id, &provider_info.name, index + 1, total);
+                    continue;
+                }
+            }
+        } else {
+            None
+        };
+        let provider_results = provider.search(http, query, token.as_deref(), cancel).await;
         match provider_results {
             Ok(mut items) => {
                 for item in &mut items {
@@ -298,9 +515,10 @@ where
     })
 }
 
-async fn candidate_detail(
+pub(crate) async fn candidate_detail(
     pool: &SqlitePool,
     http: &MetadataHttp,
+    oauth: &OAuthService,
     provider_id: &str,
     source_id: &str,
     cancel: &CancellationToken,
@@ -314,7 +532,14 @@ async fn candidate_detail(
     {
         return Ok(detail);
     }
-    let detail = provider.detail(http, source_id, cancel).await?;
+    let token = if provider.descriptor().requires_auth {
+        Some(oauth.access_token(pool, provider_id).await?)
+    } else {
+        None
+    };
+    let detail = provider
+        .detail(http, source_id, token.as_deref(), cancel)
+        .await?;
     let _ = store::cache_put(
         pool,
         provider_id,
@@ -339,6 +564,13 @@ fn validate_source_id(provider_id: &str, source_id: &str) -> Result<()> {
                     .chars()
                     .all(|character| character.is_ascii_digit())
         }
+        "nextmoe" | "hikarinagi" => {
+            !source_id.is_empty()
+                && source_id
+                    .chars()
+                    .all(|character| character.is_ascii_digit())
+        }
+        "steam" => steam::normalize_app_id(source_id).is_ok(),
         _ => false,
     };
     if !valid {
@@ -350,6 +582,7 @@ fn validate_source_id(provider_id: &str, source_id: &str) -> Result<()> {
 pub async fn preview(
     pool: &SqlitePool,
     http: &MetadataHttp,
+    oauth: &OAuthService,
     work_id: i64,
     provider_id: &str,
     source_id: &str,
@@ -358,10 +591,12 @@ pub async fn preview(
     if !db::work_exists(pool, work_id).await? {
         bail!("作品不存在");
     }
-    let candidates = candidate_detail(pool, http, provider_id, source_id, cancel).await?;
+    let candidates = candidate_detail(pool, http, oauth, provider_id, source_id, cancel).await?;
     let values = store::load_work_field_values(pool, work_id).await?;
-    let claims = store::load_claims(pool, work_id).await?;
-    let providers = list_providers(pool).await?;
+    let mut claims = store::load_claims(pool, work_id).await?;
+    let priorities = merge::effective_priorities(pool, oauth).await?;
+    merge::apply_claim_priorities(&mut claims, &priorities);
+    let providers = list_providers(pool, oauth).await?;
     let provider = providers
         .iter()
         .find(|provider| provider.id == provider_id)
@@ -395,12 +630,17 @@ pub async fn preview(
             .filter(|claim| !is_empty_value(&claim.value))
             .map(|claim| claim.priority)
             .min();
+        let field_priority = priorities
+            .get(*field)
+            .and_then(|entries| entries.get(provider_id))
+            .copied()
+            .unwrap_or(provider.priority);
         let current_empty = is_empty_value(&current);
         let same_as_current = same_value(&candidate, &current);
         let default_selected = current_empty
             && locked_claim.is_none()
             && !same_as_current
-            && best_existing_priority.is_none_or(|priority| provider.priority <= priority);
+            && best_existing_priority.is_none_or(|priority| field_priority <= priority);
         fields.push(PreviewField {
             field: field.to_string(),
             label: label.to_string(),
@@ -411,19 +651,37 @@ pub async fn preview(
             locked: locked_claim.is_some(),
             lock_source: locked_claim.map(|claim| claim.source.clone()),
             default_selected,
-            priority: provider.priority,
+            priority: field_priority,
             existing,
         });
     }
     let cover_locked = claims
         .iter()
         .any(|claim| claim.field == "cover" && claim.locked);
-    let cover = candidates.cover_url.as_ref().map(|url| PreviewCover {
-        current_source: values.cover_source.clone(),
-        candidate_url: url.clone(),
-        default_selected: values.cover_source.is_none() && !cover_locked,
-        locked: cover_locked,
-    });
+    let mut cover_options = candidates
+        .covers
+        .iter()
+        .enumerate()
+        .map(|(index, option)| PreviewCover {
+            current_source: values.cover_source.clone(),
+            candidate_url: option.url.clone(),
+            kind: option.kind.clone(),
+            default_selected: values.cover_source.is_none() && !cover_locked && index == 0,
+            locked: cover_locked,
+        })
+        .collect::<Vec<_>>();
+    if cover_options.is_empty()
+        && let Some(url) = candidates.cover_url.as_ref()
+    {
+        cover_options.push(PreviewCover {
+            current_source: values.cover_source.clone(),
+            candidate_url: url.clone(),
+            kind: "cover".to_string(),
+            default_selected: values.cover_source.is_none() && !cover_locked,
+            locked: cover_locked,
+        });
+    }
+    let cover = cover_options.first().cloned();
     Ok(MetadataPreview {
         work_id,
         provider: provider_id.to_string(),
@@ -432,6 +690,7 @@ pub async fn preview(
         candidate: candidates,
         fields,
         cover,
+        cover_options,
     })
 }
 
@@ -439,25 +698,55 @@ pub async fn import(
     pool: &SqlitePool,
     data_dir: &Path,
     http: &MetadataHttp,
+    oauth: &OAuthService,
     request: MetadataImportRequest,
     cancel: &CancellationToken,
 ) -> Result<MetadataImportResult> {
     if !db::work_exists(pool, request.work_id).await? {
         bail!("作品不存在");
     }
-    let detail =
-        candidate_detail(pool, http, &request.provider, &request.source_id, cancel).await?;
-    let cover_bytes = if request.selected_cover {
-        if let Some(url) = detail.cover_url.as_deref() {
-            Some(http.download_image(&request.provider, url, cancel).await?)
+    let detail = candidate_detail(
+        pool,
+        http,
+        oauth,
+        &request.provider,
+        &request.source_id,
+        cancel,
+    )
+    .await?;
+    let cover_url = if request.selected_cover {
+        if let Some(url) = request
+            .cover_url
+            .as_deref()
+            .filter(|url| !url.trim().is_empty())
+        {
+            if !detail.covers.iter().any(|cover| cover.url == url)
+                && detail.cover_url.as_deref() != Some(url)
+            {
+                bail!("所选封面不属于该来源");
+            }
+            Some(url.to_string())
         } else {
-            None
+            detail.cover_url.clone()
         }
     } else {
         None
     };
+    let cover_bytes = if let Some(url) = cover_url.as_deref() {
+        Some(http.download_image(&request.provider, url, cancel).await?)
+    } else {
+        None
+    };
 
-    apply_import(pool, data_dir, request, &detail, cover_bytes).await
+    apply_import(
+        pool,
+        data_dir,
+        request,
+        &detail,
+        cover_bytes,
+        cover_url.as_deref(),
+    )
+    .await
 }
 
 async fn apply_import(
@@ -466,6 +755,7 @@ async fn apply_import(
     request: MetadataImportRequest,
     detail: &CandidateDetail,
     cover_bytes: Option<Vec<u8>>,
+    cover_url: Option<&str>,
 ) -> Result<MetadataImportResult> {
     let claims = store::load_claims(pool, request.work_id).await?;
     let locked_fields: Vec<String> = claims
@@ -513,7 +803,7 @@ async fn apply_import(
 
     let mut cover_applied = false;
     if let Some(bytes) = cover_bytes
-        && let Some(url) = detail.cover_url.as_deref()
+        && let Some(url) = cover_url
     {
         if locked_fields.iter().any(|field| field == "cover") {
             skipped_locked.push("cover".to_string());
@@ -542,22 +832,36 @@ async fn apply_import(
     })
 }
 
-pub async fn work_state(pool: &SqlitePool, work_id: i64) -> Result<MetadataWorkState> {
+pub async fn work_state(
+    pool: &SqlitePool,
+    oauth: &OAuthService,
+    work_id: i64,
+) -> Result<MetadataWorkState> {
     if !db::work_exists(pool, work_id).await? {
         bail!("作品不存在");
     }
     let values = store::load_work_field_values(pool, work_id).await?;
-    let claims = store::load_claims(pool, work_id).await?;
-    let providers = list_providers(pool).await?;
+    let mut claims = store::load_claims(pool, work_id).await?;
+    let priorities = merge::effective_priorities(pool, oauth).await?;
+    merge::apply_claim_priorities(&mut claims, &priorities);
+    let providers = list_providers(pool, oauth).await?;
     let mut fields = Vec::new();
     for (field, label) in FIELD_LABELS {
         let current = values.current(field);
-        let field_claims = claims.iter().filter(|claim| claim.field == *field);
-        let source_claim = claims
+        let field_claims = claims
             .iter()
             .filter(|claim| claim.field == *field)
-            .find(|claim| same_value(&claim.value, &current));
-        let locked_claim = field_claims.clone().find(|claim| claim.locked);
+            .collect::<Vec<_>>();
+        let source_claim = field_claims
+            .iter()
+            .find(|claim| same_value(&claim.value, &current))
+            .copied();
+        let locked_claim = field_claims.iter().find(|claim| claim.locked).copied();
+        let preferred_claim_id = field_claims
+            .iter()
+            .filter(|claim| !is_empty_value(&claim.value))
+            .min_by_key(|claim| claim.priority)
+            .map(|claim| claim.id);
         fields.push(MetadataFieldState {
             field: field.to_string(),
             label: label.to_string(),
@@ -566,13 +870,31 @@ pub async fn work_state(pool: &SqlitePool, work_id: i64) -> Result<MetadataWorkS
             source_id: source_claim.map(|claim| claim.source_id.clone()),
             locked: locked_claim.is_some(),
             lock_source: locked_claim.map(|claim| claim.source.clone()),
-            claims: claims
+            conflict: has_conflicting_claims(&field_claims),
+            preferred_claim_id,
+            current_claim_id: source_claim.map(|claim| claim.id),
+            claims: field_claims
                 .iter()
-                .filter(|claim| claim.field == *field)
-                .map(claim_record)
+                .map(|claim| claim_record(claim))
                 .collect(),
         });
     }
+    let cover_rows = claims
+        .iter()
+        .filter(|claim| claim.field == "cover")
+        .collect::<Vec<_>>();
+    let cover_source_claim = values.cover_source.as_deref().and_then(|source| {
+        cover_rows
+            .iter()
+            .find(|claim| claim.value.as_str() == Some(source))
+            .copied()
+    });
+    let cover_locked_claim = cover_rows.iter().find(|claim| claim.locked).copied();
+    let cover_preferred_claim_id = cover_rows
+        .iter()
+        .filter(|claim| !is_empty_value(&claim.value))
+        .min_by_key(|claim| claim.priority)
+        .map(|claim| claim.id);
     let cover_claims: Vec<MetadataClaimRecord> = claims
         .iter()
         .filter(|claim| claim.field == "cover")
@@ -586,15 +908,19 @@ pub async fn work_state(pool: &SqlitePool, work_id: i64) -> Result<MetadataWorkS
             .clone()
             .map_or(Value::Null, Value::String),
         source: values.cover_source.clone(),
-        source_id: None,
-        locked: cover_claims.iter().any(|claim| claim.locked),
-        lock_source: cover_claims
-            .iter()
-            .find(|claim| claim.locked)
-            .map(|claim| claim.source.clone()),
+        source_id: cover_source_claim.map(|claim| claim.source_id.clone()),
+        locked: cover_locked_claim.is_some(),
+        lock_source: cover_locked_claim.map(|claim| claim.source.clone()),
+        conflict: has_conflicting_claims(&cover_rows),
+        preferred_claim_id: cover_preferred_claim_id,
+        current_claim_id: cover_source_claim.map(|claim| claim.id),
         claims: cover_claims,
     });
     if claims.iter().any(|claim| claim.field == "related") {
+        let related_claims = claims
+            .iter()
+            .filter(|claim| claim.field == "related")
+            .collect::<Vec<_>>();
         fields.push(MetadataFieldState {
             field: "related".to_string(),
             label: "关联作品".to_string(),
@@ -603,10 +929,16 @@ pub async fn work_state(pool: &SqlitePool, work_id: i64) -> Result<MetadataWorkS
             source_id: None,
             locked: false,
             lock_source: None,
-            claims: claims
+            conflict: has_conflicting_claims(&related_claims),
+            preferred_claim_id: related_claims
                 .iter()
-                .filter(|claim| claim.field == "related")
-                .map(claim_record)
+                .filter(|claim| !is_empty_value(&claim.value))
+                .min_by_key(|claim| claim.priority)
+                .map(|claim| claim.id),
+            current_claim_id: None,
+            claims: related_claims
+                .iter()
+                .map(|claim| claim_record(claim))
                 .collect(),
         });
     }
@@ -649,6 +981,21 @@ pub async fn record_manual_claim(
     store::upsert_claim(connection, work_id, field, "manual", "", value, None, true).await
 }
 
+fn has_conflicting_claims(claims: &[&store::ClaimRow]) -> bool {
+    let mut values = Vec::new();
+    for claim in claims {
+        if is_empty_value(&claim.value)
+            || values
+                .iter()
+                .any(|value: &&Value| same_value(value, &claim.value))
+        {
+            continue;
+        }
+        values.push(&claim.value);
+    }
+    values.len() > 1
+}
+
 fn claim_record(claim: &store::ClaimRow) -> MetadataClaimRecord {
     MetadataClaimRecord {
         id: claim.id,
@@ -664,7 +1011,7 @@ fn claim_record(claim: &store::ClaimRow) -> MetadataClaimRecord {
     }
 }
 
-fn candidate_value(detail: &CandidateDetail, field: &str) -> Option<Value> {
+pub(crate) fn candidate_value(detail: &CandidateDetail, field: &str) -> Option<Value> {
     match field {
         "title" => Some(Value::String(detail.title.clone())),
         "original_title" => Some(Value::String(detail.original_title.clone())),
@@ -680,7 +1027,7 @@ fn candidate_value(detail: &CandidateDetail, field: &str) -> Option<Value> {
     }
 }
 
-fn is_empty_value(value: &Value) -> bool {
+pub(crate) fn is_empty_value(value: &Value) -> bool {
     match value {
         Value::Null => true,
         Value::String(value) => value.trim().is_empty(),
@@ -689,7 +1036,7 @@ fn is_empty_value(value: &Value) -> bool {
     }
 }
 
-fn same_value(left: &Value, right: &Value) -> bool {
+pub(crate) fn same_value(left: &Value, right: &Value) -> bool {
     match (left, right) {
         (Value::String(left), Value::String(right)) => left.trim() == right.trim(),
         _ => left == right,
@@ -731,8 +1078,10 @@ mod tests {
     #[tokio::test]
     async fn provider_order_and_enabled_state_are_persisted() {
         let pool = open_memory_pool().await.expect("pool");
-        let providers = list_providers(&pool).await.expect("providers");
-        assert_eq!(providers.len(), 2);
+        let temp = TempDir::new().expect("temp");
+        let oauth = OAuthService::new(temp.path()).expect("oauth");
+        let providers = list_providers(&pool, &oauth).await.expect("providers");
+        assert_eq!(providers.len(), 5);
         assert_eq!(providers[0].id, "vndb");
         assert_eq!(providers[1].id, "bangumi");
         assert!(
@@ -741,13 +1090,24 @@ mod tests {
                 .is_err()
         );
 
-        reorder_providers(&pool, &["bangumi".to_string(), "vndb".to_string()])
-            .await
-            .expect("reorder");
+        reorder_providers(
+            &pool,
+            &[
+                "bangumi".to_string(),
+                "vndb".to_string(),
+                "nextmoe".to_string(),
+                "hikarinagi".to_string(),
+                "steam".to_string(),
+            ],
+        )
+        .await
+        .expect("reorder");
         set_provider_enabled(&pool, "vndb", false)
             .await
             .expect("disable");
-        let providers = list_providers(&pool).await.expect("providers again");
+        let providers = list_providers(&pool, &oauth)
+            .await
+            .expect("providers again");
         assert_eq!(providers[0].id, "bangumi");
         assert_eq!(providers[1].id, "vndb");
         assert!(!providers[1].enabled);
@@ -788,6 +1148,7 @@ mod tests {
             publisher: Some("TAKUYO".to_string()),
             tags: vec!["乙女向".to_string()],
             cover_url: None,
+            covers: Vec::new(),
             related: Vec::new(),
             raw_json: "{}".to_string(),
         };
@@ -797,15 +1158,18 @@ mod tests {
             source_id: "50756".to_string(),
             selected_fields: vec!["title".to_string(), "description".to_string()],
             selected_cover: false,
+            cover_url: None,
         };
         let temp = TempDir::new().expect("temp");
-        let result = apply_import(&pool, temp.path(), request, &detail, None)
+        let result = apply_import(&pool, temp.path(), request, &detail, None, None)
             .await
             .expect("import");
         assert_eq!(result.applied, vec!["description"]);
         assert_eq!(result.skipped_locked, vec!["title"]);
 
-        let state = work_state(&pool, work_id).await.expect("state");
+        let oauth_temp = TempDir::new().expect("oauth temp");
+        let oauth = OAuthService::new(oauth_temp.path()).expect("oauth");
+        let state = work_state(&pool, &oauth, work_id).await.expect("state");
         let title = state
             .fields
             .iter()
@@ -849,6 +1213,16 @@ mod tests {
             .await
             .expect("bangumi detail");
         assert!(!bangumi_detail.title.is_empty());
+
+        let nextmoe_results = nextmoe::search(&http, "CLANNAD", &cancel)
+            .await
+            .expect("kungal search");
+        assert!(!nextmoe_results.is_empty());
+        let nextmoe_detail = nextmoe::detail(&http, &nextmoe_results[0].source_id, &cancel)
+            .await
+            .expect("kungal detail");
+        assert!(!nextmoe_detail.title.is_empty());
+        assert!(nextmoe_detail.developer.is_some() || !nextmoe_detail.tags.is_empty());
     }
 
     #[tokio::test]
@@ -857,8 +1231,10 @@ mod tests {
         let pool = open_memory_pool().await.expect("pool");
         let work_id = seed_work(&pool).await;
         let http = MetadataHttp::new().expect("http");
+        let temp = TempDir::new().expect("temp");
+        let oauth = OAuthService::new(temp.path()).expect("oauth");
         let cancel = CancellationToken::new();
-        let outcome = search_all(&pool, &http, "月影", None, &cancel, |_, _, _, _| {})
+        let outcome = search_all(&pool, &http, &oauth, "月影", None, &cancel, |_, _, _, _| {})
             .await
             .expect("search");
         assert!(outcome.results.iter().any(|item| item.provider == "vndb"));
@@ -888,7 +1264,6 @@ mod tests {
             .download_image("bangumi", &cover_url, &cancel)
             .await
             .expect("cover bytes");
-        let temp = TempDir::new().expect("temp");
         let result = apply_import(
             &pool,
             temp.path(),
@@ -898,9 +1273,11 @@ mod tests {
                 source_id: candidate.source_id.clone(),
                 selected_fields: Vec::new(),
                 selected_cover: true,
+                cover_url: Some(cover_url.clone()),
             },
             &detail,
             Some(cover_bytes),
+            Some(&cover_url),
         )
         .await
         .expect("cover import");

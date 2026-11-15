@@ -13,6 +13,7 @@ pub struct ProviderDescriptor {
     pub fields: &'static [&'static str],
     pub requires_auth: bool,
     pub auth_kind: &'static str,
+    pub oauth_provider: Option<&'static str>,
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +42,13 @@ pub struct ClaimRow {
 #[derive(Debug, Clone)]
 pub struct CachedRecord {
     pub raw_json: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct FieldPriorityRow {
+    pub field: String,
+    pub provider: String,
+    pub rank: i64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -168,6 +176,77 @@ pub async fn set_provider_enabled(pool: &SqlitePool, id: &str, enabled: bool) ->
     if result.rows_affected() == 0 {
         bail!("元数据来源不存在");
     }
+    Ok(())
+}
+
+pub async fn load_field_priorities(pool: &SqlitePool) -> Result<Vec<FieldPriorityRow>> {
+    let rows = sqlx::query(
+        "SELECT field, provider, rank FROM metadata_field_priorities ORDER BY field, rank",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| FieldPriorityRow {
+            field: row.get("field"),
+            provider: row.get("provider"),
+            rank: row.get("rank"),
+        })
+        .collect())
+}
+
+pub async fn set_field_priorities(
+    pool: &SqlitePool,
+    field: &str,
+    providers: &[String],
+) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("DELETE FROM metadata_field_priorities WHERE field = ?")
+        .bind(field)
+        .execute(&mut *tx)
+        .await?;
+    for (index, provider) in providers.iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO metadata_field_priorities (field, provider, rank, updated_at)
+             VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+        )
+        .bind(field)
+        .bind(provider)
+        .bind((index as i64 + 1) * 10)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+pub async fn reset_field_priorities(pool: &SqlitePool, field: &str) -> Result<()> {
+    sqlx::query("DELETE FROM metadata_field_priorities WHERE field = ?")
+        .bind(field)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn field_priority_global(pool: &SqlitePool) -> Result<bool> {
+    let value: Option<String> = sqlx::query_scalar(
+        "SELECT value_json FROM settings WHERE key = 'metadata.field_priority_global'",
+    )
+    .fetch_optional(pool)
+    .await?;
+    Ok(value
+        .and_then(|value| serde_json::from_str::<bool>(&value).ok())
+        .unwrap_or(false))
+}
+
+pub async fn set_field_priority_global(pool: &SqlitePool, enabled: bool) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO settings (key, value_json) VALUES ('metadata.field_priority_global', ?)
+         ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json",
+    )
+    .bind(if enabled { "true" } else { "false" })
+    .execute(pool)
+    .await?;
     Ok(())
 }
 

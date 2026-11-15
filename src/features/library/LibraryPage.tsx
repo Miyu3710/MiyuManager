@@ -9,6 +9,7 @@ import {
   MoreHorizontal,
   RefreshCw,
   Search,
+  Sparkles,
   Star,
   Trash2,
   X,
@@ -39,6 +40,7 @@ import type {
   LibraryStatus,
 } from "../../lib/library-types";
 import { ScanImportDialog } from "./ScanImportDialog";
+import { BatchScrapeDialog } from "../metadata/BatchScrapeDialog";
 import { useInvalidateLibrary, useLibraryInfinite, useLibraryRoots } from "./useLibrary";
 import { useLibraryScan } from "./useLibraryScan";
 import "./library.css";
@@ -107,10 +109,16 @@ function LibraryCard({
   item,
   onContextMenu,
   onMenuButton,
+  selectable,
+  selected,
+  onToggleSelect,
 }: {
   item: LibraryItem;
   onContextMenu: (event: ReactMouseEvent, item: LibraryItem) => void;
   onMenuButton: (item: LibraryItem, x: number, y: number) => void;
+  selectable: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
 }) {
   const game = libraryItemToGame(item);
   const techLine = game.isLocal
@@ -124,13 +132,27 @@ function LibraryCard({
 
   return (
     <div
-      className="library-card-wrap"
+      className={cn("library-card-wrap", selectable && "is-selectable", selected && "is-selected")}
       onContextMenu={(event) => onContextMenu(event, item)}
       data-work-id={item.workId}
     >
-      <Link to={"/work/" + libraryItemId(item)} className="library-card">
+      <Link
+        to={"/work/" + libraryItemId(item)}
+        className="library-card"
+        onClick={(event) => {
+          if (selectable) {
+            event.preventDefault();
+            onToggleSelect();
+          }
+        }}
+      >
         <div className="library-card__cover">
           <CoverArt work={game} />
+          {selectable ? (
+            <span className={cn("library-select", selected && "is-on")}>
+              {selected ? <Check size={12} strokeWidth={2.2} /> : null}
+            </span>
+          ) : null}
           <span className={cn("library-status", "library-status--" + game.status)}>
             {statusLabels[game.status]}
           </span>
@@ -150,19 +172,21 @@ function LibraryCard({
           <span className="library-card__last">{lastLine}</span>
         </div>
       </Link>
-      <button
-        type="button"
-        className="library-card__menu"
-        aria-label={"更多操作：" + game.title}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          const rect = event.currentTarget.getBoundingClientRect();
-          onMenuButton(item, rect.right - 8, rect.bottom + 4);
-        }}
-      >
-        <MoreHorizontal size={14} strokeWidth={1.6} />
-      </button>
+      {!selectable ? (
+        <button
+          type="button"
+          className="library-card__menu"
+          aria-label={"更多操作：" + game.title}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const rect = event.currentTarget.getBoundingClientRect();
+            onMenuButton(item, rect.right - 8, rect.bottom + 4);
+          }}
+        >
+          <MoreHorizontal size={14} strokeWidth={1.6} />
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -170,17 +194,34 @@ function LibraryCard({
 function LibraryRow({
   item,
   onContextMenu,
+  selectable,
+  selected,
+  onToggleSelect,
 }: {
   item: LibraryItem;
   onContextMenu: (event: ReactMouseEvent, item: LibraryItem) => void;
+  selectable: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
 }) {
   const game = libraryItemToGame(item);
   return (
     <Link
       to={"/work/" + libraryItemId(item)}
-      className="library-row"
+      className={cn("library-row", selectable && "is-selectable", selected && "is-selected")}
       onContextMenu={(event) => onContextMenu(event, item)}
+      onClick={(event) => {
+        if (selectable) {
+          event.preventDefault();
+          onToggleSelect();
+        }
+      }}
     >
+      {selectable ? (
+        <span className={cn("library-select", selected && "is-on")}>
+          {selected ? <Check size={12} strokeWidth={2.2} /> : null}
+        </span>
+      ) : null}
       <CoverArt work={game} />
       <div className="library-row__title">
         <h3>{game.title}</h3>
@@ -239,7 +280,41 @@ export function LibraryPage() {
   const [view, setView] = useState<ViewMode>("grid");
   const [rootMenuOpen, setRootMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedWorkIds, setSelectedWorkIds] = useState<Set<number>>(new Set());
+  const [batchOpen, setBatchOpen] = useState(false);
   const handledRequest = useRef<string | null>(null);
+
+  const toggleSelectedWork = (workId: number) => {
+    setSelectedWorkIds((current) => {
+      const next = new Set(current);
+      if (next.has(workId)) {
+        next.delete(workId);
+      } else {
+        next.add(workId);
+      }
+      return next;
+    });
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedWorkIds(new Set());
+    setBatchOpen(false);
+  };
+
+  useEffect(() => {
+    if (!selectionMode) {
+      return;
+    }
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !batchOpen) {
+        exitSelectionMode();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [batchOpen, selectionMode]);
 
   useEffect(() => {
     setQueryInput(q);
@@ -526,6 +601,22 @@ export function LibraryPage() {
           ))}
         </div>
         <div className="library-view-tools">
+          <Button
+            variant={selectionMode ? "secondary" : "ghost"}
+            size="sm"
+            aria-pressed={selectionMode}
+            onClick={() => {
+              if (selectionMode) {
+                exitSelectionMode();
+              } else {
+                setSelectionMode(true);
+                setSelectedWorkIds(new Set());
+              }
+            }}
+          >
+            <Sparkles size={13} strokeWidth={1.6} />
+            {selectionMode ? "退出批量" : "批量刮削"}
+          </Button>
           <label className="library-search">
             <Search size={13} strokeWidth={1.6} />
             <input
@@ -630,6 +721,9 @@ export function LibraryPage() {
                     item={item}
                     onContextMenu={openContextMenu}
                     onMenuButton={openMenuButton}
+                    selectable={selectionMode}
+                    selected={selectedWorkIds.has(item.workId)}
+                    onToggleSelect={() => toggleSelectedWork(item.workId)}
                   />
                 ))}
               </div>
@@ -653,7 +747,13 @@ export function LibraryPage() {
                   key={row.key}
                   style={{ transform: "translateY(" + row.start + "px)" }}
                 >
-                  <LibraryRow item={item} onContextMenu={openContextMenu} />
+                  <LibraryRow
+                    item={item}
+                    onContextMenu={openContextMenu}
+                    selectable={selectionMode}
+                    selected={selectedWorkIds.has(item.workId)}
+                    onToggleSelect={() => toggleSelectedWork(item.workId)}
+                  />
                 </div>
               );
             })}
@@ -674,6 +774,45 @@ export function LibraryPage() {
                 : "已显示全部"}
           </span>
         </footer>
+      ) : null}
+
+      {selectionMode ? (
+        <div className="library-batch-bar" role="region" aria-label="批量刮削选择">
+          <div>
+            <Sparkles size={15} strokeWidth={1.6} />
+            <span>
+              已选 <b>{selectedWorkIds.size}</b> 部作品
+            </span>
+          </div>
+          <div className="library-batch-bar__actions">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setSelectedWorkIds((current) => {
+                  const next = new Set(current);
+                  for (const item of items) {
+                    next.add(item.workId);
+                  }
+                  return next;
+                })
+              }
+            >
+              全选已加载
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setSelectedWorkIds(new Set())}>
+              清空
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={selectedWorkIds.size === 0}
+              onClick={() => setBatchOpen(true)}
+            >
+              <Sparkles size={14} /> 开始批量刮削
+            </Button>
+          </div>
+        </div>
       ) : null}
 
       {contextMenu ? (
@@ -742,6 +881,18 @@ export function LibraryPage() {
             .catch((error) => toast.error(String(error)));
         }}
       />
+
+      {batchOpen ? (
+        <BatchScrapeDialog
+          open
+          workIds={[...selectedWorkIds]}
+          onClose={() => {
+            setBatchOpen(false);
+            invalidate();
+          }}
+          onApplied={invalidate}
+        />
+      ) : null}
     </div>
   );
 }

@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use anyhow::Context;
 use serde::Serialize;
@@ -27,6 +29,7 @@ pub struct AppState {
     pub launches: Arc<LaunchManager>,
     pub metadata_http: Arc<MetadataHttp>,
     pub metadata_jobs: Arc<MetadataCoordinator>,
+    pub batch_jobs: Arc<BatchCoordinator>,
     pub oauth: Arc<OAuthService>,
 }
 
@@ -54,6 +57,68 @@ impl MetadataCoordinator {
             return true;
         }
         false
+    }
+
+    fn finish(&self, job_id: &str) {
+        if let Ok(mut jobs) = self.jobs.lock() {
+            jobs.remove(job_id);
+        }
+    }
+}
+
+pub struct BatchJob {
+    pub cancel: CancellationToken,
+    pub paused: Arc<AtomicBool>,
+    pub previews: Mutex<HashMap<i64, metadata::MergePreview>>,
+}
+
+impl BatchJob {
+    fn new() -> Self {
+        Self {
+            cancel: CancellationToken::new(),
+            paused: Arc::new(AtomicBool::new(false)),
+            previews: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct BatchCoordinator {
+    jobs: Mutex<HashMap<String, Arc<BatchJob>>>,
+}
+
+impl BatchCoordinator {
+    fn start(&self, job_id: String) -> Result<Arc<BatchJob>, String> {
+        let job = Arc::new(BatchJob::new());
+        let mut jobs = self.jobs.lock().map_err(|_| "批量任务锁失效")?;
+        if jobs.contains_key(&job_id) {
+            return Err("批量任务 ID 重复".to_string());
+        }
+        jobs.insert(job_id, job.clone());
+        Ok(job)
+    }
+
+    fn get(&self, job_id: &str) -> Option<Arc<BatchJob>> {
+        self.jobs.lock().ok()?.get(job_id).cloned()
+    }
+
+    fn cancel(&self, job_id: &str) -> bool {
+        if let Some(job) = self.get(job_id) {
+            job.cancel.cancel();
+            job.paused.store(false, Ordering::SeqCst);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn pause(&self, job_id: &str, paused: bool) -> bool {
+        if let Some(job) = self.get(job_id) {
+            job.paused.store(paused, Ordering::SeqCst);
+            true
+        } else {
+            false
+        }
     }
 
     fn finish(&self, job_id: &str) {
@@ -125,6 +190,7 @@ pub async fn create_app_state(app: &AppHandle) -> anyhow::Result<AppState> {
         launches: Arc::new(LaunchManager::default()),
         metadata_http: Arc::new(MetadataHttp::new()?),
         metadata_jobs: Arc::new(MetadataCoordinator::default()),
+        batch_jobs: Arc::new(BatchCoordinator::default()),
         oauth,
     })
 }
@@ -514,7 +580,7 @@ pub async fn library_remove_scan_exclusion(
 pub async fn metadata_providers(
     state: State<'_, AppState>,
 ) -> Result<Vec<metadata::ProviderInfo>, String> {
-    metadata::list_providers(&state.pool)
+    metadata::list_providers(&state.pool, &state.oauth)
         .await
         .map_err(|error| error.to_string())
 }
@@ -545,7 +611,7 @@ pub async fn metadata_work_state(
     state: State<'_, AppState>,
     work_id: i64,
 ) -> Result<metadata::MetadataWorkState, String> {
-    metadata::work_state(&state.pool, work_id)
+    metadata::work_state(&state.pool, &state.oauth, work_id)
         .await
         .map_err(|error| error.to_string())
 }
@@ -568,6 +634,7 @@ pub async fn metadata_search_start(
     let cancel = state.metadata_jobs.start(job_id.clone())?;
     let pool = state.pool.clone();
     let http = state.metadata_http.clone();
+    let oauth = state.oauth.clone();
     let coordinator = state.metadata_jobs.clone();
     let app_handle = app.clone();
     let task_job_id = job_id.clone();
@@ -581,6 +648,7 @@ pub async fn metadata_search_start(
         let result = metadata::search_all(
             &pool,
             &http,
+            &oauth,
             &query,
             provider.as_deref(),
             &cancel,
@@ -651,6 +719,7 @@ pub async fn metadata_candidate_preview(
     metadata::preview(
         &state.pool,
         &state.metadata_http,
+        &state.oauth,
         work_id,
         &provider,
         &source_id,
@@ -670,6 +739,7 @@ pub async fn metadata_import(
         &state.pool,
         &state.data_dir,
         &state.metadata_http,
+        &state.oauth,
         request,
         &cancel,
     )
@@ -687,6 +757,451 @@ pub async fn metadata_set_field_lock(
     metadata::set_field_lock(&state.pool, work_id, &field, locked)
         .await
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn metadata_field_priorities(
+    state: State<'_, AppState>,
+) -> Result<Vec<metadata::FieldPriorityState>, String> {
+    metadata::field_priority_states(&state.pool, &state.oauth)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn metadata_field_priority_reorder(
+    state: State<'_, AppState>,
+    field: String,
+    provider_ids: Vec<String>,
+) -> Result<(), String> {
+    metadata::reorder_field_priorities(&state.pool, &state.oauth, &field, &provider_ids)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn metadata_field_priority_reset(
+    state: State<'_, AppState>,
+    field: String,
+) -> Result<(), String> {
+    metadata::reset_field_priority(&state.pool, &field)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn metadata_set_field_priority_global(
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<bool, String> {
+    metadata::set_field_priority_global(&state.pool, enabled)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(enabled)
+}
+
+#[tauri::command]
+pub async fn metadata_merge_preview(
+    state: State<'_, AppState>,
+    work_id: i64,
+    providers: Option<Vec<String>>,
+) -> Result<metadata::MergePreview, String> {
+    let cancel = CancellationToken::new();
+    metadata::merge_preview(
+        &state.pool,
+        &state.metadata_http,
+        &state.oauth,
+        work_id,
+        providers.as_deref(),
+        &cancel,
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn metadata_merge_apply(
+    state: State<'_, AppState>,
+    request: metadata::MergeApplyRequest,
+) -> Result<metadata::MergeApplyResult, String> {
+    let cancel = CancellationToken::new();
+    metadata::merge_apply(
+        &state.pool,
+        &state.data_dir,
+        &state.metadata_http,
+        &state.oauth,
+        request,
+        &cancel,
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn metadata_adopt_claim(
+    state: State<'_, AppState>,
+    work_id: i64,
+    claim_id: i64,
+) -> Result<metadata::MergeApplyResult, String> {
+    let cancel = CancellationToken::new();
+    metadata::adopt_claim(
+        &state.pool,
+        &state.data_dir,
+        &state.metadata_http,
+        &state.oauth,
+        work_id,
+        claim_id,
+        &cancel,
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn metadata_batch_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    request: metadata::BatchStartRequest,
+) -> Result<metadata::MetadataJobStart, String> {
+    let mut work_ids = request.work_ids;
+    work_ids.sort_unstable();
+    work_ids.dedup();
+    if work_ids.is_empty() {
+        return Err("批量刮削至少需要选择一部作品".to_string());
+    }
+    if work_ids.len() > 200 {
+        return Err("一次最多批量处理 200 部作品".to_string());
+    }
+    let job_id = uuid::Uuid::new_v4().to_string();
+    let job = state.batch_jobs.start(job_id.clone())?;
+    let pool = state.pool.clone();
+    let http = state.metadata_http.clone();
+    let oauth = state.oauth.clone();
+    let coordinator = state.batch_jobs.clone();
+    let app_handle = app.clone();
+    let task_job_id = job_id.clone();
+    let provider_ids = request.provider_ids;
+    let include_covers = request.include_covers;
+    let task_job = job.clone();
+
+    tauri::async_runtime::spawn(async move {
+        let total = work_ids.len();
+        let mut completed = 0usize;
+        let mut failed = 0usize;
+        let mut skipped = 0usize;
+        let provider_filter: Option<Vec<String>> = if provider_ids.is_empty() {
+            None
+        } else {
+            Some(provider_ids)
+        };
+        for work_id in work_ids {
+            if task_job.cancel.is_cancelled() {
+                break;
+            }
+            while task_job.paused.load(Ordering::SeqCst) {
+                if task_job.cancel.is_cancelled() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+            if task_job.cancel.is_cancelled() {
+                break;
+            }
+            let title: Option<String> =
+                sqlx::query_scalar("SELECT canonical_title FROM works WHERE id = ?")
+                    .bind(work_id)
+                    .fetch_optional(&pool)
+                    .await
+                    .ok()
+                    .flatten();
+            let title = title.unwrap_or_else(|| format!("作品 #{work_id}"));
+            let _ = app_handle.emit(
+                "metadata-batch-progress",
+                metadata::BatchProgress {
+                    job_id: task_job_id.clone(),
+                    total,
+                    completed,
+                    failed,
+                    skipped,
+                    paused: task_job.paused.load(Ordering::SeqCst),
+                    cancelled: task_job.cancel.is_cancelled(),
+                    current_work_id: Some(work_id),
+                    current_title: title.clone(),
+                    message: format!("正在匹配 {title}"),
+                },
+            );
+            let result = metadata::merge_preview(
+                &pool,
+                &http,
+                &oauth,
+                work_id,
+                provider_filter.as_deref(),
+                &task_job.cancel,
+            )
+            .await;
+            match result {
+                Ok(mut preview) => {
+                    if !include_covers {
+                        preview.covers.clear();
+                    }
+                    preview.work_id = work_id;
+                    let has_proposals = !preview.fields.is_empty() || !preview.covers.is_empty();
+                    if has_proposals {
+                        if let Ok(mut previews) = task_job.previews.lock() {
+                            previews.insert(work_id, preview.clone());
+                        }
+                        let _ = app_handle.emit(
+                            "metadata-batch-work",
+                            metadata::BatchWorkResult {
+                                job_id: task_job_id.clone(),
+                                work_id,
+                                title,
+                                status: "proposed".to_string(),
+                                preview: Some(preview),
+                                error: None,
+                            },
+                        );
+                    } else {
+                        skipped += 1;
+                        let _ = app_handle.emit(
+                            "metadata-batch-work",
+                            metadata::BatchWorkResult {
+                                job_id: task_job_id.clone(),
+                                work_id,
+                                title,
+                                status: "skipped".to_string(),
+                                preview: None,
+                                error: None,
+                            },
+                        );
+                    }
+                }
+                Err(error) => {
+                    failed += 1;
+                    let _ = app_handle.emit(
+                        "metadata-batch-work",
+                        metadata::BatchWorkResult {
+                            job_id: task_job_id.clone(),
+                            work_id,
+                            title,
+                            status: "failed".to_string(),
+                            preview: None,
+                            error: Some(error.to_string()),
+                        },
+                    );
+                }
+            }
+            completed += 1;
+            let _ = app_handle.emit(
+                "metadata-batch-progress",
+                metadata::BatchProgress {
+                    job_id: task_job_id.clone(),
+                    total,
+                    completed,
+                    failed,
+                    skipped,
+                    paused: task_job.paused.load(Ordering::SeqCst),
+                    cancelled: task_job.cancel.is_cancelled(),
+                    current_work_id: None,
+                    current_title: String::new(),
+                    message: format!("已完成 {completed} / {total}"),
+                },
+            );
+        }
+        let cancelled = task_job.cancel.is_cancelled();
+        let _ = app_handle.emit(
+            "metadata-batch-complete",
+            metadata::BatchComplete {
+                job_id: task_job_id.clone(),
+                total,
+                completed,
+                failed,
+                cancelled,
+                message: if cancelled {
+                    format!("批量任务已取消，完成 {completed} / {total}")
+                } else {
+                    format!("批量匹配完成，{completed} / {total} 部作品已生成提案")
+                },
+            },
+        );
+        if cancelled {
+            coordinator.finish(&task_job_id);
+        }
+    });
+
+    Ok(metadata::MetadataJobStart { job_id })
+}
+
+#[tauri::command]
+pub async fn metadata_batch_pause(
+    state: State<'_, AppState>,
+    job_id: String,
+    paused: bool,
+) -> Result<bool, String> {
+    Ok(state.batch_jobs.pause(&job_id, paused))
+}
+
+#[tauri::command]
+pub async fn metadata_batch_cancel(
+    state: State<'_, AppState>,
+    job_id: String,
+) -> Result<bool, String> {
+    Ok(state.batch_jobs.cancel(&job_id))
+}
+
+#[tauri::command]
+pub async fn metadata_batch_apply(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    request: metadata::BatchApplyRequest,
+) -> Result<metadata::BatchApplyResult, String> {
+    let job = state
+        .batch_jobs
+        .get(&request.job_id)
+        .ok_or_else(|| "批量任务不存在或已结束".to_string())?;
+    let previews = {
+        let guard = job.previews.lock().map_err(|_| "批量提案锁失效")?;
+        guard
+            .iter()
+            .map(|(work_id, preview)| (*work_id, preview.clone()))
+            .collect::<Vec<_>>()
+    };
+    let selected: HashSet<i64> = if request.work_ids.is_empty() {
+        previews.iter().map(|(work_id, _)| *work_id).collect()
+    } else {
+        request.work_ids.iter().copied().collect()
+    };
+    let total = selected.len();
+    let mut completed = 0usize;
+    let mut applied_works = 0usize;
+    let mut failed_works = 0usize;
+    let mut skipped_works = 0usize;
+    let mut applied_fields = 0usize;
+    let mut cover_applied = 0usize;
+    let mut works = Vec::new();
+
+    for (work_id, preview) in previews.into_iter() {
+        if !selected.contains(&work_id) {
+            continue;
+        }
+        let mut selections = Vec::new();
+        for field in &preview.fields {
+            if field.default_selected
+                && !field.locked
+                && let Some(candidate) = field.candidates.first()
+            {
+                selections.push(metadata::MergeSelection {
+                    field: field.field.clone(),
+                    provider: candidate.provider.clone(),
+                    source_id: candidate.source_id.clone(),
+                    url: None,
+                });
+            }
+        }
+        let cover = if request.include_covers {
+            preview
+                .covers
+                .iter()
+                .find(|cover| cover.default_selected)
+                .map(|cover| metadata::MergeSelection {
+                    field: "cover".to_string(),
+                    provider: cover.provider.clone(),
+                    source_id: cover.source_id.clone(),
+                    url: Some(cover.url.clone()),
+                })
+        } else {
+            None
+        };
+        let result = if selections.is_empty() && cover.is_none() {
+            Ok(metadata::MergeApplyResult {
+                applied: Vec::new(),
+                skipped_locked: Vec::new(),
+                skipped_non_empty: Vec::new(),
+                cover_applied: false,
+                errors: Vec::new(),
+            })
+        } else {
+            metadata::merge_apply(
+                &state.pool,
+                &state.data_dir,
+                &state.metadata_http,
+                &state.oauth,
+                metadata::MergeApplyRequest {
+                    work_id,
+                    selections,
+                    cover,
+                    only_if_empty: true,
+                },
+                &job.cancel,
+            )
+            .await
+        };
+        match result {
+            Ok(result) => {
+                let status = if result.applied.is_empty() && !result.cover_applied {
+                    skipped_works += 1;
+                    "skipped"
+                } else {
+                    applied_works += 1;
+                    "applied"
+                };
+                applied_fields += result.applied.len();
+                if result.cover_applied {
+                    cover_applied += 1;
+                }
+                works.push(metadata::BatchApplyWorkResult {
+                    work_id,
+                    title: preview.title.clone(),
+                    status: status.to_string(),
+                    applied: result.applied,
+                    skipped_locked: result.skipped_locked,
+                    skipped_non_empty: result.skipped_non_empty,
+                    cover_applied: result.cover_applied,
+                    errors: result.errors,
+                });
+            }
+            Err(error) => {
+                failed_works += 1;
+                works.push(metadata::BatchApplyWorkResult {
+                    work_id,
+                    title: preview.title.clone(),
+                    status: "failed".to_string(),
+                    applied: Vec::new(),
+                    skipped_locked: Vec::new(),
+                    skipped_non_empty: Vec::new(),
+                    cover_applied: false,
+                    errors: vec![error.to_string()],
+                });
+            }
+        }
+        completed += 1;
+        let _ = app.emit(
+            "metadata-batch-apply-progress",
+            metadata::BatchProgress {
+                job_id: request.job_id.clone(),
+                total,
+                completed,
+                failed: failed_works,
+                skipped: skipped_works,
+                paused: false,
+                cancelled: false,
+                current_work_id: Some(work_id),
+                current_title: preview.title.clone(),
+                message: format!("正在应用 {completed} / {total}"),
+            },
+        );
+    }
+
+    state.batch_jobs.finish(&request.job_id);
+    Ok(metadata::BatchApplyResult {
+        total,
+        applied_works,
+        failed_works,
+        skipped_works,
+        applied_fields,
+        cover_applied,
+        works,
+    })
 }
 
 #[tauri::command]

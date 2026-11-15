@@ -2,7 +2,7 @@
 
 本地优先的 Windows Galgame / AVG 游戏库管理器。目标是把作品、发行版本、本地安装副本、启动配置、元数据来源、游玩会话和用户状态组织成一套适合视觉小说的桌面与大屏体验。
 
-**C4：元数据 Provider、VNDB 与 Bangumi 已完成**。主应用已经可以完成本地目录扫描、候选确认和入库，在作品详情页编辑资料、缓存封面、保存启动配置和真实启动游戏；现在还可以按来源优先级搜索 VNDB 与 Bangumi、预览候选、导入字段和封面，并保留字段来源和锁定状态。G1 已选择 **A 游戏启动器**，G2 已确认“深夜游戏盒”视觉基线。Steam、复杂多源冲突、自动时长统计和大屏体验尚未接入，下一阶段是 C5。
+**C5：Steam、多源合并与批量刮削已完成**。主应用已经可以完成本地目录扫描、候选确认和入库，在作品详情页编辑资料、缓存封面、保存启动配置和真实启动游戏；元数据侧支持 VNDB、Bangumi、NextMoe/Kungal、Hikarinagi 和 Steam，按字段或全局来源顺序匹配候选，处理多源冲突、锁定字段、封面画廊和两阶段批量刮削。G1 已选择 **A 游戏启动器**，G2 已确认“深夜游戏盒”视觉基线。自动时长统计和大屏体验尚未接入，下一阶段是 C6。
 
 ## 环境
 
@@ -56,9 +56,11 @@ cargo test
 - 支持手动选择封面或在游戏目录附近发现常见封面图片；原图与 WebP 缩略图缓存在数据目录，列表只加载缩略图，缓存文件被删除时回退到标题排印封面。
 - 启动配置保存 exe、工作目录、参数数组、环境变量、可选包装器（Locale Emulator/NTLEA 一类工具）和显示器偏好；启动不经过 shell。
 - 真实启动使用 Windows Job Object 跟踪进程树，详情页显示运行/退出状态和退出码；自动会话和累计时长留给 C6。
-- 元数据来源支持 VNDB API v2 和 Bangumi OpenAPI：可从详情页搜索、查看候选、预览字段差异并导入标题、别名、简介、年份、标签、开发商、发行商、发行日期和封面。
-- 来源优先级保存在 SQLite，可在设置页调整顺序和启停；搜索结果按优先级排列，导入默认只填空白且未锁定字段，手动编辑会自动留下锁定记录。每个字段保留来源、来源 ID 和抓取时间，详情响应缓存 24 小时。
-- 账号连接已接入 OAuth：NextMoe/Kungal 使用 public client + PKCE，Bangumi 使用 OAuth 2.0；Hikarinagi 已接入授权码 + PKCE，但当前应用需要在控制台切换为 public client（或补充 clientSecret）后才能完成 token 交换。
+- 元数据来源支持 VNDB API v2、Bangumi OpenAPI、Kungal / NextMoe Catalog、Hikarinagi 和 Steam Store：可从详情页搜索、查看候选、预览字段差异并导入标题、别名、简介、年份、标签、开发商、发行商、发行日期、关联作品和封面。Steam 支持名称、AppID 或商店链接，并过滤原声带、画集等附加内容。
+- 来源优先级保存在 SQLite：可以调整全局来源顺序，也可以按字段单独排序；设置页提供“全部字段跟随全局来源顺序”开关。搜索结果、合并默认值和字段账本都遵循当前模式；导入默认只填空白且未锁定字段，手动编辑会自动留下锁定记录。每个字段保留来源、来源 ID 和抓取时间，详情响应缓存 24 小时。
+- 多源合并会按标题优先为每个来源匹配候选，展示每个字段的候选值、冲突状态和封面画廊；可以逐个字段改选、采用来源值、锁定/解锁。已有值和锁定字段不会被自动覆盖，封面默认保留已有图片。
+- 游戏库支持批量选择作品并进入两阶段刮削：先匹配并生成提案，再确认应用。队列支持来源选择、进度、暂停、取消、失败重试和局部成功；应用阶段再次检查空字段和锁定状态，并可选补全缺失封面。
+- 账号连接已接入 OAuth：NextMoe/Kungal 使用 public client + PKCE，Bangumi 使用 OAuth 2.0；Hikarinagi 使用授权码 + PKCE 和 `catalog:read`，已连接账号会复用访问令牌，也可以在配置中提供 clientSecret 使用应用级凭据。
 - OAuth 凭证从 `MIYU_OAUTH_CONFIG`、数据目录 `oauth/providers.json` 或开发目录 `tmp/oauth/providers.json` 读取；设置页可以直接导入 JSON，保存后点“重新读取”即可生效，不需要重启。access/refresh token 使用 Windows DPAPI 加密后写入 SQLite，不写入日志或前端。
 
 开发或测试时可以用 MIYU_DATA_DIR 指向独立的数据目录，避免写入日常数据：
@@ -74,7 +76,7 @@ cargo test
 
 - NextMoe/Kungal：public client + PKCE，回调 `http://127.0.0.1/callback`，不需要 secret。
 - Bangumi：OAuth 2.0，需要 client secret 和已注册的 `http://127.0.0.1:39123/callback`。
-- Hikarinagi：授权码 + PKCE；控制台需要把应用设为 public client，并启用 `openid`、`profile`、`offline_access`，回调 `http://127.0.0.1:39124/callback`。
+- Hikarinagi：授权码 + PKCE；控制台需要把应用设为 public client，并启用 `openid`、`profile`、`offline_access`、`catalog:read`，回调 `http://127.0.0.1:39124/callback`。如果保留机密客户端，可以在 `providers.json` 中补 `clientSecret`，数据源会用应用级凭据换取只读 `catalog:read` 令牌；否则需要先在设置中连接账号。
 
 access token 和 refresh token 使用 Windows DPAPI 加密后写入 SQLite；应用不会把密码或 token 写进日志或前端。
 
@@ -89,7 +91,7 @@ access token 和 refresh token 使用 Windows DPAPI 加密后写入 SQLite；应
     $env:MIYU_DATA_DIR = "D:\Projects\MiyuManager\tmp\oauth-test-1"
     pnpm tauri dev
 
-主应用截图保存在 `outputs/app/1440x900/`、`1920x1080/`、`150pct-1280x720/` 和 `4k/`；C2 扫描确认与导入证据在 `outputs/app/c2/`；C3 详情、封面、启动配置和真实启动证据在 `outputs/app/c3/`；C4 搜索、预览、导入和来源优先级证据在 `outputs/app/c4/`；焦点与 reduced-motion 证据在 `outputs/app/probes/`。
+主应用截图保存在 `outputs/app/1440x900/`、`1920x1080/`、`150pct-1280x720/` 和 `4k/`；C2 扫描确认与导入证据在 `outputs/app/c2/`；C3 详情、封面、启动配置和真实启动证据在 `outputs/app/c3/`；C4 搜索、预览、导入和来源优先级证据在 `outputs/app/c4/`；C5 多源合并、冲突、封面画廊、字段优先级和批量刮削证据在 `outputs/app/c5/`；焦点与 reduced-motion 证据在 `outputs/app/probes/`。
 
 ## 产品边界
 

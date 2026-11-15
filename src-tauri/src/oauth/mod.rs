@@ -4,8 +4,9 @@ mod flow;
 mod store;
 mod types;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use reqwest::Client;
@@ -20,6 +21,13 @@ pub struct OAuthService {
     data_dir: PathBuf,
     http: Client,
     connecting: Mutex<HashSet<String>>,
+    app_tokens: Mutex<HashMap<String, CachedAppToken>>,
+}
+
+#[derive(Debug, Clone)]
+struct CachedAppToken {
+    access_token: String,
+    expires_at: i64,
 }
 
 impl OAuthService {
@@ -37,11 +45,101 @@ impl OAuthService {
             data_dir: data_dir.to_path_buf(),
             http,
             connecting: Mutex::new(HashSet::new()),
+            app_tokens: Mutex::new(HashMap::new()),
         })
     }
 
     fn current_config(&self) -> config::OAuthConfig {
         config::OAuthConfig::load(&self.data_dir)
+    }
+
+    pub fn has_usable_credentials(&self, provider_id: &str) -> bool {
+        let provider_id = normalize_id(provider_id);
+        self.current_config()
+            .provider(provider_id)
+            .is_some_and(|provider| provider.client_secret.is_some())
+    }
+
+    pub async fn access_token(&self, pool: &SqlitePool, provider_id: &str) -> Result<String> {
+        let provider_id = normalize_id(provider_id);
+        let definition = provider_def(provider_id).context("未知的 OAuth 来源")?;
+        let config = self.current_config();
+        let provider = config.provider(provider_id).with_context(|| {
+            format!(
+                "{} 还没有 OAuth 配置，请先导入 providers.json",
+                definition.name
+            )
+        })?;
+
+        if let Some(stored) = store::load_tokens(pool, provider_id).await? {
+            if stored.expires_at > now_unix() + 90 {
+                let token = decrypt_token(&stored.access_token_enc)?;
+                if !token.trim().is_empty() {
+                    return Ok(token);
+                }
+            }
+            if let Some(refresh_encrypted) = stored.refresh_token_enc.as_deref() {
+                let refresh_token = decrypt_token(refresh_encrypted)?;
+                match flow::refresh_access_token(&self.http, provider_id, provider, &refresh_token)
+                    .await
+                {
+                    Ok(tokens) => {
+                        store::update_tokens(pool, provider_id, &tokens, &provider.scopes).await?;
+                        return Ok(tokens.access_token);
+                    }
+                    Err(error) if provider.client_secret.is_none() => {
+                        return Err(error.context(format!(
+                            "{} 登录已失效，请在设置 → 账号连接中重新登录",
+                            definition.name
+                        )));
+                    }
+                    Err(_) => {}
+                }
+            }
+        }
+
+        if provider.client_secret.is_some()
+            && let Some(token) = self.app_access_token(provider_id, provider).await?
+        {
+            return Ok(token);
+        }
+
+        bail!(
+            "{} 还没有可用的访问令牌。请先在设置 → 账号连接中登录。",
+            definition.name
+        )
+    }
+
+    async fn app_access_token(
+        &self,
+        provider_id: &str,
+        provider: &types::OAuthProviderConfig,
+    ) -> Result<Option<String>> {
+        if provider.client_secret.is_none() {
+            return Ok(None);
+        }
+        let now = now_unix();
+        {
+            let cache = self.app_tokens.lock().await;
+            if let Some(cached) = cache.get(provider_id)
+                && cached.expires_at > now + 60
+            {
+                return Ok(Some(cached.access_token.clone()));
+            }
+        }
+        let tokens = flow::client_credentials_token(&self.http, provider_id, provider)
+            .await
+            .context("应用凭据换取令牌失败")?;
+        let access_token = tokens.access_token.clone();
+        let expires_at = now + tokens.expires_in_seconds().saturating_sub(60);
+        self.app_tokens.lock().await.insert(
+            provider_id.to_string(),
+            CachedAppToken {
+                access_token: access_token.clone(),
+                expires_at,
+            },
+        );
+        Ok(Some(access_token))
     }
 
     pub fn config_info(&self) -> OAuthConfigInfo {
@@ -163,6 +261,18 @@ impl OAuthService {
         }
         store::delete_account(pool, provider_id).await
     }
+}
+
+fn decrypt_token(data: &[u8]) -> Result<String> {
+    let bytes = crypto::unprotect(data)?;
+    String::from_utf8(bytes).context("OAuth 令牌不是有效文本")
+}
+
+fn now_unix() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
 }
 
 #[cfg(test)]

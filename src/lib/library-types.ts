@@ -280,6 +280,9 @@ export interface MetadataFieldState {
   sourceId: string | null;
   locked: boolean;
   lockSource: string | null;
+  conflict: boolean;
+  preferredClaimId: number | null;
+  currentClaimId: number | null;
   claims: MetadataClaim[];
 }
 
@@ -362,8 +365,16 @@ export interface PreviewField {
 export interface PreviewCover {
   currentSource: string | null;
   candidateUrl: string;
+  kind: string;
   defaultSelected: boolean;
   locked: boolean;
+}
+
+export interface MetadataCoverOption {
+  url: string;
+  kind: string;
+  width: number | null;
+  height: number | null;
 }
 
 export interface MetadataPreview {
@@ -384,10 +395,12 @@ export interface MetadataPreview {
     publisher: string | null;
     tags: string[];
     coverUrl: string | null;
+    covers?: MetadataCoverOption[];
     related: { sourceId: string; relation: string; title: string }[];
   };
   fields: PreviewField[];
   cover: PreviewCover | null;
+  coverOptions?: PreviewCover[];
 }
 
 export interface MetadataImportRequest {
@@ -396,12 +409,164 @@ export interface MetadataImportRequest {
   sourceId: string;
   selectedFields: string[];
   selectedCover: boolean;
+  coverUrl?: string | null;
 }
 
 export interface MetadataImportResult {
   applied: string[];
   skippedLocked: string[];
   coverApplied: boolean;
+}
+
+export interface FieldPriorityProvider {
+  provider: string;
+  providerName: string;
+  priority: number;
+  enabled: boolean;
+}
+
+export interface FieldPriorityState {
+  field: string;
+  label: string;
+  providers: FieldPriorityProvider[];
+  custom: boolean;
+  global: boolean;
+}
+
+export interface MergeMatch {
+  provider: string;
+  providerName: string;
+  sourceId: string;
+  title: string;
+  originalTitle: string;
+  year: number | null;
+  score: number;
+  priority: number;
+}
+
+export interface MergeFieldCandidate {
+  provider: string;
+  providerName: string;
+  sourceId: string;
+  value: MetadataValue;
+  priority: number;
+}
+
+export interface MergeFieldState {
+  field: string;
+  label: string;
+  current: MetadataValue;
+  locked: boolean;
+  lockSource: string | null;
+  candidates: MergeFieldCandidate[];
+  defaultSelected: boolean;
+  conflict: boolean;
+}
+
+export interface MergeCoverCandidate {
+  provider: string;
+  providerName: string;
+  sourceId: string;
+  url: string;
+  kind: string;
+  priority: number;
+  defaultSelected: boolean;
+}
+
+export interface MergePreview {
+  workId: number;
+  title: string;
+  query: string;
+  matched: MergeMatch[];
+  errors: MetadataProviderFailure[];
+  fields: MergeFieldState[];
+  covers: MergeCoverCandidate[];
+}
+
+export interface MergeSelection {
+  field: string;
+  provider: string;
+  sourceId: string;
+  url?: string | null;
+}
+
+export interface MergeApplyRequest {
+  workId: number;
+  selections: MergeSelection[];
+  cover: MergeSelection | null;
+  onlyIfEmpty?: boolean;
+}
+
+export interface MergeApplyResult {
+  applied: string[];
+  skippedLocked: string[];
+  skippedNonEmpty: string[];
+  coverApplied: boolean;
+  errors: string[];
+}
+
+export interface BatchStartRequest {
+  workIds: number[];
+  providerIds: string[];
+  includeCovers: boolean;
+}
+
+export interface BatchProgress {
+  jobId: string;
+  total: number;
+  completed: number;
+  failed: number;
+  skipped: number;
+  paused: boolean;
+  cancelled: boolean;
+  currentWorkId: number | null;
+  currentTitle: string;
+  message: string;
+}
+
+export interface BatchWorkResult {
+  jobId: string;
+  workId: number;
+  title: string;
+  status: "proposed" | "skipped" | "failed" | string;
+  preview: MergePreview | null;
+  error: string | null;
+}
+
+export interface BatchComplete {
+  jobId: string;
+  total: number;
+  completed: number;
+  failed: number;
+  cancelled: boolean;
+  message: string;
+}
+
+export interface BatchApplyRequest {
+  jobId: string;
+  workIds: number[];
+  includeCovers: boolean;
+}
+
+export interface BatchApplyWorkResult {
+  workId: number;
+  title: string;
+  status: "applied" | "skipped" | "failed" | string;
+  applied: string[];
+  skippedLocked: string[];
+  skippedNonEmpty: string[];
+  coverApplied: boolean;
+  errors: string[];
+}
+
+export interface BatchApplyResult {
+  total: number;
+  appliedWorks: number;
+  failedWorks: number;
+  skippedWorks: number;
+  appliedFields: number;
+  coverApplied: number;
+  works: BatchApplyWorkResult[];
 }
 
 export interface OAuthStatus {

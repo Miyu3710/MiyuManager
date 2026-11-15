@@ -10,6 +10,7 @@ import {
 } from "../../lib/library-api";
 import type { MetadataProvider } from "../../lib/library-types";
 import { OAuthAccounts } from "./OAuthAccounts";
+import { FieldPrioritySettings } from "./FieldPrioritySettings";
 
 const fieldLabels: Record<string, string> = {
   title: "标题",
@@ -167,6 +168,7 @@ export function MetadataSourceSettings() {
       <p className="settings-hint">
         顺序决定搜索结果的排列和字段合并时的默认优先值。新增来源只需注册适配器，就会自动出现在这里。
       </p>
+      <FieldPrioritySettings />
       <OAuthAccounts />
     </>
   );

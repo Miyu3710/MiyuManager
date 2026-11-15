@@ -6,7 +6,7 @@ use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use super::http::MetadataHttp;
-use super::types::{CandidateDetail, RelatedWork, SearchCandidate};
+use super::types::{CandidateDetail, CoverOption, RelatedWork, SearchCandidate};
 
 const PROVIDER_ID: &str = "vndb";
 const SEARCH_URL: &str = "https://api.vndb.org/kana/vn";
@@ -227,6 +227,16 @@ fn map_detail(vn: VndbVn, raw_json: String) -> CandidateDetail {
         .map(ToOwned::to_owned);
     let year = extract_year(vn.released.as_deref());
     let developer = vn.developers.first().map(|item| item.name.clone());
+    let cover_url = vn.image.and_then(|image| image.url);
+    let covers = cover_url
+        .iter()
+        .map(|url| CoverOption {
+            url: url.clone(),
+            kind: "cover".to_string(),
+            width: None,
+            height: None,
+        })
+        .collect();
 
     CandidateDetail {
         provider: PROVIDER_ID.to_string(),
@@ -240,7 +250,8 @@ fn map_detail(vn: VndbVn, raw_json: String) -> CandidateDetail {
         developer: developer.clone(),
         publisher: developer,
         tags,
-        cover_url: vn.image.and_then(|image| image.url),
+        cover_url,
+        covers,
         related,
         raw_json,
     }

@@ -171,18 +171,14 @@ async fn exchange(
     redirect_uri: &str,
     verifier: Option<&str>,
 ) -> Result<TokenResponse> {
-    let token_url = match provider_id {
-        "bangumi" => "https://bgm.tv/oauth/access_token",
-        "nextmoe" => "https://account.nextmoe.com/api/v1/oauth/token",
-        "hikarinagi" => "https://id.hikarinagi.org/oidc/token",
-        _ => bail!("未知的 OAuth 来源"),
-    };
     let mut form = vec![
         ("grant_type", "authorization_code".to_string()),
         ("code", code.to_string()),
         ("redirect_uri", redirect_uri.to_string()),
-        ("client_id", config.client_id.clone()),
     ];
+    if provider_id != "hikarinagi" {
+        form.push(("client_id", config.client_id.clone()));
+    }
     if let Some(verifier) = verifier {
         form.push(("code_verifier", verifier.to_string()));
     }
@@ -193,12 +189,70 @@ async fn exchange(
             .context("Bangumi 缺少 clientSecret")?;
         form.push(("client_secret", secret.to_string()));
     }
+    token_request(http, provider_id, config, form).await
+}
+
+pub async fn refresh_access_token(
+    http: &Client,
+    provider_id: &str,
+    config: &OAuthProviderConfig,
+    refresh_token: &str,
+) -> Result<TokenResponse> {
+    let mut form = vec![
+        ("grant_type", "refresh_token".to_string()),
+        ("refresh_token", refresh_token.to_string()),
+    ];
+    if provider_id != "hikarinagi" {
+        form.push(("client_id", config.client_id.clone()));
+    }
+    if provider_id == "bangumi" {
+        let secret = config
+            .client_secret
+            .as_deref()
+            .context("Bangumi 缺少 clientSecret")?;
+        form.push(("client_secret", secret.to_string()));
+    }
+    token_request(http, provider_id, config, form).await
+}
+
+pub async fn client_credentials_token(
+    http: &Client,
+    provider_id: &str,
+    config: &OAuthProviderConfig,
+) -> Result<TokenResponse> {
+    if provider_id != "hikarinagi" {
+        bail!("只有 Hikarinagi 支持应用级令牌");
+    }
+    config
+        .client_secret
+        .as_deref()
+        .context("Hikarinagi 应用凭据缺少 clientSecret")?;
+    let form = vec![
+        ("grant_type", "client_credentials".to_string()),
+        ("scope", "catalog:read".to_string()),
+    ];
+    token_request(http, provider_id, config, form).await
+}
+
+async fn token_request(
+    http: &Client,
+    provider_id: &str,
+    config: &OAuthProviderConfig,
+    mut form: Vec<(&'static str, String)>,
+) -> Result<TokenResponse> {
+    let token_url = match provider_id {
+        "bangumi" => "https://bgm.tv/oauth/access_token",
+        "nextmoe" => "https://account.nextmoe.com/api/v1/oauth/token",
+        "hikarinagi" => "https://id.hikarinagi.org/oidc/token",
+        _ => bail!("未知的 OAuth 来源"),
+    };
     let mut request = http.post(token_url);
-    if provider_id == "hikarinagi"
-        && let Some(secret) = config.client_secret.as_deref()
-    {
-        request = request.basic_auth(&config.client_id, Some(secret));
-        form.retain(|(key, _)| *key != "client_id");
+    if provider_id == "hikarinagi" {
+        if let Some(secret) = config.client_secret.as_deref() {
+            request = request.basic_auth(&config.client_id, Some(secret));
+        } else {
+            form.push(("client_id", config.client_id.clone()));
+        }
     }
     let response = request
         .form(&form)
@@ -216,10 +270,10 @@ async fn exchange(
             .unwrap_or("token 请求被拒绝");
         if provider_id == "hikarinagi" {
             bail!(
-                "Hikarinagi 令牌交换失败：{error}。请在开发者控制台确认应用是 public client，并启用 openid、profile、offline_access scope。"
+                "Hikarinagi 令牌请求失败：{error}。请确认应用类型、clientSecret 和 catalog:read 权限。"
             );
         }
-        bail!("OAuth token 交换失败：{error}");
+        bail!("OAuth token 请求失败：{error}");
     }
     let tokens: TokenResponse =
         serde_json::from_str(&body).context("OAuth token 响应格式无法识别")?;

@@ -36,6 +36,20 @@ import type {
   MetadataFieldState,
   OAuthConfigInfo,
   OAuthStatus,
+  FieldPriorityState,
+  FieldPriorityProvider,
+  MergePreview,
+  MergeFieldState,
+  MergeFieldCandidate,
+  MergeCoverCandidate,
+  MergeApplyRequest,
+  MergeApplyResult,
+  MergeSelection,
+  BatchStartRequest,
+  BatchWorkResult,
+  BatchApplyRequest,
+  BatchApplyResult,
+  BatchApplyWorkResult,
 } from "./library-types";
 import { formatBytes, formatPlaytime, formatRelativeDate } from "./format";
 
@@ -755,10 +769,100 @@ const previewMetadataProviders: MetadataProvider[] = [
     connected: true,
     accountName: null,
   },
+  {
+    id: "nextmoe",
+    name: "Kungal / NextMoe",
+    description: "六源对齐的标题、简介、厂商、标签和关联作品",
+    fields: [
+      "title",
+      "original_title",
+      "aliases",
+      "description",
+      "year",
+      "tags",
+      "developer",
+      "publisher",
+      "release_date",
+      "cover",
+      "related",
+    ],
+    priority: 30,
+    enabled: true,
+    requiresAuth: false,
+    authKind: "none",
+    connected: true,
+    accountName: null,
+  },
+  {
+    id: "hikarinagi",
+    name: "Hikarinagi",
+    description: "Galgame 标题、简介、开发商、标签和封面（需要授权）",
+    fields: [
+      "title",
+      "original_title",
+      "aliases",
+      "description",
+      "year",
+      "tags",
+      "developer",
+      "publisher",
+      "release_date",
+      "cover",
+    ],
+    priority: 40,
+    enabled: true,
+    requiresAuth: true,
+    authKind: "oauth2",
+    connected: true,
+    accountName: "预览账号",
+  },
+  {
+    id: "steam",
+    name: "Steam",
+    description: "商店页、发行信息、类型标签和封面",
+    fields: [
+      "title",
+      "original_title",
+      "aliases",
+      "description",
+      "year",
+      "tags",
+      "developer",
+      "publisher",
+      "release_date",
+      "cover",
+    ],
+    priority: 50,
+    enabled: true,
+    requiresAuth: false,
+    authKind: "none",
+    connected: true,
+    accountName: null,
+  },
 ];
+
+const previewMetadataProviderDefaults = previewMetadataProviders.map((provider) => ({
+  provider,
+  priority: provider.priority,
+  enabled: provider.enabled,
+}));
 
 const previewMetadataClaims = new Map<number, MetadataClaim[]>();
 let previewMetadataClaimId = 1;
+
+export function resetMetadataPreviewState() {
+  for (const entry of previewMetadataProviderDefaults) {
+    entry.provider.priority = entry.priority;
+    entry.provider.enabled = entry.enabled;
+  }
+  previewMetadataClaims.clear();
+  previewWorkUpdates.clear();
+  previewCoverSources.clear();
+  previewFieldPriorityOverrides.clear();
+  previewFieldPriorityGlobal = false;
+  previewBatchJobs.clear();
+  previewMetadataClaimId = 1;
+}
 
 type PreviewMetadataCandidate = MetadataPreview["candidate"];
 
@@ -801,6 +905,36 @@ const previewMetadataCandidates: Record<string, MetadataSearchCandidate[]> = {
       summary: "VNDB 中的作品条目。",
       score: null,
       priority: 10,
+    },
+  ],
+  nextmoe: [
+    {
+      provider: "nextmoe",
+      sourceId: "86",
+      title: "CLANNAD",
+      originalTitle: "クラナド",
+      year: 2004,
+      developer: "Key",
+      coverUrl:
+        "https://image.kungal.iloveren.link/70/80/7080e1a974b979fd159793c144909fb154ad9407aadb02a281283cc9184f024d.webp",
+      summary: "季节是春天，故事从学园日常开始，逐渐发展为与女主角们的恋爱。",
+      score: null,
+      priority: 30,
+    },
+  ],
+  hikarinagi: [
+    {
+      provider: "hikarinagi",
+      sourceId: "42",
+      title: "CLANNAD",
+      originalTitle: "クラナド",
+      year: 2004,
+      developer: "Key",
+      coverUrl:
+        "https://image.kungal.iloveren.link/70/80/7080e1a974b979fd159793c144909fb154ad9407aadb02a281283cc9184f024d.webp",
+      summary: "",
+      score: null,
+      priority: 40,
     },
   ],
 };
@@ -852,7 +986,156 @@ const previewMetadataDetails: Record<string, PreviewMetadataCandidate> = {
     coverUrl: "https://t.vndb.org/cv/49/101149.jpg",
     related: [{ sourceId: "v12928", relation: "Sequel", title: "月影の鎖 ―狂爛モラトリアム―" }],
   },
+  "nextmoe:86": {
+    provider: "nextmoe",
+    sourceId: "86",
+    title: "CLANNAD",
+    originalTitle: "クラナド",
+    aliases: ["克兰纳德", "团子大家族", "小镇家族"],
+    description:
+      "季节是春天，故事从愉快地度过真实贴近生活的学园日常开始，不久剧情将发展为与女主角们的恋爱。",
+    releaseDate: "2004-04-28",
+    year: 2004,
+    developer: "Key",
+    publisher: "Limited Run Games / VISUAL ARTS",
+    tags: ["恋爱", "家族", "戏剧", "高中", "喜剧", "亲情"],
+    coverUrl:
+      "https://image.kungal.iloveren.link/70/80/7080e1a974b979fd159793c144909fb154ad9407aadb02a281283cc9184f024d.webp",
+    related: [{ sourceId: "215115", relation: "角色出演", title: "ai sp@ce" }],
+  },
+  "hikarinagi:42": {
+    provider: "hikarinagi",
+    sourceId: "42",
+    title: "CLANNAD",
+    originalTitle: "クラナド",
+    aliases: ["团子大家族"],
+    description: "季节是春天，故事从学园日常开始，逐渐发展为与女主角们的恋爱。",
+    releaseDate: "2004-04-28",
+    year: 2004,
+    developer: "Key",
+    publisher: "Visual Arts",
+    tags: ["家族", "恋爱", "催泪"],
+    coverUrl:
+      "https://image.kungal.iloveren.link/70/80/7080e1a974b979fd159793c144909fb154ad9407aadb02a281283cc9184f024d.webp",
+    related: [],
+  },
 };
+
+const previewMergeDetails: Record<string, PreviewMetadataCandidate> = {
+  "vndb:v99001": {
+    provider: "vndb",
+    sourceId: "v99001",
+    title: "月影工房",
+    originalTitle: "月影のアトリエ",
+    aliases: ["Moonlit Atelier", "月光工房"],
+    description:
+      "边境小镇的旧工房在夜里重新亮灯。年轻的装订师循着月光留下的线索，开始整理一段被遗忘的家族故事。",
+    releaseDate: "2022-09-30",
+    year: 2022,
+    developer: "Kaguya Soft",
+    publisher: "Kaguya Soft",
+    tags: ["ADV", "剧情", "奇幻", "女性向"],
+    coverUrl: "https://t.vndb.org/cv/49/101149.jpg",
+    covers: [
+      { url: "https://t.vndb.org/cv/49/101149.jpg", kind: "cover", width: 600, height: 900 },
+    ],
+    related: [],
+  },
+  "bangumi:99001": {
+    provider: "bangumi",
+    sourceId: "99001",
+    title: "月影工房",
+    originalTitle: "月影のアトリエ",
+    aliases: ["月光工房", "Moonlit Atelier"],
+    description:
+      "月光工房是一段关于旧书、夜晚与家族记忆的视觉小说。主角在整理遗物时，发现每一本装订书里都藏着一页未曾寄出的信。",
+    releaseDate: "2022-09-30",
+    year: 2022,
+    developer: "月影制作组",
+    publisher: "月影制作组",
+    tags: ["视觉小说", "剧情", "治愈", "悬疑"],
+    coverUrl: "https://lain.bgm.tv/pic/cover/l/c2/38/50756_0Akzl.jpg",
+    covers: [
+      {
+        url: "https://lain.bgm.tv/pic/cover/l/c2/38/50756_0Akzl.jpg",
+        kind: "cover",
+        width: 600,
+        height: 900,
+      },
+    ],
+    related: [],
+  },
+  "steam:240001": {
+    provider: "steam",
+    sourceId: "240001",
+    title: "月影工房",
+    originalTitle: "Moonlit Atelier",
+    aliases: ["Moonlit Atelier"],
+    description: "在 Steam 商店页中，月影工房以夜间工房和手写信件为核心，提供中文界面与完整语音。",
+    releaseDate: "2022-10-06",
+    year: 2022,
+    developer: "Kaguya Works",
+    publisher: "Miyu Games",
+    tags: ["冒险", "休闲", "视觉小说", "单人"],
+    coverUrl:
+      "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/324160/library_600x900.jpg",
+    covers: [
+      {
+        url: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/324160/library_600x900.jpg",
+        kind: "cover",
+        width: 600,
+        height: 900,
+      },
+      {
+        url: "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/324160/header.jpg",
+        kind: "header",
+        width: 920,
+        height: 430,
+      },
+    ],
+    related: [],
+  },
+};
+
+const previewMergeCandidates: MetadataSearchCandidate[] = [
+  {
+    provider: "vndb",
+    sourceId: "v99001",
+    title: "月影工房",
+    originalTitle: "月影のアトリエ",
+    year: 2022,
+    developer: "Kaguya Soft",
+    coverUrl: "https://t.vndb.org/cv/49/101149.jpg",
+    summary: "",
+    score: null,
+    priority: 10,
+  },
+  {
+    provider: "bangumi",
+    sourceId: "99001",
+    title: "月影工房",
+    originalTitle: "月影のアトリエ",
+    year: 2022,
+    developer: "月影制作组",
+    coverUrl: "https://lain.bgm.tv/pic/cover/l/c2/38/50756_0Akzl.jpg",
+    summary: "",
+    score: 8.1,
+    priority: 20,
+  },
+  {
+    provider: "steam",
+    sourceId: "240001",
+    title: "月影工房",
+    originalTitle: "Moonlit Atelier",
+    year: 2022,
+    developer: "Kaguya Works",
+    coverUrl:
+      "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/324160/library_600x900.jpg",
+    summary: "",
+    score: null,
+    priority: 50,
+  },
+];
 
 function previewMetadataValues(workId: number) {
   const item = previewItems().find((entry) => entry.workId === workId);
@@ -876,7 +1159,7 @@ function previewMetadataValues(workId: number) {
     rating: update?.rating ?? item.rating,
     status: update?.status ?? item.status,
     favorite: update?.favorite ?? item.favorite,
-    coverSource: null as string | null,
+    coverSource: previewCoverSources.get(workId) ?? null,
   };
 }
 
@@ -977,6 +1260,8 @@ function previewMetadataWorkState(workId: number): MetadataWorkState {
       (claim) => JSON.stringify(claim.value) === JSON.stringify(current),
     );
     const lockedClaim = fieldClaims.find((claim) => claim.locked);
+    const nonEmpty = fieldClaims.filter((claim) => !previewMetadataEmpty(claim.value));
+    const conflict = new Set(nonEmpty.map((claim) => JSON.stringify(claim.value))).size > 1;
     return {
       field,
       label,
@@ -985,6 +1270,9 @@ function previewMetadataWorkState(workId: number): MetadataWorkState {
       sourceId: sourceClaim?.sourceId ?? null,
       locked: Boolean(lockedClaim),
       lockSource: lockedClaim?.source ?? null,
+      conflict,
+      preferredClaimId: [...nonEmpty].sort((a, b) => a.priority - b.priority)[0]?.id ?? null,
+      currentClaimId: sourceClaim?.id ?? null,
       claims: fieldClaims,
     };
   });
@@ -997,6 +1285,9 @@ function previewMetadataWorkState(workId: number): MetadataWorkState {
     sourceId: null,
     locked: coverClaims.some((claim) => claim.locked),
     lockSource: coverClaims.find((claim) => claim.locked)?.source ?? null,
+    conflict: new Set(coverClaims.map((claim) => JSON.stringify(claim.value))).size > 1,
+    preferredClaimId: [...coverClaims].sort((a, b) => a.priority - b.priority)[0]?.id ?? null,
+    currentClaimId: null,
     claims: coverClaims,
   });
   return {
@@ -1004,6 +1295,396 @@ function previewMetadataWorkState(workId: number): MetadataWorkState {
     providers: previewMetadataProvidersSorted(),
     fields,
   };
+}
+
+const previewFieldLabels: Record<string, string> = {
+  title: "标题",
+  original_title: "原题",
+  aliases: "别名",
+  description: "简介",
+  year: "年份",
+  tags: "标签",
+  developer: "开发商",
+  publisher: "发行商",
+  release_date: "发行日期",
+  cover: "封面",
+  related: "关联作品",
+};
+
+const previewFieldDefaults: Record<string, string[]> = {
+  title: ["bangumi", "vndb", "nextmoe", "hikarinagi", "steam"],
+  original_title: ["vndb", "bangumi", "nextmoe", "hikarinagi", "steam"],
+  aliases: ["vndb", "bangumi", "nextmoe", "hikarinagi", "steam"],
+  description: ["bangumi", "vndb", "nextmoe", "hikarinagi", "steam"],
+  year: ["vndb", "bangumi", "nextmoe", "hikarinagi", "steam"],
+  tags: ["vndb", "bangumi", "nextmoe", "hikarinagi", "steam"],
+  developer: ["vndb", "steam", "nextmoe", "bangumi", "hikarinagi"],
+  publisher: ["steam", "nextmoe", "vndb", "bangumi", "hikarinagi"],
+  release_date: ["steam", "bangumi", "nextmoe", "vndb", "hikarinagi"],
+  cover: ["vndb", "bangumi", "nextmoe", "hikarinagi", "steam"],
+  related: ["vndb", "nextmoe"],
+};
+
+const previewFieldPriorityOverrides = new Map<string, string[]>();
+let previewFieldPriorityGlobal = false;
+const previewCoverSources = new Map<number, string | null>();
+
+function previewFieldProviders(field: string): MetadataProvider[] {
+  return previewMetadataProvidersSorted().filter((provider) => provider.fields.includes(field));
+}
+
+function previewFieldOrder(field: string): string[] {
+  const available = previewFieldProviders(field).map((provider) => provider.id);
+  if (previewFieldPriorityGlobal) {
+    return available;
+  }
+  const override = previewFieldPriorityOverrides.get(field);
+  if (override) {
+    return [
+      ...override.filter((id) => available.includes(id)),
+      ...available.filter((id) => !override.includes(id)),
+    ];
+  }
+  const preferred = previewFieldDefaults[field] ?? available;
+  return [
+    ...preferred.filter((id) => available.includes(id)),
+    ...available.filter((id) => !preferred.includes(id)),
+  ];
+}
+
+function previewFieldPriorityState(): FieldPriorityState[] {
+  return Object.keys(previewFieldLabels).flatMap((field) => {
+    const providers = previewFieldOrder(field).flatMap((id, index) => {
+      const provider = previewMetadataProviders.find((entry) => entry.id === id);
+      if (!provider) {
+        return [];
+      }
+      return [
+        {
+          provider: id,
+          providerName: provider.name,
+          priority: (index + 1) * 10,
+          enabled: provider.enabled,
+        } satisfies FieldPriorityProvider,
+      ];
+    });
+    return providers.length > 0
+      ? [
+          {
+            field,
+            label: previewFieldLabels[field] ?? field,
+            providers,
+            custom: !previewFieldPriorityGlobal && previewFieldPriorityOverrides.has(field),
+            global: previewFieldPriorityGlobal,
+          },
+        ]
+      : [];
+  });
+}
+
+function previewMergeDetailsForWork(workId: number): PreviewMetadataCandidate[] {
+  if (workId === 1) {
+    return Object.values(previewMergeDetails);
+  }
+  const values = previewMetadataValues(workId);
+  if (!values) {
+    return [];
+  }
+  const titles = [values.title, values.originalTitle, ...values.aliases]
+    .filter(Boolean)
+    .map((title) => title.toLowerCase());
+  const all = [...Object.values(previewMetadataDetails), ...Object.values(previewMergeDetails)];
+  const byProvider = new Map<string, PreviewMetadataCandidate>();
+  for (const detail of all) {
+    const fields = [detail.title, detail.originalTitle]
+      .filter(Boolean)
+      .map((title) => title.toLowerCase());
+    if (
+      !fields.some((field) =>
+        titles.some((title) => field.includes(title) || title.includes(field)),
+      )
+    ) {
+      continue;
+    }
+    if (!byProvider.has(detail.provider)) {
+      byProvider.set(detail.provider, detail);
+    }
+  }
+  return [...byProvider.values()];
+}
+
+function previewMergePreview(workId: number, providerFilter?: string[]): MergePreview {
+  const values = previewMetadataValues(workId);
+  if (!values) {
+    throw new Error("作品不存在");
+  }
+  const details = previewMergeDetailsForWork(workId).filter(
+    (detail) => !providerFilter?.length || providerFilter.includes(detail.provider),
+  );
+  const claims = previewMetadataClaims.get(workId) ?? [];
+  const fields: MergeFieldState[] = [];
+  for (const [field, label] of previewMetadataFieldLabels) {
+    const current = previewMetadataCurrent(values, field);
+    const lockedClaim = claims.find((claim) => claim.field === field && claim.locked);
+    const candidates: MergeFieldCandidate[] = details.flatMap((detail) => {
+      const value = previewMetadataCandidateValue(detail, field);
+      if (previewMetadataEmpty(value)) {
+        return [];
+      }
+      return [
+        {
+          provider: detail.provider,
+          providerName:
+            previewMetadataProviders.find((provider) => provider.id === detail.provider)?.name ??
+            detail.provider,
+          sourceId: detail.sourceId,
+          value,
+          priority: previewFieldOrder(field).indexOf(detail.provider) * 10,
+        },
+      ];
+    });
+    if (candidates.length === 0) {
+      continue;
+    }
+    candidates.sort((left, right) => left.priority - right.priority);
+    const distinct = new Set(candidates.map((candidate) => JSON.stringify(candidate.value)));
+    fields.push({
+      field,
+      label,
+      current,
+      locked: Boolean(lockedClaim),
+      lockSource: lockedClaim?.source ?? null,
+      candidates,
+      defaultSelected: previewMetadataEmpty(current) && !lockedClaim,
+      conflict: distinct.size > 1,
+    });
+  }
+  const covers: MergeCoverCandidate[] = details.flatMap((detail) => {
+    const options =
+      detail.covers ??
+      (detail.coverUrl ? [{ url: detail.coverUrl, kind: "cover", width: null, height: null }] : []);
+    return options.map((cover) => ({
+      provider: detail.provider,
+      providerName:
+        previewMetadataProviders.find((provider) => provider.id === detail.provider)?.name ??
+        detail.provider,
+      sourceId: detail.sourceId,
+      url: cover.url,
+      kind: cover.kind,
+      priority: previewFieldOrder("cover").indexOf(detail.provider) * 10,
+      defaultSelected: false,
+    }));
+  });
+  covers.sort((left, right) => left.priority - right.priority);
+  if (covers[0]) {
+    covers[0] = { ...covers[0], defaultSelected: !values.coverSource };
+  }
+  return {
+    workId,
+    title: values.title,
+    query: values.originalTitle || values.title,
+    matched: details.map((detail) => ({
+      provider: detail.provider,
+      providerName:
+        previewMetadataProviders.find((provider) => provider.id === detail.provider)?.name ??
+        detail.provider,
+      sourceId: detail.sourceId,
+      title: detail.title,
+      originalTitle: detail.originalTitle,
+      year: detail.year,
+      score: workId === 1 ? 1 : 0.9,
+      priority:
+        previewMetadataProviders.find((provider) => provider.id === detail.provider)?.priority ??
+        100,
+    })),
+    errors: [],
+    fields,
+    covers,
+  };
+}
+
+function previewEmptyUpdate(values: NonNullable<ReturnType<typeof previewMetadataValues>>) {
+  return {
+    title: values.title,
+    originalTitle: values.originalTitle,
+    aliases: values.aliases,
+    description: values.description,
+    year: values.year,
+    developer: values.developer,
+    publisher: values.publisher,
+    edition: values.edition,
+    language: values.language,
+    releaseDate: values.releaseDate,
+    tags: values.tags,
+    notes: values.notes,
+    rating: values.rating,
+    status: values.status,
+    favorite: values.favorite,
+  };
+}
+
+function previewApplyCandidateField(
+  update: ReturnType<typeof previewEmptyUpdate>,
+  field: string,
+  value: MetadataValue,
+) {
+  switch (field) {
+    case "title":
+      update.title = String(value);
+      break;
+    case "original_title":
+      update.originalTitle = String(value);
+      break;
+    case "aliases":
+      update.aliases = value as string[];
+      break;
+    case "description":
+      update.description = String(value);
+      break;
+    case "year":
+      update.year = value as number;
+      break;
+    case "tags":
+      update.tags = value as string[];
+      break;
+    case "developer":
+      update.developer = String(value);
+      break;
+    case "publisher":
+      update.publisher = String(value);
+      break;
+    case "release_date":
+      update.releaseDate = String(value);
+      break;
+  }
+}
+
+function previewMergeApply(request: MergeApplyRequest): MergeApplyResult {
+  const values = previewMetadataValues(request.workId);
+  if (!values) {
+    throw new Error("作品不存在");
+  }
+  const claims = previewMetadataClaims.get(request.workId) ?? [];
+  const lockedFields = new Set(claims.filter((claim) => claim.locked).map((claim) => claim.field));
+  const update = previewEmptyUpdate(values);
+  const applied: string[] = [];
+  const skippedLocked: string[] = [];
+  const skippedNonEmpty: string[] = [];
+  const errors: string[] = [];
+  for (const selection of request.selections) {
+    if (lockedFields.has(selection.field)) {
+      skippedLocked.push(selection.field);
+      continue;
+    }
+    if (
+      request.onlyIfEmpty &&
+      !previewMetadataEmpty(previewMetadataCurrent(values, selection.field))
+    ) {
+      skippedNonEmpty.push(selection.field);
+      continue;
+    }
+    const detail =
+      previewMetadataDetails[`${selection.provider}:${selection.sourceId}`] ??
+      previewMergeDetails[`${selection.provider}:${selection.sourceId}`];
+    if (!detail) {
+      errors.push(`${selection.provider}：候选不存在`);
+      continue;
+    }
+    const value = previewMetadataCandidateValue(detail, selection.field);
+    if (previewMetadataEmpty(value)) {
+      continue;
+    }
+    previewApplyCandidateField(update, selection.field, value);
+    const existing = claims.find(
+      (claim) =>
+        claim.field === selection.field &&
+        claim.source === selection.provider &&
+        claim.sourceId === selection.sourceId,
+    );
+    const provider = previewMetadataProviders.find((entry) => entry.id === selection.provider);
+    if (existing) {
+      existing.value = value;
+      existing.fetchedAt = new Date().toISOString();
+    } else {
+      claims.push({
+        id: previewMetadataClaimId++,
+        field: selection.field,
+        source: selection.provider,
+        sourceId: selection.sourceId,
+        value,
+        confidence: 0.9,
+        locked: false,
+        fetchedAt: new Date().toISOString(),
+        providerName: provider?.name ?? selection.provider,
+        priority: provider?.priority ?? 100,
+      });
+    }
+    applied.push(selection.field);
+  }
+  let coverApplied = false;
+  if (request.cover) {
+    if (lockedFields.has("cover")) {
+      skippedLocked.push("cover");
+    } else if (request.onlyIfEmpty && values.coverSource) {
+      skippedNonEmpty.push("cover");
+    } else {
+      const detail =
+        previewMetadataDetails[`${request.cover.provider}:${request.cover.sourceId}`] ??
+        previewMergeDetails[`${request.cover.provider}:${request.cover.sourceId}`];
+      if (!detail) {
+        errors.push("封面候选不存在");
+      } else {
+        const coverUrl = request.cover.url ?? detail.coverUrl;
+        if (!coverUrl) {
+          errors.push("封面候选不存在");
+        } else {
+          previewCoverSources.set(request.workId, request.cover.provider);
+          claims.push({
+            id: previewMetadataClaimId++,
+            field: "cover",
+            source: request.cover.provider,
+            sourceId: request.cover.sourceId,
+            value: coverUrl,
+            confidence: 0.9,
+            locked: false,
+            fetchedAt: new Date().toISOString(),
+            providerName:
+              previewMetadataProviders.find((entry) => entry.id === request.cover?.provider)
+                ?.name ?? request.cover.provider,
+            priority: 10,
+          });
+          coverApplied = true;
+        }
+      }
+    }
+  }
+  previewWorkUpdates.set(request.workId, update);
+  previewMetadataClaims.set(request.workId, claims);
+  return { applied, skippedLocked, skippedNonEmpty, coverApplied, errors };
+}
+
+const previewBatchJobs = new Map<string, BatchWorkResult[]>();
+
+async function previewMetadataBatch(
+  workIds: number[],
+  providerIds: string[],
+): Promise<BatchWorkResult[]> {
+  const results: BatchWorkResult[] = [];
+  for (const workId of workIds) {
+    await new Promise((resolve) => setTimeout(resolve, 110));
+    const preview = previewMergePreview(workId, providerIds);
+    const hasProposals = preview.fields.length > 0 || preview.covers.length > 0;
+    results.push({
+      jobId: "preview-batch",
+      workId,
+      title: preview.title,
+      status: hasProposals ? "proposed" : "skipped",
+      preview: hasProposals ? preview : null,
+      error: null,
+    });
+  }
+  previewBatchJobs.set("preview-batch", results);
+  return results;
 }
 
 export async function listMetadataProviders(): Promise<MetadataProvider[]> {
@@ -1047,6 +1728,198 @@ export async function getMetadataWorkState(workId: number): Promise<MetadataWork
   return invoke<MetadataWorkState>("metadata_work_state", { workId });
 }
 
+export async function listMetadataFieldPriorities(): Promise<FieldPriorityState[]> {
+  if (!isTauri()) {
+    return previewFieldPriorityState();
+  }
+  return invoke<FieldPriorityState[]>("metadata_field_priorities");
+}
+
+export async function reorderMetadataFieldPriority(
+  field: string,
+  providerIds: string[],
+): Promise<void> {
+  if (!isTauri()) {
+    previewFieldPriorityOverrides.set(field, providerIds);
+    return;
+  }
+  await invoke("metadata_field_priority_reorder", { field, providerIds });
+}
+
+export async function resetMetadataFieldPriority(field: string): Promise<void> {
+  if (!isTauri()) {
+    previewFieldPriorityOverrides.delete(field);
+    return;
+  }
+  await invoke("metadata_field_priority_reset", { field });
+}
+
+export async function setMetadataFieldPriorityGlobal(enabled: boolean): Promise<boolean> {
+  if (!isTauri()) {
+    previewFieldPriorityGlobal = enabled;
+    return enabled;
+  }
+  return invoke<boolean>("metadata_set_field_priority_global", { enabled });
+}
+
+export async function getMetadataMergePreview(
+  workId: number,
+  providers?: string[],
+): Promise<MergePreview> {
+  if (!isTauri()) {
+    return previewMergePreview(workId, providers);
+  }
+  return invoke<MergePreview>("metadata_merge_preview", { workId, providers: providers ?? null });
+}
+
+export async function applyMetadataMerge(request: MergeApplyRequest): Promise<MergeApplyResult> {
+  if (!isTauri()) {
+    return previewMergeApply(request);
+  }
+  return invoke<MergeApplyResult>("metadata_merge_apply", { request });
+}
+
+export async function adoptMetadataClaim(
+  workId: number,
+  claimId: number,
+): Promise<MergeApplyResult> {
+  if (!isTauri()) {
+    const claims = previewMetadataClaims.get(workId) ?? [];
+    const claim = claims.find((entry) => entry.id === claimId);
+    if (!claim) {
+      throw new Error("来源记录不存在");
+    }
+    return previewMergeApply({
+      workId,
+      selections:
+        claim.field === "cover"
+          ? []
+          : [{ field: claim.field, provider: claim.source, sourceId: claim.sourceId }],
+      cover:
+        claim.field === "cover"
+          ? {
+              field: "cover",
+              provider: claim.source,
+              sourceId: claim.sourceId,
+              url: typeof claim.value === "string" ? claim.value : null,
+            }
+          : null,
+    });
+  }
+  return invoke<MergeApplyResult>("metadata_adopt_claim", { workId, claimId });
+}
+
+export async function previewMetadataBatchForUi(
+  workIds: number[],
+  providerIds: string[],
+): Promise<BatchWorkResult[]> {
+  return previewMetadataBatch(workIds, providerIds);
+}
+
+export async function startMetadataBatch(request: BatchStartRequest): Promise<MetadataJobStart> {
+  if (!isTauri()) {
+    return { jobId: "preview-batch" };
+  }
+  return invoke<MetadataJobStart>("metadata_batch_start", { request });
+}
+
+export async function pauseMetadataBatch(jobId: string, paused: boolean): Promise<boolean> {
+  if (!isTauri()) {
+    return true;
+  }
+  return invoke<boolean>("metadata_batch_pause", { jobId, paused });
+}
+
+export async function cancelMetadataBatch(jobId: string): Promise<boolean> {
+  if (!isTauri()) {
+    return true;
+  }
+  return invoke<boolean>("metadata_batch_cancel", { jobId });
+}
+
+export async function applyMetadataBatch(request: BatchApplyRequest): Promise<BatchApplyResult> {
+  if (!isTauri()) {
+    const proposals = previewBatchJobs.get(request.jobId) ?? [];
+    const selected = new Set(
+      request.workIds.length > 0 ? request.workIds : proposals.map((entry) => entry.workId),
+    );
+    const works: BatchApplyWorkResult[] = [];
+    let appliedWorks = 0;
+    const failedWorks = 0;
+    let skippedWorks = 0;
+    let appliedFields = 0;
+    let coverApplied = 0;
+    for (const proposal of proposals) {
+      if (!selected.has(proposal.workId)) {
+        continue;
+      }
+      const preview = proposal.preview;
+      if (!preview) {
+        skippedWorks += 1;
+        works.push({
+          workId: proposal.workId,
+          title: proposal.title,
+          status: "skipped",
+          applied: [],
+          skippedLocked: [],
+          skippedNonEmpty: [],
+          coverApplied: false,
+          errors: [],
+        });
+        continue;
+      }
+      const selections: MergeSelection[] = preview.fields.flatMap((field) => {
+        if (!field.defaultSelected || field.locked || !field.candidates[0]) {
+          return [];
+        }
+        const candidate = field.candidates[0];
+        return [{ field: field.field, provider: candidate.provider, sourceId: candidate.sourceId }];
+      });
+      const defaultCover = preview.covers.find((cover) => cover.defaultSelected);
+      const cover =
+        request.includeCovers && defaultCover
+          ? {
+              field: "cover",
+              provider: defaultCover.provider,
+              sourceId: defaultCover.sourceId,
+              url: defaultCover.url,
+            }
+          : null;
+      const result = previewMergeApply({
+        workId: proposal.workId,
+        selections,
+        cover,
+        onlyIfEmpty: true,
+      });
+      const status = result.applied.length > 0 || result.coverApplied ? "applied" : "skipped";
+      if (status === "applied") appliedWorks += 1;
+      else skippedWorks += 1;
+      appliedFields += result.applied.length;
+      if (result.coverApplied) coverApplied += 1;
+      works.push({
+        workId: proposal.workId,
+        title: proposal.title,
+        status,
+        applied: result.applied,
+        skippedLocked: result.skippedLocked,
+        skippedNonEmpty: result.skippedNonEmpty,
+        coverApplied: result.coverApplied,
+        errors: result.errors,
+      });
+    }
+    return {
+      total: works.length,
+      appliedWorks,
+      failedWorks,
+      skippedWorks,
+      appliedFields,
+      coverApplied,
+      works,
+    };
+  }
+  return invoke<BatchApplyResult>("metadata_batch_apply", { request });
+}
+
 export async function startMetadataSearch(
   workId: number,
   query: string,
@@ -1067,8 +1940,24 @@ export async function searchMetadataPreview(
   const providers = provider
     ? previewMetadataProvidersSorted().filter((entry) => entry.id === provider)
     : previewMetadataProvidersSorted();
-  const results = providers.flatMap((entry) =>
-    entry.enabled ? (previewMetadataCandidates[entry.id] ?? []) : [],
+  const extra = previewMergeCandidates.filter(
+    (entry) =>
+      (!provider || entry.provider === provider) &&
+      previewMetadataProviders.find((item) => item.id === entry.provider)?.enabled &&
+      (entry.title.includes(query) ||
+        entry.originalTitle.includes(query) ||
+        query.includes(entry.title)),
+  );
+  const results = [
+    ...providers.flatMap((entry) =>
+      entry.enabled ? (previewMetadataCandidates[entry.id] ?? []) : [],
+    ),
+    ...extra,
+  ].filter(
+    (entry, index, list) =>
+      list.findIndex(
+        (item) => item.provider === entry.provider && item.sourceId === entry.sourceId,
+      ) === index,
   );
   return {
     jobId: "preview",
@@ -1094,7 +1983,9 @@ export async function getMetadataPreview(
 ): Promise<MetadataPreview> {
   if (!isTauri()) {
     const values = previewMetadataValues(workId);
-    const candidate = previewMetadataDetails[`${provider}:${sourceId}`];
+    const candidate =
+      previewMetadataDetails[`${provider}:${sourceId}`] ??
+      previewMergeDetails[`${provider}:${sourceId}`];
     if (!values || !candidate) {
       throw new Error("候选不存在");
     }
@@ -1130,6 +2021,18 @@ export async function getMetadataPreview(
         },
       ];
     });
+    const coverOptions = (
+      candidate.covers ??
+      (candidate.coverUrl
+        ? [{ url: candidate.coverUrl, kind: "cover", width: null, height: null }]
+        : [])
+    ).map((cover) => ({
+      currentSource: values.coverSource,
+      candidateUrl: cover.url,
+      kind: cover.kind,
+      defaultSelected: !values.coverSource,
+      locked: false,
+    }));
     return {
       workId,
       provider,
@@ -1137,14 +2040,8 @@ export async function getMetadataPreview(
       sourceId,
       candidate,
       fields,
-      cover: candidate.coverUrl
-        ? {
-            currentSource: values.coverSource,
-            candidateUrl: candidate.coverUrl,
-            defaultSelected: !values.coverSource,
-            locked: false,
-          }
-        : null,
+      cover: coverOptions[0] ?? null,
+      coverOptions,
     };
   }
   return invoke<MetadataPreview>("metadata_candidate_preview", { workId, provider, sourceId });
@@ -1225,6 +2122,38 @@ export async function importMetadata(
     if (request.selectedCover && lockedFields.has("cover")) {
       skippedLocked.push("cover");
     }
+    const selectedCoverUrl = request.coverUrl ?? candidate.coverUrl;
+    let coverApplied = false;
+    if (request.selectedCover && !lockedFields.has("cover") && selectedCoverUrl) {
+      previewCoverSources.set(request.workId, request.provider);
+      const existingCover = claims.find(
+        (claim) =>
+          claim.field === "cover" &&
+          claim.source === request.provider &&
+          claim.sourceId === request.sourceId,
+      );
+      if (existingCover) {
+        existingCover.value = selectedCoverUrl;
+        existingCover.fetchedAt = new Date().toISOString();
+      } else {
+        const providerInfo = previewMetadataProviders.find(
+          (entry) => entry.id === request.provider,
+        );
+        claims.push({
+          id: previewMetadataClaimId++,
+          field: "cover",
+          source: request.provider,
+          sourceId: request.sourceId,
+          value: selectedCoverUrl,
+          confidence: 0.9,
+          locked: false,
+          fetchedAt: new Date().toISOString(),
+          providerName: providerInfo?.name ?? request.provider,
+          priority: providerInfo?.priority ?? 100,
+        });
+      }
+      coverApplied = true;
+    }
     previewWorkUpdates.set(request.workId, next);
     const now = new Date().toISOString();
     const providerInfo = previewMetadataProviders.find((entry) => entry.id === request.provider);
@@ -1258,8 +2187,7 @@ export async function importMetadata(
     return {
       applied,
       skippedLocked,
-      coverApplied:
-        request.selectedCover && !lockedFields.has("cover") && Boolean(candidate.coverUrl),
+      coverApplied,
     };
   }
   return invoke<MetadataImportResult>("metadata_import", { request });

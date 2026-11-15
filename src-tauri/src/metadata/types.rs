@@ -54,9 +54,20 @@ pub struct CandidateDetail {
     pub publisher: Option<String>,
     pub tags: Vec<String>,
     pub cover_url: Option<String>,
+    #[serde(default)]
+    pub covers: Vec<CoverOption>,
     pub related: Vec<RelatedWork>,
     #[serde(skip_serializing)]
     pub raw_json: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CoverOption {
+    pub url: String,
+    pub kind: String,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -129,6 +140,9 @@ pub struct MetadataFieldState {
     pub source_id: Option<String>,
     pub locked: bool,
     pub lock_source: Option<String>,
+    pub conflict: bool,
+    pub preferred_claim_id: Option<i64>,
+    pub current_claim_id: Option<i64>,
     pub claims: Vec<MetadataClaimRecord>,
 }
 
@@ -171,6 +185,7 @@ pub struct PreviewField {
 pub struct PreviewCover {
     pub current_source: Option<String>,
     pub candidate_url: String,
+    pub kind: String,
     pub default_selected: bool,
     pub locked: bool,
 }
@@ -185,6 +200,7 @@ pub struct MetadataPreview {
     pub candidate: CandidateDetail,
     pub fields: Vec<PreviewField>,
     pub cover: Option<PreviewCover>,
+    pub cover_options: Vec<PreviewCover>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -197,6 +213,8 @@ pub struct MetadataImportRequest {
     pub selected_fields: Vec<String>,
     #[serde(default)]
     pub selected_cover: bool,
+    #[serde(default)]
+    pub cover_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -205,4 +223,191 @@ pub struct MetadataImportResult {
     pub applied: Vec<String>,
     pub skipped_locked: Vec<String>,
     pub cover_applied: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldPriorityProvider {
+    pub provider: String,
+    pub provider_name: String,
+    pub priority: i64,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldPriorityState {
+    pub field: String,
+    pub label: String,
+    pub providers: Vec<FieldPriorityProvider>,
+    pub custom: bool,
+    pub global: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeMatch {
+    pub provider: String,
+    pub provider_name: String,
+    pub source_id: String,
+    pub title: String,
+    pub original_title: String,
+    pub year: Option<i64>,
+    pub score: f64,
+    pub priority: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeFieldCandidate {
+    pub provider: String,
+    pub provider_name: String,
+    pub source_id: String,
+    pub value: Value,
+    pub priority: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeFieldState {
+    pub field: String,
+    pub label: String,
+    pub current: Value,
+    pub locked: bool,
+    pub lock_source: Option<String>,
+    pub candidates: Vec<MergeFieldCandidate>,
+    pub default_selected: bool,
+    pub conflict: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeCoverCandidate {
+    pub provider: String,
+    pub provider_name: String,
+    pub source_id: String,
+    pub url: String,
+    pub kind: String,
+    pub priority: i64,
+    pub default_selected: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergePreview {
+    pub work_id: i64,
+    pub title: String,
+    pub query: String,
+    pub matched: Vec<MergeMatch>,
+    pub errors: Vec<ProviderFailure>,
+    pub fields: Vec<MergeFieldState>,
+    pub covers: Vec<MergeCoverCandidate>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeSelection {
+    pub field: String,
+    pub provider: String,
+    pub source_id: String,
+    #[serde(default)]
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeApplyRequest {
+    pub work_id: i64,
+    pub selections: Vec<MergeSelection>,
+    pub cover: Option<MergeSelection>,
+    #[serde(default)]
+    pub only_if_empty: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeApplyResult {
+    pub applied: Vec<String>,
+    pub skipped_locked: Vec<String>,
+    pub skipped_non_empty: Vec<String>,
+    pub cover_applied: bool,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchStartRequest {
+    pub work_ids: Vec<i64>,
+    pub provider_ids: Vec<String>,
+    pub include_covers: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchProgress {
+    pub job_id: String,
+    pub total: usize,
+    pub completed: usize,
+    pub failed: usize,
+    pub skipped: usize,
+    pub paused: bool,
+    pub cancelled: bool,
+    pub current_work_id: Option<i64>,
+    pub current_title: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchWorkResult {
+    pub job_id: String,
+    pub work_id: i64,
+    pub title: String,
+    pub status: String,
+    pub preview: Option<MergePreview>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchComplete {
+    pub job_id: String,
+    pub total: usize,
+    pub completed: usize,
+    pub failed: usize,
+    pub cancelled: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchApplyRequest {
+    pub job_id: String,
+    pub work_ids: Vec<i64>,
+    pub include_covers: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchApplyWorkResult {
+    pub work_id: i64,
+    pub title: String,
+    pub status: String,
+    pub applied: Vec<String>,
+    pub skipped_locked: Vec<String>,
+    pub skipped_non_empty: Vec<String>,
+    pub cover_applied: bool,
+    pub errors: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchApplyResult {
+    pub total: usize,
+    pub applied_works: usize,
+    pub failed_works: usize,
+    pub skipped_works: usize,
+    pub applied_fields: usize,
+    pub cover_applied: usize,
+    pub works: Vec<BatchApplyWorkResult>,
 }

@@ -42,6 +42,7 @@ import { cn } from "../../lib/cn";
 import { useInvalidateLibrary, useLibraryDetail, useMonitors } from "../library/useLibrary";
 import { LaunchConfigPanel } from "./LaunchConfigPanel";
 import { MetadataPanel } from "./MetadataPanel";
+import { MergePanel } from "../metadata/MergePanel";
 import { WorkEditDialog } from "./WorkEditDialog";
 import "./work-detail.css";
 
@@ -681,7 +682,10 @@ export function WorkDetailPage() {
         ) : null}
 
         {tab === "sources" ? (
-          <MetadataPanel key={detail.data.workId} detail={detail.data} onChanged={invalidate} />
+          <>
+            <MergePanel detail={detail.data} onChanged={invalidate} />
+            <MetadataPanel key={detail.data.workId} detail={detail.data} onChanged={invalidate} />
+          </>
         ) : null}
       </div>
 

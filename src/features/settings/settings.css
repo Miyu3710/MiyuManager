@@ -379,6 +379,209 @@
   gap: 3px;
 }
 
+.settings-field-priorities {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--color-line);
+}
+
+.settings-field-priorities__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 10px;
+}
+
+.settings-field-priorities__head > div {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-field-priorities__head b {
+  color: var(--color-text);
+  font-family: var(--font-game);
+  font-size: 13px;
+}
+
+.settings-field-priorities__head span {
+  max-width: 680px;
+  color: var(--color-text-faint);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.settings-field-priority-mode {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 4px 0 10px;
+  padding: 10px 11px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-control);
+  background: rgba(243, 234, 216, 0.022);
+  cursor: pointer;
+}
+
+.settings-field-priority-mode input {
+  margin-top: 2px;
+  accent-color: var(--color-status);
+}
+
+.settings-field-priority-mode > span {
+  display: grid;
+  gap: 3px;
+  flex: 1;
+}
+
+.settings-field-priority-mode b {
+  color: var(--color-text-soft);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.settings-field-priority-mode em {
+  color: var(--color-text-faint);
+  font-size: 10px;
+  font-style: normal;
+  line-height: 1.55;
+}
+
+.settings-field-priorities.is-global .settings-field-priority__detail {
+  opacity: 0.72;
+}
+
+.settings-field-priority-list {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--color-line);
+}
+
+.settings-field-priority {
+  border-bottom: 1px solid var(--color-line);
+}
+
+.settings-field-priority.is-open {
+  background: rgba(243, 234, 216, 0.018);
+}
+
+.settings-field-priority__summary {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) minmax(0, 1.4fr) auto 18px;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-field-priority__summary:hover {
+  background: rgba(243, 234, 216, 0.025);
+}
+
+.settings-field-priority__label {
+  color: var(--color-text);
+  font-family: var(--font-game);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.settings-field-priority__preferred {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.settings-field-priority__preferred em {
+  color: var(--color-text-faint);
+  font-size: 9.5px;
+  font-style: normal;
+  font-family: var(--font-mono);
+}
+
+.settings-field-priority__preferred b {
+  overflow: hidden;
+  color: var(--color-data);
+  font-size: 11.5px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-field-priority__remaining {
+  overflow: hidden;
+  color: var(--color-text-faint);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-field-priority__chevron {
+  color: var(--color-text-faint);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+
+.settings-field-priority.is-open .settings-field-priority__chevron {
+  transform: rotate(180deg);
+}
+
+.settings-field-priority__detail {
+  display: grid;
+  gap: 2px;
+  padding: 0 4px 10px 90px;
+}
+
+.settings-field-priority__provider {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 5px 0;
+  border-top: 1px dashed rgba(243, 234, 216, 0.08);
+}
+
+.settings-field-priority__provider > b {
+  color: var(--color-data);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 400;
+}
+
+.settings-field-priority__provider > span {
+  color: var(--color-text-soft);
+  font-size: 11px;
+}
+
+.settings-field-priority__actions {
+  display: flex;
+  gap: 2px;
+}
+
+.settings-field-priority__actions .ds-button {
+  min-width: 26px;
+  padding-inline: 5px;
+}
+
+.settings-field-priority__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(243, 234, 216, 0.08);
+}
+
+.settings-field-priority__footer span {
+  color: var(--color-text-faint);
+  font-size: 10px;
+}
+
 .settings-source-auth b {
   color: var(--color-text-muted);
   font-size: 11.5px;

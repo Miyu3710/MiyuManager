@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 use super::http::MetadataHttp;
-use super::types::{CandidateDetail, SearchCandidate};
+use super::types::{CandidateDetail, CoverOption, SearchCandidate};
 use super::vndb::extract_year;
 
 const PROVIDER_ID: &str = "bangumi";
@@ -161,6 +161,17 @@ fn map_detail(subject: BgmSubject, raw_json: String) -> CandidateDetail {
         .take(12)
         .collect::<Vec<_>>();
 
+    let cover_url = cover_url(&subject.images);
+    let covers = cover_url
+        .iter()
+        .map(|url| CoverOption {
+            url: url.clone(),
+            kind: "cover".to_string(),
+            width: None,
+            height: None,
+        })
+        .collect();
+
     CandidateDetail {
         provider: PROVIDER_ID.to_string(),
         source_id: subject.id.to_string(),
@@ -177,7 +188,8 @@ fn map_detail(subject: BgmSubject, raw_json: String) -> CandidateDetail {
         developer: info_text(&subject.infobox, &["开发", "开发商"]),
         publisher: info_text(&subject.infobox, &["发行", "发行商"]),
         tags,
-        cover_url: cover_url(&subject.images),
+        cover_url,
+        covers,
         related: Vec::new(),
         raw_json,
     }
