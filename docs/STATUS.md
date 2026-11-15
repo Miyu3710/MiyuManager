@@ -69,6 +69,12 @@
 - 包装器如果创建 breakaway 进程或绕过 Job Object，主程序可能无法被识别；Steam 转交会按完整 exe 路径查找，若实际游戏使用与导入记录不同的目录或 exe，仍需重新选择主程序。无法识别时会在 60 秒后报告启动失败，不会把包装器时间误记到作品。
 - 12 周热力图按会话开始日期归档，跨午夜会话不会拆分到两个日期；会话时间为本地输入，数据库保存 UTC，有效时长本身不受时区变化影响。
 
+### 2026-11-15 最大化布局修正
+
+- 移除 Home、Library、Stats、Detail、Settings 的固定 `max-width`。窗口最大化后页面按 `.app-main` 的实际宽度伸展；游戏库的虚拟列表继续通过 `ResizeObserver` 重算列数。
+- 实际 Tauri 窗口在当前 2560×1440（125% 缩放）屏幕上从 1440×900 最大化到 2048×1104 CSS 像素：主内容区由 1236px 增至 1844px，首页内容宽 1174px → 1792px，游戏库 5 列 → 6 列；统计、详情和设置也铺满可用区域，页面 `scrollWidth` 始终不超过视口。
+- `outputs/app/c6/maximized/` 保存最大化后的首页和游戏库截图；`outputs/app/c6/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/` 已按新布局重新生成，桌面和 4K 缩放均无横向溢出。
+
 ## C5 本轮产出
 
 - 数据层：`src-tauri/migrations/20261115000600_c5_metadata_merge.sql`、`20261115000800_steam_library.sql`；新增 `metadata_field_priorities`，保存每个字段的来源顺序；`settings` 增加 `metadata.field_priority_global` 开关；`local_copies` 增加 `steam_app_id` 和索引。旧库迁移通过。
