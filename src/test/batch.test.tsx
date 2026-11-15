@@ -4,8 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BatchScrapeDialog } from "../features/metadata/BatchScrapeDialog";
 import type { BatchApplyResult, BatchWorkResult, MergePreview } from "../lib/library-types";
+import { previewMetadataBatchForUi } from "../lib/library-api";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 
 function previewFor(index: number): MergePreview {
   const title = `测试作品 ${index + 1}`;
@@ -131,5 +135,39 @@ describe("batch scraping dialog", () => {
     expect(document.querySelector(".batch-review__summary")?.textContent).toContain("50 部有提案");
     await user.click(screen.getByRole("button", { name: "应用 50 部" }));
     await screen.findByText("已应用 50 部作品");
+  });
+
+  it("retries only the failed works", async () => {
+    const user = userEvent.setup();
+    const batchPreview = vi.mocked(previewMetadataBatchForUi);
+    batchPreview.mockResolvedValueOnce([
+      proposals[0]!,
+      {
+        jobId: "preview-batch",
+        workId: 2,
+        title: "失败作品",
+        status: "failed",
+        preview: null,
+        error: "来源暂时不可用",
+      },
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <BatchScrapeDialog
+          open
+          workIds={[1, 2]}
+          onClose={() => undefined}
+          onApplied={() => undefined}
+        />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("批量补全元数据");
+    await user.click(screen.getByRole("button", { name: "开始匹配" }));
+    await waitFor(() => expect(document.querySelectorAll(".batch-work")).toHaveLength(2));
+    expect(screen.getByText("来源暂时不可用")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "重试失败项" }));
+    await waitFor(() => expect(batchPreview).toHaveBeenLastCalledWith([2], expect.any(Array)));
   });
 });

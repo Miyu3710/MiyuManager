@@ -252,3 +252,50 @@ enum RequestBody<'a> {
 struct RawBytes {
     bytes: Vec<u8>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn retries_rate_limited_response_and_succeeds() {
+        let server = tiny_http::Server::http("127.0.0.1:0").expect("server");
+        let address = match server.server_addr() {
+            tiny_http::ListenAddr::IP(address) => address,
+        };
+        let port = address.port();
+        let handle = std::thread::spawn(move || {
+            for index in 0..2 {
+                let request = server.recv().expect("request");
+                if index == 0 {
+                    let retry_after = tiny_http::Header::from_bytes(&b"Retry-After"[..], &b"0"[..])
+                        .expect("header");
+                    request
+                        .respond(
+                            tiny_http::Response::from_string("rate limited")
+                                .with_status_code(tiny_http::StatusCode(429))
+                                .with_header(retry_after),
+                        )
+                        .expect("429 response");
+                } else {
+                    request
+                        .respond(tiny_http::Response::from_string(r#"{"ok":true}"#))
+                        .expect("200 response");
+                }
+            }
+        });
+        let http = MetadataHttp::new().expect("client");
+        let response = http
+            .get_json(
+                "test",
+                &format!("http://127.0.0.1:{port}/"),
+                Duration::from_millis(0),
+                None,
+                &CancellationToken::new(),
+            )
+            .await
+            .expect("retried request");
+        assert_eq!(response.body, r#"{"ok":true}"#);
+        handle.join().expect("server thread");
+    }
+}
