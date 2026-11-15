@@ -307,19 +307,20 @@ export function ScanImportDialog({
                               type="checkbox"
                               checked={checked}
                               disabled={!importable || importing}
-                              onChange={(event) =>
+                              onChange={(event) => {
+                                const nextChecked = event.currentTarget.checked;
                                 setSelectionState((previous) => {
                                   const base = previous.key === candidateKey ? previous : defaults;
                                   return {
                                     key: candidateKey,
                                     selected: {
                                       ...base.selected,
-                                      [candidate.id]: event.currentTarget.checked,
+                                      [candidate.id]: nextChecked,
                                     },
                                     names: base.names,
                                   };
-                                })
-                              }
+                                });
+                              }}
                               aria-label={"选择 " + candidate.suggestedTitle}
                             />
                             <span className="scan-check__box">
@@ -345,7 +346,8 @@ export function ScanImportDialog({
                               value={names[candidate.id] ?? candidate.suggestedTitle}
                               disabled={!importable || importing}
                               aria-label={"入库名称 " + candidate.suggestedTitle}
-                              onChange={(event) =>
+                              onChange={(event) => {
+                                const nextName = event.currentTarget.value;
                                 setSelectionState((previous) => {
                                   const base = previous.key === candidateKey ? previous : defaults;
                                   return {
@@ -353,11 +355,11 @@ export function ScanImportDialog({
                                     selected: base.selected,
                                     names: {
                                       ...base.names,
-                                      [candidate.id]: event.currentTarget.value,
+                                      [candidate.id]: nextName,
                                     },
                                   };
-                                })
-                              }
+                                });
+                              }}
                             />
                             <code className="scan-candidate__path" title={candidate.exePath}>
                               {candidate.exePath}

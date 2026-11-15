@@ -143,7 +143,8 @@
 
 ### C2
 
-- `pnpm typecheck`、`pnpm lint`、`pnpm test`（3 个前端测试）、`pnpm build`。
+- `pnpm typecheck`、`pnpm lint`、`pnpm test`（当前 8 个前端测试）、`pnpm build`。
+- 修复扫描确认弹窗复选框和入库名称编辑读取已释放事件对象导致的 `event.currentTarget` 空引用崩溃；浏览器回归点击 60 次复选框并改名，弹窗保持可用；新增 `scan-dialog` 回归测试。
 - `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（8 个 Rust 测试）。
 - 汉化/语言版本测试：`game_zh.exe`、`game_CHS.exe` 与原版一起成为候选，并带“语言/汉化版本”提示和加分。
 - 扫描排除测试：移出作品写入排除表；默认扫描跳过，`include_excluded` 手动扫描重新包含；再次导入会清除排除。
