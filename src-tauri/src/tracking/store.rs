@@ -264,17 +264,19 @@ pub async fn update_manual_session(
     let (started_at, ended_at, duration_sec) =
         normalized_range(&input.started_at, &input.ended_at)?;
     let note = normalized_note(&input.note)?;
-    let open: Option<Option<String>> =
-        sqlx::query_scalar("SELECT ended_at FROM play_sessions WHERE id = ?")
-            .bind(session_id)
-            .fetch_optional(pool)
-            .await?;
-    match open {
-        None => bail!("游玩会话不存在"),
-        Some(None) => bail!("正在运行的会话不能手工修正，请先结束游戏"),
-        Some(Some(_)) => {}
+    let current = sqlx::query("SELECT local_copy_id, ended_at FROM play_sessions WHERE id = ?")
+        .bind(session_id)
+        .fetch_optional(pool)
+        .await?;
+    let Some(current) = current else {
+        bail!("游玩会话不存在");
+    };
+    let local_copy_id: i64 = current.try_get("local_copy_id")?;
+    if current.try_get::<Option<String>, _>("ended_at")?.is_none() {
+        bail!("正在运行的会话不能手工修正，请先结束游戏");
     }
     let now = format_timestamp(Utc::now());
+    let mut transaction = pool.begin().await?;
     sqlx::query(
         "UPDATE play_sessions
          SET status = 'ended', started_at = ?, ended_at = ?, last_heartbeat_at = ?,
@@ -288,8 +290,18 @@ pub async fn update_manual_session(
     .bind(&note)
     .bind(&now)
     .bind(session_id)
-    .execute(pool)
+    .execute(&mut *transaction)
     .await?;
+    sqlx::query(
+        "UPDATE local_copies
+         SET last_launched_at = (SELECT MAX(started_at) FROM play_sessions WHERE local_copy_id = ?)
+         WHERE id = ?",
+    )
+    .bind(local_copy_id)
+    .bind(local_copy_id)
+    .execute(&mut *transaction)
+    .await?;
+    transaction.commit().await?;
     get_session_payload(pool, session_id)
         .await?
         .context("修正会话后无法读取")
@@ -314,9 +326,11 @@ pub async fn delete_session(pool: &SqlitePool, session_id: i64) -> Result<()> {
         .await?;
     sqlx::query(
         "UPDATE local_copies
-         SET launch_count = CASE WHEN launch_count > 0 THEN launch_count - 1 ELSE 0 END
+         SET launch_count = CASE WHEN launch_count > 0 THEN launch_count - 1 ELSE 0 END,
+             last_launched_at = (SELECT MAX(started_at) FROM play_sessions WHERE local_copy_id = ?)
          WHERE id = ?",
     )
+    .bind(local_copy_id)
     .bind(local_copy_id)
     .execute(&mut *transaction)
     .await?;
