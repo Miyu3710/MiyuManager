@@ -6,13 +6,18 @@ mod platform {
     use std::process::Child;
 
     use anyhow::{Result, bail};
-    use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HANDLE};
+    use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HANDLE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
+        TH32CS_SNAPPROCESS,
+    };
     use windows_sys::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicProcessIdList,
         QueryInformationJobObject, TerminateJobObject,
     };
     use windows_sys::Win32::System::Threading::{
-        OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
+        OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+        QueryFullProcessImageNameW, TerminateProcess,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GetForegroundWindow, GetWindowThreadProcessId,
@@ -144,6 +149,54 @@ mod platform {
         }
         (pid != 0).then_some(pid)
     }
+
+    pub fn process_ids_with_name(name: &str) -> Vec<u32> {
+        let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+        if snapshot == INVALID_HANDLE_VALUE {
+            return Vec::new();
+        }
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        let expected = name.to_lowercase();
+        let mut process_ids = Vec::new();
+        let mut has_entry = unsafe { Process32FirstW(snapshot, &mut entry) } != FALSE;
+        while has_entry {
+            let length = entry
+                .szExeFile
+                .iter()
+                .position(|value| *value == 0)
+                .unwrap_or(entry.szExeFile.len());
+            let process_name = OsString::from_wide(&entry.szExeFile[..length])
+                .to_string_lossy()
+                .to_lowercase();
+            if process_name == expected {
+                process_ids.push(entry.th32ProcessID);
+            }
+            entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+            has_entry = unsafe { Process32NextW(snapshot, &mut entry) } != FALSE;
+        }
+        unsafe {
+            CloseHandle(snapshot);
+        }
+        process_ids
+    }
+
+    pub fn terminate_process(pid: u32) -> Result<()> {
+        let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid) };
+        if handle.is_null() {
+            bail!("无法打开要结束的进程：{}", std::io::Error::last_os_error());
+        }
+        let terminated = unsafe { TerminateProcess(handle, 1) };
+        unsafe {
+            CloseHandle(handle);
+        }
+        if terminated == FALSE {
+            bail!("无法结束游戏进程：{}", std::io::Error::last_os_error());
+        }
+        Ok(())
+    }
 }
 
 #[cfg(not(windows))]
@@ -179,6 +232,16 @@ mod platform {
     pub fn foreground_process_id() -> Option<u32> {
         None
     }
+
+    pub fn process_ids_with_name(_name: &str) -> Vec<u32> {
+        Vec::new()
+    }
+
+    pub fn terminate_process(_pid: u32) -> Result<()> {
+        bail!("当前平台不支持 Windows 进程终止")
+    }
 }
 
-pub use platform::{ProcessJob, foreground_process_id, process_image_path};
+pub use platform::{
+    ProcessJob, foreground_process_id, process_ids_with_name, process_image_path, terminate_process,
+};

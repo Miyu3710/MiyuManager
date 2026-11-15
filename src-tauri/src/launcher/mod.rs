@@ -21,6 +21,7 @@ struct ActiveLaunch {
     started_at: String,
     job: Option<Arc<ProcessJob>>,
     manual_stop: Arc<AtomicBool>,
+    external_pid: Arc<Mutex<Option<u32>>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -79,9 +80,26 @@ impl LaunchManager {
             .lock()
             .map_err(|_| anyhow::anyhow!("启动状态锁已损坏"))?;
         for launch in active.values().filter(|launch| launch.work_id == work_id) {
+            let mut stopped = false;
             if let Some(job) = &launch.job {
                 launch.manual_stop.store(true, Ordering::SeqCst);
-                job.terminate()?;
+                if job
+                    .active_process_ids()
+                    .map(|pids| !pids.is_empty())
+                    .unwrap_or(true)
+                {
+                    job.terminate()?;
+                    stopped = true;
+                }
+            }
+            if let Ok(external_pid) = launch.external_pid.lock()
+                && let Some(pid) = *external_pid
+            {
+                launch.manual_stop.store(true, Ordering::SeqCst);
+                process::terminate_process(pid)?;
+                stopped = true;
+            }
+            if stopped {
                 return Ok(true);
             }
         }
@@ -183,6 +201,7 @@ pub async fn start(
         message: None,
     };
     let manual_stop = Arc::new(AtomicBool::new(false));
+    let external_pid = Arc::new(Mutex::new(None));
     if let Ok(mut active) = manager.active.lock() {
         active.insert(
             launch_id.clone(),
@@ -192,6 +211,7 @@ pub async fn start(
                 started_at: started_at.clone(),
                 job: job.clone(),
                 manual_stop: manual_stop.clone(),
+                external_pid: external_pid.clone(),
             },
         );
     } else {
@@ -220,6 +240,7 @@ pub async fn start(
     let watch_target_exe = target.exe_path.clone();
     let watch_local_copy_id = target.local_copy_id;
     let uses_wrapper = target.profile.wrapper_path.is_some();
+    let steam_mode = target.steam_app_id.is_some();
     tauri::async_runtime::spawn(async move {
         let outcome = tracking::watch_launch(LaunchWatch {
             app: event_app.clone(),
@@ -230,7 +251,9 @@ pub async fn start(
             target_exe: watch_target_exe,
             job: watch_job.clone(),
             uses_wrapper,
+            steam_mode,
             manual_stop,
+            external_pid,
             root_exit_code,
         })
         .await;
@@ -283,6 +306,7 @@ mod tests {
             title: "月影工房".to_string(),
             exe_path: "C:\\Games\\月影工房\\game.exe".to_string(),
             working_dir: "C:\\Games\\月影工房".to_string(),
+            steam_app_id: None,
             profile: LaunchProfile::default(),
         };
         let profile = LaunchProfile {
@@ -330,5 +354,35 @@ mod tests {
         assert!(path.to_lowercase().ends_with("cmd.exe"));
         let _ = job.terminate();
         let _ = child.wait();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn toolhelp_can_find_processes_by_executable_name() {
+        let mut child = Command::new("ping.exe")
+            .args(["127.0.0.1", "-n", "2"])
+            .stdout(Stdio::null())
+            .spawn()
+            .expect("spawn ping");
+        let ids = process::process_ids_with_name("PING.EXE");
+        assert!(ids.contains(&child.id()));
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn terminates_a_process_outside_the_job_object() {
+        let temp = tempfile::TempDir::new().expect("temp");
+        let probe = temp.path().join("miyu_terminate_probe.exe");
+        std::fs::copy("C:\\Windows\\System32\\PING.EXE", &probe).expect("copy ping");
+        let mut child = Command::new(&probe)
+            .args(["127.0.0.1", "-n", "30"])
+            .stdout(Stdio::null())
+            .spawn()
+            .expect("spawn ping");
+        process::terminate_process(child.id()).expect("terminate");
+        let status = child.wait().expect("wait");
+        assert!(!status.success());
     }
 }

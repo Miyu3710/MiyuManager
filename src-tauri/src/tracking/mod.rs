@@ -10,7 +10,9 @@ use std::time::{Duration, Instant};
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Emitter};
 
-use crate::launcher::process::{ProcessJob, foreground_process_id, process_image_path};
+use crate::launcher::process::{
+    ProcessJob, foreground_process_id, process_ids_with_name, process_image_path,
+};
 pub use store::{
     close_open_sessions, create_manual_session, delete_session, finish_session, heartbeat_session,
     list_work_sessions, recover_open_sessions, start_session, stats_overview,
@@ -39,7 +41,9 @@ pub struct LaunchWatch {
     pub target_exe: String,
     pub job: Option<Arc<ProcessJob>>,
     pub uses_wrapper: bool,
+    pub steam_mode: bool,
     pub manual_stop: Arc<AtomicBool>,
+    pub external_pid: Arc<Mutex<Option<u32>>>,
     pub root_exit_code: Arc<Mutex<Option<i32>>>,
 }
 
@@ -88,6 +92,18 @@ fn find_target_pid(
     })
 }
 
+fn find_external_target_pid(target_exe: &str) -> Option<u32> {
+    let target = normalized_exe(target_exe);
+    let name = std::path::Path::new(target_exe)
+        .file_name()?
+        .to_string_lossy();
+    process_ids_with_name(&name).into_iter().find(|pid| {
+        process_image_path(*pid)
+            .map(|path| normalized_exe(&path) == target)
+            .unwrap_or(false)
+    })
+}
+
 fn emit_session(app: &AppHandle, action: &str, payload: &PlaySessionWithWork) {
     let _ = app.emit(
         "play-session",
@@ -108,7 +124,9 @@ pub async fn watch_launch(config: LaunchWatch) -> WatchOutcome {
         target_exe,
         job,
         uses_wrapper,
+        steam_mode,
         manual_stop,
+        external_pid,
         root_exit_code,
     } = config;
 
@@ -145,9 +163,15 @@ pub async fn watch_launch(config: LaunchWatch) -> WatchOutcome {
         let delta = now.saturating_duration_since(last_tick).min(MAX_TICK);
         last_tick = now;
         let pids = active_process_ids(job.as_ref(), root_pid);
+        let external_target = if steam_mode {
+            find_external_target_pid(&target_exe)
+        } else {
+            None
+        };
 
         if session.is_none() {
-            game_pid = find_target_pid(&pids, &target_exe, root_pid, uses_wrapper);
+            game_pid =
+                find_target_pid(&pids, &target_exe, root_pid, uses_wrapper).or(external_target);
             let Some(pid) = game_pid else {
                 if started_waiting.elapsed() >= TARGET_START_TIMEOUT {
                     return WatchOutcome::LaunchFailed(
@@ -157,6 +181,9 @@ pub async fn watch_launch(config: LaunchWatch) -> WatchOutcome {
                 continue;
             };
             let exe_path = process_image_path(pid).unwrap_or_else(|| target_exe.clone());
+            if steam_mode && let Ok(mut stored) = external_pid.lock() {
+                *stored = Some(pid);
+            }
             match start_session(&pool, local_copy_id, &launch_id, pid, &exe_path).await {
                 Ok(created) => {
                     emit_session(&app, "started", &created);
@@ -173,13 +200,30 @@ pub async fn watch_launch(config: LaunchWatch) -> WatchOutcome {
             }
         }
 
-        let Some(pid) = game_pid else {
+        let Some(mut pid) = game_pid else {
             continue;
         };
-        let present = pids.contains(&pid)
-            || process_image_path(pid)
-                .map(|path| normalized_exe(&path) == normalized_exe(&target_exe))
-                .unwrap_or(false);
+        if steam_mode
+            && let Some(external) = external_target
+            && external != pid
+        {
+            pid = external;
+            game_pid = Some(external);
+            if let Ok(mut stored) = external_pid.lock() {
+                *stored = Some(external);
+            }
+        }
+        let present = if steam_mode {
+            external_target.is_some()
+                || process_image_path(pid)
+                    .map(|path| normalized_exe(&path) == normalized_exe(&target_exe))
+                    .unwrap_or(false)
+        } else {
+            pids.contains(&pid)
+                || process_image_path(pid)
+                    .map(|path| normalized_exe(&path) == normalized_exe(&target_exe))
+                    .unwrap_or(false)
+        };
         if !present {
             if missing_since.is_none() {
                 missing_since = Some(now);
@@ -253,5 +297,25 @@ mod tests {
     #[test]
     fn normalizes_windows_paths_case_insensitively() {
         assert_eq!(normalized_exe("C:/Games/Game.exe"), "c:\\games\\game.exe");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn finds_a_steam_handoff_process_outside_the_original_job() {
+        use std::fs;
+        use std::process::{Command, Stdio};
+
+        let temp = tempfile::TempDir::new().expect("temp");
+        let probe = temp.path().join("miyu_steam_handoff_probe.exe");
+        fs::copy("C:\\Windows\\System32\\PING.EXE", &probe).expect("copy ping");
+        let mut child = Command::new(&probe)
+            .args(["127.0.0.1", "-n", "2"])
+            .stdout(Stdio::null())
+            .spawn()
+            .expect("spawn ping");
+        let path = process_image_path(child.id()).expect("ping path");
+        assert_eq!(find_external_target_pid(&path), Some(child.id()));
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }

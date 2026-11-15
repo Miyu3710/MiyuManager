@@ -428,6 +428,21 @@
   color: var(--color-data);
 }
 
+.library-origin {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  z-index: 5;
+  padding: 2px 7px;
+  border: 1px solid rgba(143, 211, 193, 0.42);
+  border-radius: var(--radius-pill);
+  background: rgba(8, 21, 33, 0.86);
+  color: var(--color-status);
+  font: 9.5px var(--font-mono);
+  letter-spacing: 0.06em;
+  backdrop-filter: blur(6px);
+}
+
 .library-card__menu {
   position: absolute;
   top: 16px;

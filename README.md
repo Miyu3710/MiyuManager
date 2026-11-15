@@ -63,6 +63,7 @@ cargo test
 - 多源合并会按标题优先为每个来源匹配候选，展示每个字段的候选值、冲突状态和封面画廊；可以逐个字段改选、采用来源值、锁定/解锁。已有值和锁定字段不会被自动覆盖，封面默认保留已有图片。
 - 游戏库支持批量选择作品并进入两阶段刮削：先匹配并生成提案，再确认应用。队列支持来源选择、进度、暂停、取消、失败重试和局部成功；应用阶段再次检查空字段和锁定状态，并可选补全缺失封面。
 - 游戏库可以从 Windows 注册表自动定位 Steam，读取 `libraryfolders.vdf` 和 `appmanifest_*.acf`，扫描所有 Steam 库中的安装目录并列出可启动 exe。确认后写入本地库，并保存 Steam AppID；后续多源合并会直接按 AppID 匹配 Steam 条目。
+- Steam 库导入的作品会在封面和详情中标记 `Steam` 与 AppID。部分游戏会先启动短转交进程，再由 Steam 以新 PID 启动真正游戏；会话观察器会按完整 exe 路径重新附着，退出后正常结算，手动停止也会结束作业对象外的实际游戏进程。
 - 账号连接已接入 OAuth：NextMoe/Kungal 使用 public client + PKCE，Bangumi 使用 OAuth 2.0；Hikarinagi 使用授权码 + PKCE 和 `catalog:read`，已连接账号会复用访问令牌，也可以在配置中提供 clientSecret 使用应用级凭据。
 - OAuth 凭证从 `MIYU_OAUTH_CONFIG`、数据目录 `oauth/providers.json` 或开发目录 `tmp/oauth/providers.json` 读取；设置页可以直接导入 JSON，保存后点“重新读取”即可生效，不需要重启。access/refresh token 使用 Windows DPAPI 加密后写入 SQLite，不写入日志或前端。
 

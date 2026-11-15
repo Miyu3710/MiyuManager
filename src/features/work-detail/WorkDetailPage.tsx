@@ -437,6 +437,9 @@ export function WorkDetailPage() {
               <Tag key={tag}>{tag}</Tag>
             ))}
             {hasLocalCopy ? <Tag tone="status">本地扫描</Tag> : null}
+            {detail.data.steamAppId ? (
+              <Tag tone="data">Steam 库 · {detail.data.steamAppId}</Tag>
+            ) : null}
             {game.ageRating !== "未标记" ? <Tag tone="data">{game.ageRating}</Tag> : null}
             {game.edition !== "未标记" ? <Tag tone="muted">{game.edition}</Tag> : null}
             {item.installStatus === "missing" ? <Tag tone="accent">路径缺失</Tag> : null}
@@ -632,8 +635,8 @@ export function WorkDetailPage() {
                 </div>
                 {detail.data.steamAppId ? (
                   <div>
-                    <dt>Steam</dt>
-                    <dd>AppID {detail.data.steamAppId}</dd>
+                    <dt>来源</dt>
+                    <dd>Steam 库 · AppID {detail.data.steamAppId}</dd>
                   </div>
                 ) : null}
                 <div>

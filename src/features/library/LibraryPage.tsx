@@ -158,6 +158,11 @@ function LibraryCard({
           <span className={cn("library-status", "library-status--" + game.status)}>
             {statusLabels[game.status]}
           </span>
+          {item.steamAppId ? (
+            <span className="library-origin" title={`Steam 库 · AppID ${item.steamAppId}`}>
+              Steam
+            </span>
+          ) : null}
           {game.favorite ? (
             <span className="library-favorite" aria-label="已收藏">
               <Star size={11} fill="currentColor" strokeWidth={0} />
@@ -230,7 +235,7 @@ function LibraryRow({
         <p>{game.originalTitle || "本地副本"}</p>
       </div>
       <span>{game.developer}</span>
-      <span>{game.isLocal ? "本地安装" : game.engine}</span>
+      <span>{item.steamAppId ? "Steam · 本地安装" : game.isLocal ? "本地安装" : game.engine}</span>
       <span>{game.isLocal ? formatBytes(item.sizeBytes) : game.playtime}</span>
       <span>
         {game.isLocal ? "入库 " + formatRelativeDate(item.addedAt) : "上次 " + game.lastPlayed}

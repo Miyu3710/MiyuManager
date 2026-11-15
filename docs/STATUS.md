@@ -54,19 +54,19 @@
 ## C6 本轮产出
 
 - 数据层：`src-tauri/migrations/20261115000700_c6_play_sessions.sql`；`play_sessions` 保存本地副本、启动 ID、状态、开始/结束/最后心跳、有效时长、结束原因、来源、PID、exe 路径、备注和修正标记。部分唯一索引保证一个本地副本最多一条未结束会话；作品/开始时间和未结束心跳各有索引。
-- 会话引擎：`src-tauri/src/tracking/**`；Job Object 查询完整游戏进程树，按规范化 exe 路径识别主程序；包装器不计时。每 2 秒观察进程与前台窗口，每 30 秒心跳；失去前台超过 90 秒后暂停有效时长，回到游戏继续同一会话；单次 tick 有时长上限，系统时间变化不会直接改变累计值。
-- 启动与结算：`launcher` 不再只等待初始子进程，而是由观察任务在游戏进程树结束后结算；直接启动、包装器启动、手动停止和退出码均保留。正常关闭主窗口把未结束会话结算为 `app_closed`，异常退出由下次启动按最后心跳截断为 `recovered`。
+- 会话引擎：`src-tauri/src/tracking/**`；Job Object 查询完整游戏进程树，按规范化 exe 路径识别主程序；包装器不计时。Steam 导入的游戏如果先启动短转交进程、再由 Steam 以新 PID 启动真正主程序，会按完整 exe 路径重新附着到作业对象外的游戏进程，并在退出后结算。每 2 秒观察进程与前台窗口，每 30 秒心跳；失去前台超过 90 秒后暂停有效时长，回到游戏继续同一会话；单次 tick 有时长上限，系统时间变化不会直接改变累计值。
+- 启动与结算：`launcher` 不再只等待初始子进程，而是由观察任务在游戏进程树结束后结算；直接启动、包装器启动、Steam 转交、手动停止和退出码均保留。Steam 转交后的游戏 PID 会回传给启动管理器，因此“停止游戏”可以结束作业对象外的实际主程序。正常关闭主窗口把未结束会话结算为 `app_closed`，异常退出由下次启动按最后心跳截断为 `recovered`。
 - IPC 与统计：新增 `sessions_list`、`session_create`、`session_update`、`session_delete`、`stats_get`。作品列表通过 `play_sessions` 聚合秒数和分钟数；统计返回累计、近 7/30 天、本周启动、84 天热力图、作品排行和最近会话。
-- UI：`StatsPage` 不再读取 mock，支持本周/本月/今年/全部范围；12 周热力图按开始日期聚合。作品详情“游玩记录”显示真实会话，支持补录、修正和删除；短会话按秒显示，状态区分计时中、后台暂停、正常退出、手动停止和异常恢复。
-- 验证：前端 Vitest 覆盖统计范围切换和分页外补录；Rust 覆盖前台宽限/暂停恢复、会话心跳与结算、手动 CRUD、异常恢复、正常关闭、Job Object 进程树、路径规范化及 10,000 条会话统计。真实 Tauri 窗口验证直接启动、包装器启动、手动停止、模拟崩溃恢复、统计页和补录/修正/删除。
-- 证据：`outputs/app/c6/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`；实际 Tauri 截图 `outputs/app/c6/tauri-running-final.png`、`tauri-sessions.png`、`tauri-stats.png`、`tauri-manual-stop.png`。
+- UI：`StatsPage` 不再读取 mock，支持本周/本月/今年/全部范围；12 周热力图按开始日期聚合。作品详情“游玩记录”显示真实会话，支持补录、修正和删除；短会话按秒显示，状态区分计时中、后台暂停、正常退出、手动停止和异常恢复。Steam 导入的作品在游戏库封面和详情标签中显示 `Steam` / `Steam 库 · AppID`，列表视图的来源列也显示 `Steam · 本地安装`。
+- 验证：前端 Vitest 覆盖统计范围切换和分页外补录；Rust 覆盖前台宽限/暂停恢复、会话心跳与结算、手动 CRUD、异常恢复、正常关闭、Job Object 进程树、Toolhelp 外部进程发现/终止、Steam 转交路径、路径规范化及 10,000 条会话统计。真实 Tauri 窗口验证直接启动、包装器启动、手动停止、模拟崩溃恢复、统计页和补录/修正/删除；GINKA AppID 2536840 实际启动后建立运行会话，关闭游戏后结算为 16 秒，停止游戏也能结束作业对象外的 PID。
+- 证据：`outputs/app/c6/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`；实际 Tauri 截图 `outputs/app/c6/tauri-running-final.png`、`tauri-sessions.png`、`tauri-stats.png`、`tauri-manual-stop.png`；GINKA Steam 转交证据在 `outputs/app/c6/steam-ginka/`，包含运行会话、游戏库 Steam 标记、详情 AppID、正常退出和手动停止后的游玩记录。
 
 ### C6 已知边界
 
-- 只统计从 MiyuManager 启动且能在 Job Object 进程树中准确匹配到本地副本的游戏；不接管资源管理器、Steam 客户端或其它启动器直接启动的进程。
+- Steam 导入的游戏可以从 MiyuManager 启动后重新附着到 Steam 转交的进程；不接管用户在 Steam 客户端、资源管理器或其它启动器中直接启动、且 MiyuManager 没有对应启动请求的进程。
 - 有效时长按游戏进程仍在运行计算；失去前台超过 90 秒后停止累计，因此游戏一直显示在前台但用户离开时仍可能计为游玩。
 - 应用崩溃时最多丢失一个 30 秒心跳周期；崩溃后若游戏仍继续运行，重启应用不会重新接管该进程，只把旧会话截断并在界面标为异常恢复。
-- 包装器如果创建 breakaway 进程或绕过 Job Object，主程序可能无法被识别；这种情况会在 60 秒后报告启动失败，不会把包装器时间误记到作品。
+- 包装器如果创建 breakaway 进程或绕过 Job Object，主程序可能无法被识别；Steam 转交会按完整 exe 路径查找，若实际游戏使用与导入记录不同的目录或 exe，仍需重新选择主程序。无法识别时会在 60 秒后报告启动失败，不会把包装器时间误记到作品。
 - 12 周热力图按会话开始日期归档，跨午夜会话不会拆分到两个日期；会话时间为本地输入，数据库保存 UTC，有效时长本身不受时区变化影响。
 
 ## C5 本轮产出
@@ -192,13 +192,14 @@
 ### C6
 
 - `pnpm lint`、`pnpm typecheck`、`pnpm test`（18 passed，新增统计范围切换与补录表单）、`pnpm build`、`pnpm format:check`。
-- `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（59 passed / 10 ignored，新增计时宽限、暂停恢复、会话 CRUD、异常恢复、正常关闭、Job Object 进程树、范围筛选和 10,000 条统计测试）。
+- `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（62 passed / 10 ignored，新增计时宽限、暂停恢复、会话 CRUD、异常恢复、正常关闭、Job Object 进程树、Toolhelp 外部进程发现/终止、Steam 转交、范围筛选和 10,000 条统计测试）。
 - 实际 Tauri 窗口（`MIYU_DATA_DIR=tmp/c6-appdata`）直接启动 12 秒 dummy 游戏，生成 `running` → `ended` / `exited` 会话，时长 10–12 秒；换成包装器启动后同样只生成一条会话，`exe_path` 指向游戏主程序而不是包装器。
+- 本机 GINKA AppID 2536840 通过实际 Tauri 窗口启动：短转交进程退出后，Steam 以新 PID 启动 `GINKA.exe`；观察器按完整路径重新附着，界面显示计时中，关闭游戏后生成 16 秒 `exited` 会话并清空运行状态。再次启动后点击“停止游戏”返回 true，作业对象外的 GINKA 进程被结束，会话结算为 `manual_stop`。
 - 实际窗口手动停止正在运行的游戏，会话在约 2 秒内结算为 `endReason=manual_stop`，`launch_state` 清空；以 `WM_CLOSE` 正常关闭主窗口时，正在运行的第 10 条会话结算为 `endReason=app_closed`。另用强制结束进程验证崩溃恢复。
 - 模拟崩溃：停止应用后插入一条 `status=running`、`last_heartbeat_at` 为 1 分钟前的会话；重启后启动恢复把 `ended_at` 截断到该心跳，`end_reason=recovered`，时长保持 45 秒，再次启动不重复恢复。
 - 实际窗口调用 `session_create` / `session_update` / `session_delete`：补录 30 分钟、修正为 45 分钟、删除后统计归零；统计页显示真实累计、近 7 天、本周启动、84 天热力图、作品排行和最近会话。
 - 界面截图覆盖 `outputs/app/c6/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`，包含统计页、作品游玩记录和补录表单；所有尺寸无横向溢出，84 个热力图单元均加载。
-- 主包约 412.45 KB（gzip 124.85 KB）；统计页 chunk 约 6.32 KB（gzip 2.50 KB），详情页 chunk 约 180.45 KB（gzip 53.00 KB）。
+- 主包约 412.45 KB（gzip 124.86 KB）；统计页 chunk 约 6.32 KB（gzip 2.51 KB），详情页 chunk 约 180.56 KB（gzip 53.02 KB）。
 
 ### C4
 

@@ -197,6 +197,7 @@ pub struct LaunchTarget {
     pub title: String,
     pub exe_path: String,
     pub working_dir: String,
+    pub steam_app_id: Option<i64>,
     pub profile: LaunchProfile,
 }
 
@@ -1248,7 +1249,7 @@ pub async fn validate_launch_config_report(
 pub async fn get_launch_target(pool: &SqlitePool, work_id: i64) -> Result<LaunchTarget> {
     let row = sqlx::query(
         "SELECT lc.id AS local_copy_id, w.id AS work_id, w.canonical_title AS title,
-                lc.exe_path, lc.working_dir
+                lc.exe_path, lc.working_dir, lc.steam_app_id
          FROM works w
          JOIN releases r ON r.work_id = w.id
          JOIN local_copies lc ON lc.release_id = r.id
@@ -1270,6 +1271,7 @@ pub async fn get_launch_target(pool: &SqlitePool, work_id: i64) -> Result<Launch
         title: row.try_get("title")?,
         exe_path: row.try_get("exe_path")?,
         working_dir: row.try_get("working_dir")?,
+        steam_app_id: row.try_get("steam_app_id")?,
         profile,
     })
 }
