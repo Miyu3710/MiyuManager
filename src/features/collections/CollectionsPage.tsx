@@ -547,9 +547,6 @@ export function CollectionsPage() {
           <h1>收藏集</h1>
           <p>{(collections.data ?? []).length} 个分组，手动整理，不改动游戏库状态。</p>
         </div>
-        <Button variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
-          <Plus size={14} strokeWidth={1.8} /> 新建收藏集
-        </Button>
       </header>
 
       {collections.isError ? (

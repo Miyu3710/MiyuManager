@@ -1,0 +1,15 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": ["src/features/onboarding/onboarding.css"],
+        "createdAt": "2026-11-15T13:18:07.387Z",
+        "reason": "Design decision: flat-top dossier card with an intentional 3px tab; top radii are 0, so the border does not clash with rounded corners"
+      }
+    ]
+  }
+}

@@ -15,7 +15,8 @@ src-tauri/gen
 src-tauri/target-*
 outputs/
 tmp/
-.impeccable/
+.impeccable/*
+!.impeccable/config.json
 
 # Editor directories and files
 .vscode/*
