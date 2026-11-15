@@ -1,6 +1,6 @@
 # MiyuManager 开发规划
 
-> 状态：v1 规划已锁定；C1、C2、C3 已完成，G2 已确认；C4 尚未启动  
+> 状态：v1 规划已锁定；C1、C2、C3、C4 已完成，G2 已确认；C5 尚未启动  
 > 更新日期：2026-11-15  
 > 目标平台：Windows 10 22H2 / Windows 11，x64 优先  
 > 产品形态：本地优先的 Windows Galgame / AVG 游戏库管理器  
@@ -84,7 +84,7 @@ v1 明确不做：
 - 作品模型采用 Work → Release → LocalCopy，而不是单一 Game 表。
 - 默认数据目录为 `%APPDATA%\MiyuManager`；C8 提供自定义数据目录设置，便携版在 C9 再决定。
 - v1 UI 语言为简体中文，代码从 C1 开始预留 i18n key；日文/英文翻译不阻塞 v1。
-- v1 默认来源优先级按字段决定：中文标题/简介优先 Bangumi，原始标题/标签/关联作品优先 VNDB，商店信息和发行日期优先 Steam。用户可在 C5 调整并锁定字段。
+- v1 默认来源优先级按字段决定：中文标题/简介优先 Bangumi，原始标题/标签/关联作品优先 VNDB，商店信息和发行日期优先 Steam。C4 已提供来源顺序、字段锁定和手动字段保护；C5 处理多源冲突和更细的字段优先级。
 - 默认不采集匿名使用数据，不发送遥测。
 - 游戏内进度、路线、章节、存档状态不由管理器自动读取；用户状态、评分、收藏和备注由用户维护。
 
@@ -358,6 +358,7 @@ C1 的设计工作必须按 `frontend-design` Skill 的流程执行：先写设�
 
 **规模**：M  
 **依赖**：C3  
+**当前状态**：已完成；Provider 框架、VNDB/Bangumi 搜索与导入、字段 claim/锁定和来源优先级已接入。  
 **目标**：建立可扩展的来源适配器，并完成两个 API 来源的搜索、匹配和导入。
 
 **工作**
@@ -369,12 +370,14 @@ C1 的设计工作必须按 `frontend-design` Skill 的流程执行：先写设�
 5. 实现搜索/匹配 UI：候选封面、标题、年份、开发商、来源徽标；支持按日文/中文/英文标题搜索。
 6. 实现字段合并预览：默认填空白和未锁定字段；用户手动编辑过的字段不被覆盖。
 7. 用固定 JSON fixture 做 Provider 测试；断网、404、限流和格式变化不能拖垮应用。
+8. 建来源注册表与优先级设置：顺序和启停持久化；后续来源只需注册适配器，搜索结果和默认字段优先值按顺序工作。
 
 **完成的功能**
 
 - 从作品详情发起 VNDB/Bangumi 搜索。
 - 选择候选并导入标题、简介、封面、标签等元数据。
 - 每个字段能追溯到来源；断网或来源失败不影响本地库。
+- 设置页可调整来源顺序和启停；结果按优先级排列，手动/锁定字段受到保护。
 
 **验收**
 
@@ -382,10 +385,21 @@ C1 的设计工作必须按 `frontend-design` Skill 的流程执行：先写设�
 - 中文/日文/英文标题均能搜索到候选。
 - 手动字段和已锁定字段在重新导入时保持不变。
 - 任务进度可见，可取消；失败有重试。
+- 来源顺序调整后，搜索排列和字段合并默认优先级同步变化。
 
 **不包含**：Steam、批量全库刮削、复杂冲突 UI、额外 HTML 来源。
 
-**主要产出**：`src-tauri/src/scrapers/**`、`src-tauri/migrations/**`、`src/features/metadata/**`。
+**主要产出**：`src-tauri/src/metadata/**`、`src-tauri/migrations/**`、`src/features/work-detail/**`、`src/features/settings/**`。
+
+#### C4 完成记录
+
+- 完成日期：2026-11-15；分支：`codex/c4-metadata-providers`。
+- 数据层：`20261115000400_c4_metadata.sql` 新增 `metadata_providers`、`source_records`、`metadata_claims`；Provider 顺序和启停持久化，详情响应缓存 24 小时。
+- Provider：Rust `MetadataProvider` trait、VNDB API v2、Bangumi OpenAPI；统一搜索结果、候选详情、字段 claim、错误和取消；HTTP 客户端包含 User-Agent、超时、重试/退避、按来源限速和大小限制。
+- UI：详情页“来源与字段”支持按全部来源或单来源搜索、候选封面/标题/年份/开发商/来源徽标、字段差异预览、选择性导入、封面导入、字段来源账本和锁定/解锁；设置页支持来源上移/下移、启停和后续适配器自动出现。
+- 保护：手动编辑写入 `manual` locked claim；导入跳过锁定字段，默认只选空白且未锁定字段；已有手动/本地封面默认保留。
+- 验证：Provider fixture 测试、优先级/启停测试、锁定字段跳过测试、真实 Tauri 窗口联合搜索（VNDB 在 Bangumi 前）、VNDB 字段导入、锁定简介后 Bangumi 导入不覆盖、在线封面下载/缩略图缓存、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`。
+- 已知边界：OAuth 登录未启用。VNDB/Bangumi 使用公开接口；Bangumi/Kungal/Hikarinagi 的 OAuth 需要各站开发者应用凭证、回调地址和令牌存储，Provider 认证状态字段已预留但不伪造登录。Steam、批量全库刮削、复杂多源冲突 UI、自动匹配和额外 HTML 来源仍不在 C4。搜索候选和封面来自在线来源；详情缓存不等于离线元数据镜像。
 
 ### C5 — Steam、多源合并与批量刮削
 
@@ -570,7 +584,7 @@ C1 的设计工作必须按 `frontend-design` Skill 的流程执行：先写设�
 - `codex/c1-foundation-ui`
 - `codex/c2-library-import`
 - `codex/c3-detail-launch`
-- `codex/c4-metadata-vndb-bangumi`
+- `codex/c4-metadata-providers`
 - `codex/c5-metadata-merge`
 - `codex/c6-playtime-stats`
 - `codex/c7-bigscreen`

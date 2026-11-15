@@ -1,11 +1,12 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use anyhow::Context;
 use serde::Serialize;
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Emitter, Manager, State};
+use tokio_util::sync::CancellationToken;
 
 use crate::assets::{self, CoverAsset, CoverCandidate};
 use crate::db::{
@@ -14,6 +15,7 @@ use crate::db::{
     WorkUpdateInput,
 };
 use crate::launcher::{self, LaunchManager, LaunchSnapshot};
+use crate::metadata::{self, MetadataHttp, MetadataImportRequest, MetadataImportResult};
 use crate::scan::{self, ScanCandidate, ScanCoordinator};
 
 pub struct AppState {
@@ -22,6 +24,41 @@ pub struct AppState {
     pub db_path: PathBuf,
     pub scan: Arc<ScanCoordinator>,
     pub launches: Arc<LaunchManager>,
+    pub metadata_http: Arc<MetadataHttp>,
+    pub metadata_jobs: Arc<MetadataCoordinator>,
+}
+
+#[derive(Default)]
+pub struct MetadataCoordinator {
+    jobs: Mutex<HashMap<String, CancellationToken>>,
+}
+
+impl MetadataCoordinator {
+    fn start(&self, job_id: String) -> Result<CancellationToken, String> {
+        let token = CancellationToken::new();
+        let mut jobs = self.jobs.lock().map_err(|_| "元数据任务锁失效")?;
+        if jobs.contains_key(&job_id) {
+            return Err("元数据任务 ID 重复".to_string());
+        }
+        jobs.insert(job_id, token.clone());
+        Ok(token)
+    }
+
+    fn cancel(&self, job_id: &str) -> bool {
+        if let Ok(jobs) = self.jobs.lock()
+            && let Some(token) = jobs.get(job_id)
+        {
+            token.cancel();
+            return true;
+        }
+        false
+    }
+
+    fn finish(&self, job_id: &str) {
+        if let Ok(mut jobs) = self.jobs.lock() {
+            jobs.remove(job_id);
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -83,6 +120,8 @@ pub async fn create_app_state(app: &AppHandle) -> anyhow::Result<AppState> {
         db_path,
         scan: Arc::new(ScanCoordinator::default()),
         launches: Arc::new(LaunchManager::default()),
+        metadata_http: Arc::new(MetadataHttp::new()?),
+        metadata_jobs: Arc::new(MetadataCoordinator::default()),
     })
 }
 
@@ -463,6 +502,185 @@ pub async fn library_remove_scan_exclusion(
     exe_key: String,
 ) -> Result<(), String> {
     db::remove_scan_exclusion(&state.pool, &exe_key)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn metadata_providers(
+    state: State<'_, AppState>,
+) -> Result<Vec<metadata::ProviderInfo>, String> {
+    metadata::list_providers(&state.pool)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn metadata_provider_reorder(
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    metadata::reorder_providers(&state.pool, &ids)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn metadata_provider_set_enabled(
+    state: State<'_, AppState>,
+    provider_id: String,
+    enabled: bool,
+) -> Result<(), String> {
+    metadata::set_provider_enabled(&state.pool, &provider_id, enabled)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn metadata_work_state(
+    state: State<'_, AppState>,
+    work_id: i64,
+) -> Result<metadata::MetadataWorkState, String> {
+    metadata::work_state(&state.pool, work_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn metadata_search_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    work_id: i64,
+    query: String,
+    provider: Option<String>,
+) -> Result<metadata::MetadataJobStart, String> {
+    if !db::work_exists(&state.pool, work_id)
+        .await
+        .map_err(|error| error.to_string())?
+    {
+        return Err("作品不存在".to_string());
+    }
+    let job_id = uuid::Uuid::new_v4().to_string();
+    let cancel = state.metadata_jobs.start(job_id.clone())?;
+    let pool = state.pool.clone();
+    let http = state.metadata_http.clone();
+    let coordinator = state.metadata_jobs.clone();
+    let app_handle = app.clone();
+    let task_job_id = job_id.clone();
+    let start = metadata::MetadataJobStart {
+        job_id: job_id.clone(),
+    };
+
+    tauri::async_runtime::spawn(async move {
+        let progress_app = app_handle.clone();
+        let progress_job = task_job_id.clone();
+        let result = metadata::search_all(
+            &pool,
+            &http,
+            &query,
+            provider.as_deref(),
+            &cancel,
+            move |provider_id, provider_name, completed, total| {
+                let _ = progress_app.emit(
+                    "metadata-search-progress",
+                    metadata::MetadataSearchProgress {
+                        job_id: progress_job.clone(),
+                        work_id,
+                        provider: provider_id.to_string(),
+                        provider_name: provider_name.to_string(),
+                        completed,
+                        total,
+                        message: format!("正在查询 {provider_name}"),
+                    },
+                );
+            },
+        )
+        .await;
+
+        match result {
+            Ok(outcome) => {
+                let _ = app_handle.emit(
+                    "metadata-search-complete",
+                    metadata::MetadataSearchComplete {
+                        job_id: task_job_id.clone(),
+                        work_id,
+                        query,
+                        results: outcome.results,
+                        errors: outcome.errors,
+                        cancelled: outcome.cancelled,
+                    },
+                );
+            }
+            Err(error) => {
+                let _ = app_handle.emit(
+                    "metadata-search-error",
+                    metadata::MetadataSearchError {
+                        job_id: task_job_id.clone(),
+                        work_id,
+                        message: error.to_string(),
+                    },
+                );
+            }
+        }
+        coordinator.finish(&task_job_id);
+    });
+
+    Ok(start)
+}
+
+#[tauri::command]
+pub async fn metadata_search_cancel(
+    state: State<'_, AppState>,
+    job_id: String,
+) -> Result<bool, String> {
+    Ok(state.metadata_jobs.cancel(&job_id))
+}
+
+#[tauri::command]
+pub async fn metadata_candidate_preview(
+    state: State<'_, AppState>,
+    work_id: i64,
+    provider: String,
+    source_id: String,
+) -> Result<metadata::MetadataPreview, String> {
+    let cancel = CancellationToken::new();
+    metadata::preview(
+        &state.pool,
+        &state.metadata_http,
+        work_id,
+        &provider,
+        &source_id,
+        &cancel,
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn metadata_import(
+    state: State<'_, AppState>,
+    request: MetadataImportRequest,
+) -> Result<MetadataImportResult, String> {
+    let cancel = CancellationToken::new();
+    metadata::import(
+        &state.pool,
+        &state.data_dir,
+        &state.metadata_http,
+        request,
+        &cancel,
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn metadata_set_field_lock(
+    state: State<'_, AppState>,
+    work_id: i64,
+    field: String,
+    locked: bool,
+) -> Result<(), String> {
+    metadata::set_field_lock(&state.pool, work_id, &field, locked)
         .await
         .map_err(|error| error.to_string())
 }

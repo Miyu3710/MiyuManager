@@ -2,6 +2,7 @@ mod assets;
 mod commands;
 mod db;
 mod launcher;
+mod metadata;
 mod scan;
 
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
@@ -68,6 +69,15 @@ pub fn run() {
             commands::library_import_candidates,
             commands::library_scan_exclusions,
             commands::library_remove_scan_exclusion,
+            commands::metadata_providers,
+            commands::metadata_provider_reorder,
+            commands::metadata_provider_set_enabled,
+            commands::metadata_work_state,
+            commands::metadata_search_start,
+            commands::metadata_search_cancel,
+            commands::metadata_candidate_preview,
+            commands::metadata_import,
+            commands::metadata_set_field_lock,
         ])
         .setup(|app| {
             let state = tauri::async_runtime::block_on(commands::create_app_state(app.handle()))?;

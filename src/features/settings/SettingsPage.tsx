@@ -18,6 +18,7 @@ import { useAppearance } from "../../app/useAppearance";
 import { formatRelativeDate } from "../../lib/format";
 import { removeLibraryRoot, removeScanExclusion } from "../../lib/library-api";
 import { cn } from "../../lib/cn";
+import { MetadataSourceSettings } from "./MetadataSourceSettings";
 import {
   useAppInfo,
   useInvalidateLibrary,
@@ -278,19 +279,7 @@ export function SettingsPage() {
                 <p>来源只提供元数据，字段可以锁定和手动校正。</p>
               </div>
             </header>
-            {[
-              ["VNDB", "原题、开发商、标签", "已配置"],
-              ["Bangumi", "中文标题、简介、发行日期", "已配置"],
-              ["Steam", "商店信息、发行日期", "未配置"],
-            ].map(([name, fields, state]) => (
-              <div className="settings-row" key={name}>
-                <div>
-                  <b>{name}</b>
-                  <span>{fields}</span>
-                </div>
-                <Tag tone={state === "已配置" ? "status" : "muted"}>{state}</Tag>
-              </div>
-            ))}
+            <MetadataSourceSettings />
           </section>
 
           <section id="launcher-settings" className="settings-section">

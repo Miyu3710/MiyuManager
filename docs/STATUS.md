@@ -1,7 +1,7 @@
 # MiyuManager 项目状态
 
 > 最后更新：2026-11-15  
-> 当前阶段：C3 已完成；C4 尚未启动  
+> 当前阶段：C4 已完成；C5 尚未启动  
 > 计划文件：`docs/DEVELOPMENT_PLAN.md`  
 > 设计提案：`docs/DESIGN.md`
 
@@ -13,7 +13,7 @@
 | C1 基础工程、设计系统与可点击壳       | 已完成 | 设计系统、应用壳、Home/Library/Detail/Big Screen、Stats/Settings 和探针已完成；2026-11-15 通过 G2 视觉确认                             |
 | C2 SQLite、目录扫描与真实游戏库       | 已完成 | SQLite/WAL/FTS5、目录扫描、候选确认、汉化 exe 识别、扫描排除/手动导入、真实游戏库、搜索筛选排序、持久化和 5,000 条查询已接入；详见下文 |
 | C3 作品详情、图片缓存与启动器         | 已完成 | 真实详情编辑、封面缓存/发现、启动配置、包装器、路径校验、Job Object 启动跟踪与运行状态已接入；详见下文                                 |
-| C4 Metadata Provider、VNDB 与 Bangumi | 未开始 | 依赖 C3                                                                                                                                |
+| C4 Metadata Provider、VNDB 与 Bangumi | 已完成 | Provider 框架、来源优先级、VNDB/Bangumi 搜索与导入、字段 claim/锁定、封面下载和来源账本已接入；详见下文                                |
 | C5 Steam、多源合并与批量刮削          | 未开始 | 依赖 C4                                                                                                                                |
 | C6 自动时长统计与统计页               | 未开始 | 依赖 C3；可与 C4/C5 在不同 worktree 并行                                                                                               |
 | C7 电视大屏与手柄导航                 | 未开始 | 依赖 C6                                                                                                                                |
@@ -48,7 +48,28 @@
 - pnpm `11.25.0`
 - Rust `1.100.0`
 - WebView2 Runtime `157.0.4341.46`
-- Git 仓库已有 C1 基线提交；C2 在 `codex/c2-library-import` 分支完成；C3 在 `codex/c3-detail-launch` 分支完成
+- Git 仓库已有 C1 基线提交；C2 在 `codex/c2-library-import` 分支完成；C3 在 `codex/c3-detail-launch` 分支完成；C4 在 `codex/c4-metadata-providers` 分支完成
+
+## C4 本轮产出
+
+- 数据层：`src-tauri/migrations/20261115000400_c4_metadata.sql`；新增 `metadata_providers`、`source_records`、`metadata_claims`，保存 Provider 顺序/启停、原始响应、字段值、来源 ID、抓取时间和锁定状态。详情响应缓存 24 小时。
+- Provider：`src-tauri/src/metadata/**`；`MetadataProvider` trait、VNDB API v2、Bangumi OpenAPI、统一搜索结果/候选详情/字段 claim/错误/取消；HTTP 客户端包含 User-Agent、18 秒超时、3 次退避重试、按来源限速、响应大小限制和取消。
+- 来源优先级：设置页支持上移/下移和启停，顺序持久化到 SQLite；搜索按优先级排列，字段预览的默认选中按候选来源与已有 claim 的优先级判断。后续新增来源只需注册适配器并自动出现在设置页。
+- 搜索与导入 UI：`src/features/work-detail/MetadataPanel.tsx`；详情页“来源与字段”支持全部来源或单来源搜索、候选封面/标题/年份/开发商/来源徽标、字段差异预览、选择性导入、封面导入、来源账本和锁定/解锁。
+- 字段保护：手动编辑通过 `work_update` 写入 `manual` locked claim；导入跳过锁定字段，默认只选空白且未锁定字段；已有手动/本地封面默认保留；锁定字段在重新导入时保持原值。
+- 封面：在线候选封面可下载到现有资产缓存，生成 WebP 缩略图；资产来源标记 `online`，详情页区分手动/本地/在线封面。
+- 验证：Provider fixture 测试、优先级/启停测试、锁定字段跳过测试、真实 Tauri 窗口联合搜索（VNDB 在 Bangumi 前）、VNDB 字段导入、锁定简介后 Bangumi 导入不覆盖、在线封面下载和缩略图缓存。
+- 证据：`outputs/app/c4/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`，包含 `01-sources-empty.png`、`02-search-results.png`、`03-preview.png`、`04-imported.png`、`04b-locked.png`、`05-settings-priority.png`。
+
+### C4 已知边界
+
+- OAuth 登录未启用。VNDB/Bangumi 当前使用公开接口，不需要账号；Bangumi、Kungal、Hikarinagi 的 OAuth 需要各站开发者应用凭证、回调地址和令牌存储，Provider 认证状态字段已预留，但本轮没有伪造登录流程。
+- 不包含 Steam、批量全库刮削、复杂多源冲突 UI、自动匹配和额外 HTML 来源；这些留到 C5。
+- 搜索结果和候选封面来自在线来源；只为详情响应做 24 小时缓存，不构成离线元数据镜像。断网时本地库、详情和启动仍可用，但搜索会失败并给出重试。
+- VNDB 的关联作品只在候选详情展示，不自动建立本地作品关系或合并作品。
+- 锁定是字段级：锁定后该字段的所有 claim 都跳过导入；暂不提供逐 claim 选择“采用此值/解锁”的冲突处理界面。
+- 搜索一次只导入一个候选；字段预览默认只选空白且未锁定字段，非空字段需要用户显式勾选。
+- 浏览器预览使用固定 mock 候选；真实网络搜索、封面下载和 SQLite 写入只在 Tauri 窗口可用。
 
 ## C3 本轮产出
 
@@ -89,7 +110,7 @@
 
 ### C2 已知边界
 
-- C2 阶段封面仍是标题排印占位；C3 已补充手动/本地封面缓存，但在线封面/元数据仍留到 C4/C5。
+- C2 阶段封面仍是标题排印占位；C3 已补充手动/本地封面缓存，C4 已补充 VNDB/Bangumi 在线封面和元数据，Steam 与复杂多源冲突留到 C5。
 - C2 阶段详情页只展示本地安装与启动路径；C3 已补上启动配置、路径校验和真实启动。
 - `play_sessions` 尚未建表；统计页仍是 C1 视觉占位，C6 接入真实会话。
 - C2 阶段 `install_status` 只写 installed；C3 已补充 exe/工作目录校验和 missing 状态。
@@ -122,6 +143,17 @@
 ## 验证记录
 
 已通过：
+
+### C4
+
+- `pnpm lint`、`pnpm typecheck`、`pnpm test`（10 个前端测试，新增元数据搜索/导入和来源排序测试）、`pnpm build`、`pnpm format:check`。
+- `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（24 个 Rust 测试；22 个通过，2 个需要网络的 live 测试默认忽略）。
+- 网络 smoke：`cargo test live_provider_smoke -- --ignored` 通过；VNDB/Bangumi 联合搜索、详情解析均返回真实数据。
+- 网络导入 smoke：`cargo test live_search_priority_and_cover_import -- --ignored` 通过；VNDB 结果优先于 Bangumi，在线封面下载、原图和 WebP 缩略图写入成功。
+- 实际 Tauri 窗口（`MIYU_DATA_DIR=tmp/c4-appdata-1`）：在作品详情“来源与字段”搜索“月影”得到 29 条候选，VNDB 12 条在前、Bangumi 17 条在后；选择 VNDB 候选导入 4 个空白字段；锁定简介后切换 Bangumi 候选，预览显示“已锁定”且不可勾选，导入只应用到未锁定字段，简介保持 VNDB 值。
+- SQLite 证据：`metadata_claims` 中 VNDB 的 `aliases`、`description`、`publisher`、`release_date` 有来源和时间；`description` 的 `locked=1`；Bangumi 只写入了未锁定的 `developer`。
+- 截图证据：`outputs/app/c4/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`；所有尺寸无横向溢出，4K 来源面板已完成加载；设置页来源顺序和启停按钮可用。
+- 主包约 391.27 KB（gzip 119.34 KB）；详情页 lazy chunk 约 165.02 KB（gzip 49.04 KB）。
 
 ### C3
 
@@ -185,7 +217,7 @@
 - G2 已完成：用户确认当前 Home、游戏库、详情、统计、设置和大屏视觉基线。
 - 视觉基线不是冻结规范：配色、主题、密度和布局仍集中在 token 与页面 CSS 中，后续可以继续修改。
 - C2 已完成：真实目录扫描、候选确认、SQLite 入库、搜索/筛选/排序、重复扫描去重和重启持久化均已验证。
-- C2 的视觉验收采用真实扫描数据和占位封面；C3 已补充手动/本地封面缓存，在线封面/元数据仍属于 C4/C5。
+- C2 的视觉验收采用真实扫描数据和占位封面；C3 已补充手动/本地封面缓存，C4 已补充 VNDB/Bangumi 在线封面和元数据。
 
 C2/C3 不再扩展；已知边界见上文，C4 及之后内容不在本对话范围。
 
@@ -202,14 +234,20 @@ C2/C3 不再扩展；已知边界见上文，C4 及之后内容不在本对话�
 - 提交：`71be766`（作品详情、封面缓存、启动配置与启动器）
 - 结论：C3 已完成；详情编辑、封面缓存/发现、启动配置、包装器、路径校验、真实启动、Job Object 跟踪和运行状态均有自动化或实际窗口证据。
 
+## C4 完成记录
+
+- 完成日期：2026-11-15
+- 分支：`codex/c4-metadata-providers`
+- 结论：C4 已完成；Provider 框架、VNDB/Bangumi 搜索与字段导入、来源优先级、字段 claim/锁定、在线封面缓存和来源账本均有自动化或实际窗口证据。
+
 ## 下一轮入口
 
-C3 已完成，本对话到此结束，不启动 C4。若后续另开对话并明确要求 C4，再按以下入口执行：
+C4 已完成，本对话到此结束，不启动 C5。若后续另开对话并明确要求 C5，再按以下入口执行：
 
-1. C4 处理 Metadata Provider 框架、VNDB/Bangumi 搜索、字段 claim 和封面候选；本轮不修改 C4 范围。
-2. C4 开始前确认 G4 的多源字段优先级和锁定语义；C3 的本地封面与手动字段必须继续受保护。
-3. 只有用户明确要求进入 C4 时，才开始在线元数据、封面下载和来源面板。
-4. 继续调整 C3 视觉时，按 token/密度/布局修正，并同步更新 `docs/DESIGN.md` 与 `outputs/app/c3/` 截图证据。
+1. C5 处理 Steam、多源字段冲突、字段级优先级和批量刮削；本轮不修改 C5 范围。
+2. C5 开始前确认 G4 的多源字段优先级和冲突处理语义；C4 的 Provider 顺序、字段锁定和手动 claim 必须继续受保护。
+3. 只有用户明确要求进入 C5 时，才开始 Steam、批量队列和复杂冲突 UI。
+4. 继续调整 C4 视觉或来源设置时，按 token/密度/布局修正，并同步更新 `docs/DESIGN.md` 与 `outputs/app/c4/` 截图证据。
 
 ## 待决策与风险
 
@@ -219,13 +257,14 @@ C3 已完成，本对话到此结束，不启动 C4。若后续另开对话并�
 - G4：C5 多源冲突和字段优先级。
 - G5：C7 大屏布局和手柄映射。
 - G6：C9 安装包、签名、便携版和更新策略。
-- C3 封面只支持手动选择和本地发现；在线封面下载和元数据留到 C4/C5。
+- C3 封面只支持手动选择和本地发现；C4 已补充在线封面下载和 VNDB/Bangumi 元数据，Steam 和复杂多源冲突仍留到 C5。
 - C3 的显示偏好只保存，不强制移动游戏窗口；实际窗口放置留到后续阶段。
 - C3 启动状态只在内存中，应用重启后不会恢复正在运行的进程；关闭管理器不会强制结束游戏。
 - 统计页仍是 C1 mock 视觉占位；`play_sessions` 表和真实会话在 C6 接入。
 - 4K、150% 缩放和 1440/1920 截图已覆盖主路由；C3 详情、启动配置、编辑弹窗和游戏库缩略图已覆盖。扫描弹窗的 4K 单独手测仍属于 C9 回归范围。
+- Bangumi/Kungal/Hikarinagi 的 OAuth 登录尚未启用；需要各站开发者应用凭证、回调地址和令牌存储，C4 只预留 Provider 认证状态字段，未伪造登录。
 
-当前没有阻塞项。
+当前没有阻塞项。OAuth 登录需要用户提供或注册各站开发者应用凭证，属于后续可选增强，不影响 C4 的公开来源搜索与导入。
 
 ## 更新规则
 

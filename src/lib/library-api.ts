@@ -23,6 +23,17 @@ import type {
   CoverCandidate,
   ValidationReport,
   WorkUpdateInput,
+  MetadataProvider,
+  MetadataJobStart,
+  MetadataPreview,
+  MetadataImportRequest,
+  MetadataImportResult,
+  MetadataWorkState,
+  MetadataSearchCandidate,
+  MetadataSearchComplete,
+  MetadataClaim,
+  MetadataValue,
+  MetadataFieldState,
 } from "./library-types";
 import { formatBytes, formatPlaytime, formatRelativeDate } from "./format";
 
@@ -692,4 +703,596 @@ export function libraryItemToGame(item: LibraryItem): Game {
     favorite: item.favorite,
     notes: (item as LibraryItemDetail).notes,
   };
+}
+
+const previewMetadataProviders: MetadataProvider[] = [
+  {
+    id: "vndb",
+    name: "VNDB",
+    description: "原题、别名、开发商、标签和关联作品",
+    fields: [
+      "title",
+      "original_title",
+      "aliases",
+      "description",
+      "year",
+      "tags",
+      "developer",
+      "publisher",
+      "release_date",
+      "cover",
+      "related",
+    ],
+    priority: 10,
+    enabled: true,
+    requiresAuth: false,
+    authKind: "none",
+    connected: true,
+    accountName: null,
+  },
+  {
+    id: "bangumi",
+    name: "Bangumi",
+    description: "中文标题、简介、发行日期和中文标签",
+    fields: [
+      "title",
+      "original_title",
+      "aliases",
+      "description",
+      "year",
+      "tags",
+      "developer",
+      "publisher",
+      "release_date",
+      "cover",
+    ],
+    priority: 20,
+    enabled: true,
+    requiresAuth: false,
+    authKind: "none",
+    connected: true,
+    accountName: null,
+  },
+];
+
+const previewMetadataClaims = new Map<number, MetadataClaim[]>();
+let previewMetadataClaimId = 1;
+
+type PreviewMetadataCandidate = MetadataPreview["candidate"];
+
+const previewMetadataCandidates: Record<string, MetadataSearchCandidate[]> = {
+  bangumi: [
+    {
+      provider: "bangumi",
+      sourceId: "50756",
+      title: "月影之锁 错乱偏执狂",
+      originalTitle: "月影の鎖 - 錯乱パラノイア -",
+      year: 2013,
+      developer: "TAKUYO",
+      coverUrl: "https://lain.bgm.tv/pic/cover/l/c2/38/50756_0Akzl.jpg",
+      summary: "冬浦めぐみ在红霞市与不同的人相遇，逐渐面对自己与这座城市的关系。",
+      score: 7.1,
+      priority: 20,
+    },
+    {
+      provider: "bangumi",
+      sourceId: "194343",
+      title: "月影之幻像",
+      originalTitle: "月影のシミュラクル",
+      year: 2016,
+      developer: "あっぷりけ",
+      coverUrl: "https://lain.bgm.tv/pic/cover/l/af/e1/194343_91Jrj.jpg",
+      summary: "被蜘蛛丝束缚的蝴蝶，再次展翅的故事。",
+      score: 6.7,
+      priority: 20,
+    },
+  ],
+  vndb: [
+    {
+      provider: "vndb",
+      sourceId: "v11469",
+      title: "月影の鎖 -錯乱パラノイア-",
+      originalTitle: "月影の鎖 -錯乱パラノイア-",
+      year: 2013,
+      developer: "Takuyo Co., Ltd.",
+      coverUrl: "https://t.vndb.org/cv/49/101149.jpg",
+      summary: "VNDB 中的作品条目。",
+      score: null,
+      priority: 10,
+    },
+  ],
+};
+
+const previewMetadataDetails: Record<string, PreviewMetadataCandidate> = {
+  "bangumi:50756": {
+    provider: "bangumi",
+    sourceId: "50756",
+    title: "月影之锁 错乱偏执狂",
+    originalTitle: "月影の鎖 - 錯乱パラノイア -",
+    aliases: ["Getsuei no Kusari", "月影之锁"],
+    description:
+      "冬浦めぐみ在红霞市与不同的人相遇，逐渐面对自己与这座城市的关系。她开始理解军驻地计划与自己生活的联系，也在相遇中改变了自己的想法。",
+    releaseDate: "2013-04-18",
+    year: 2013,
+    developer: "TAKUYO",
+    publisher: "TAKUYO",
+    tags: ["乙女向", "TAKUYO", "乙女游戏", "ADV", "病娇", "暗黑"],
+    coverUrl: "https://lain.bgm.tv/pic/cover/l/c2/38/50756_0Akzl.jpg",
+    related: [],
+  },
+  "bangumi:194343": {
+    provider: "bangumi",
+    sourceId: "194343",
+    title: "月影之幻像",
+    originalTitle: "月影のシミュラクル",
+    aliases: ["Tsukikage no Simulacre"],
+    description: "被蜘蛛丝束缚的蝴蝶，再次展翅的故事。",
+    releaseDate: "2016-10-01",
+    year: 2016,
+    developer: "あっぷりけ",
+    publisher: "あっぷりけ",
+    tags: ["Galgame", "悬疑", "短篇", "ADV"],
+    coverUrl: "https://lain.bgm.tv/pic/cover/l/af/e1/194343_91Jrj.jpg",
+    related: [],
+  },
+  "vndb:v11469": {
+    provider: "vndb",
+    sourceId: "v11469",
+    title: "月影の鎖 -錯乱パラノイア-",
+    originalTitle: "月影の鎖 -錯乱パラノイア-",
+    aliases: ["Getsuei no Kusari -Sakuran Paranoia-", "月影之锁"],
+    description: "VNDB 中的作品条目，描述和标签来自 VNDB API。",
+    releaseDate: "2013-04-18",
+    year: 2013,
+    developer: "Takuyo Co., Ltd.",
+    publisher: "Takuyo Co., Ltd.",
+    tags: ["乙女向", "ADV", "悬疑"],
+    coverUrl: "https://t.vndb.org/cv/49/101149.jpg",
+    related: [{ sourceId: "v12928", relation: "Sequel", title: "月影の鎖 ―狂爛モラトリアム―" }],
+  },
+};
+
+function previewMetadataValues(workId: number) {
+  const item = previewItems().find((entry) => entry.workId === workId);
+  if (!item) {
+    return null;
+  }
+  const update = previewWorkUpdates.get(workId);
+  return {
+    title: update?.title ?? item.title,
+    originalTitle: update?.originalTitle ?? item.originalTitle,
+    aliases: update?.aliases ?? [],
+    description: update?.description ?? item.description,
+    year: update?.year ?? item.year,
+    tags: update?.tags ?? item.tags,
+    developer: update?.developer ?? item.developer,
+    publisher: update?.publisher ?? item.publisher,
+    releaseDate: update?.releaseDate ?? null,
+    edition: update?.edition ?? item.edition,
+    language: update?.language ?? null,
+    notes: update?.notes ?? item.previewGame?.notes ?? "",
+    rating: update?.rating ?? item.rating,
+    status: update?.status ?? item.status,
+    favorite: update?.favorite ?? item.favorite,
+    coverSource: null as string | null,
+  };
+}
+
+function previewMetadataCurrent(
+  values: NonNullable<ReturnType<typeof previewMetadataValues>>,
+  field: string,
+): MetadataValue {
+  switch (field) {
+    case "title":
+      return values.title;
+    case "original_title":
+      return values.originalTitle;
+    case "aliases":
+      return values.aliases;
+    case "description":
+      return values.description;
+    case "year":
+      return values.year;
+    case "tags":
+      return values.tags;
+    case "developer":
+      return values.developer;
+    case "publisher":
+      return values.publisher;
+    case "release_date":
+      return values.releaseDate;
+    case "cover":
+      return values.coverSource;
+    default:
+      return null;
+  }
+}
+
+function previewMetadataEmpty(value: MetadataValue): boolean {
+  return (
+    value === null ||
+    (typeof value === "string" && !value.trim()) ||
+    (Array.isArray(value) && value.length === 0)
+  );
+}
+
+function previewMetadataCandidateValue(
+  candidate: PreviewMetadataCandidate,
+  field: string,
+): MetadataValue {
+  switch (field) {
+    case "title":
+      return candidate.title;
+    case "original_title":
+      return candidate.originalTitle;
+    case "aliases":
+      return candidate.aliases;
+    case "description":
+      return candidate.description;
+    case "year":
+      return candidate.year;
+    case "tags":
+      return candidate.tags;
+    case "developer":
+      return candidate.developer;
+    case "publisher":
+      return candidate.publisher;
+    case "release_date":
+      return candidate.releaseDate;
+    default:
+      return null;
+  }
+}
+
+const previewMetadataFieldLabels: [string, string][] = [
+  ["title", "标题"],
+  ["original_title", "原题"],
+  ["aliases", "别名"],
+  ["description", "简介"],
+  ["year", "年份"],
+  ["tags", "标签"],
+  ["developer", "开发商"],
+  ["publisher", "发行商"],
+  ["release_date", "发行日期"],
+];
+
+function previewMetadataProvidersSorted(): MetadataProvider[] {
+  return [...previewMetadataProviders].sort(
+    (left, right) => left.priority - right.priority || left.id.localeCompare(right.id),
+  );
+}
+
+function previewMetadataWorkState(workId: number): MetadataWorkState {
+  const values = previewMetadataValues(workId);
+  const claims = previewMetadataClaims.get(workId) ?? [];
+  if (!values) {
+    throw new Error("作品不存在");
+  }
+  const fields: MetadataFieldState[] = previewMetadataFieldLabels.map(([field, label]) => {
+    const current = previewMetadataCurrent(values, field);
+    const fieldClaims = claims.filter((claim) => claim.field === field);
+    const sourceClaim = fieldClaims.find(
+      (claim) => JSON.stringify(claim.value) === JSON.stringify(current),
+    );
+    const lockedClaim = fieldClaims.find((claim) => claim.locked);
+    return {
+      field,
+      label,
+      current,
+      source: sourceClaim?.source ?? null,
+      sourceId: sourceClaim?.sourceId ?? null,
+      locked: Boolean(lockedClaim),
+      lockSource: lockedClaim?.source ?? null,
+      claims: fieldClaims,
+    };
+  });
+  const coverClaims = claims.filter((claim) => claim.field === "cover");
+  fields.push({
+    field: "cover",
+    label: "封面",
+    current: values.coverSource,
+    source: values.coverSource,
+    sourceId: null,
+    locked: coverClaims.some((claim) => claim.locked),
+    lockSource: coverClaims.find((claim) => claim.locked)?.source ?? null,
+    claims: coverClaims,
+  });
+  return {
+    workId,
+    providers: previewMetadataProvidersSorted(),
+    fields,
+  };
+}
+
+export async function listMetadataProviders(): Promise<MetadataProvider[]> {
+  if (!isTauri()) {
+    return previewMetadataProvidersSorted();
+  }
+  return invoke<MetadataProvider[]>("metadata_providers");
+}
+
+export async function reorderMetadataProviders(ids: string[]): Promise<void> {
+  if (!isTauri()) {
+    ids.forEach((id, index) => {
+      const provider = previewMetadataProviders.find((entry) => entry.id === id);
+      if (provider) {
+        provider.priority = (index + 1) * 10;
+      }
+    });
+    return;
+  }
+  await invoke("metadata_provider_reorder", { ids });
+}
+
+export async function setMetadataProviderEnabled(
+  providerId: string,
+  enabled: boolean,
+): Promise<void> {
+  if (!isTauri()) {
+    const provider = previewMetadataProviders.find((entry) => entry.id === providerId);
+    if (provider) {
+      provider.enabled = enabled;
+    }
+    return;
+  }
+  await invoke("metadata_provider_set_enabled", { providerId, enabled });
+}
+
+export async function getMetadataWorkState(workId: number): Promise<MetadataWorkState> {
+  if (!isTauri()) {
+    return previewMetadataWorkState(workId);
+  }
+  return invoke<MetadataWorkState>("metadata_work_state", { workId });
+}
+
+export async function startMetadataSearch(
+  workId: number,
+  query: string,
+  provider: string | null,
+): Promise<MetadataJobStart> {
+  if (!isTauri()) {
+    return { jobId: "preview" };
+  }
+  return invoke<MetadataJobStart>("metadata_search_start", { workId, query, provider });
+}
+
+export async function searchMetadataPreview(
+  workId: number,
+  query: string,
+  provider: string | null,
+): Promise<MetadataSearchComplete> {
+  await new Promise((resolve) => setTimeout(resolve, 280));
+  const providers = provider
+    ? previewMetadataProvidersSorted().filter((entry) => entry.id === provider)
+    : previewMetadataProvidersSorted();
+  const results = providers.flatMap((entry) =>
+    entry.enabled ? (previewMetadataCandidates[entry.id] ?? []) : [],
+  );
+  return {
+    jobId: "preview",
+    workId,
+    query,
+    results,
+    errors: [],
+    cancelled: false,
+  };
+}
+
+export async function cancelMetadataSearch(jobId: string): Promise<boolean> {
+  if (!isTauri()) {
+    return jobId === "preview";
+  }
+  return invoke<boolean>("metadata_search_cancel", { jobId });
+}
+
+export async function getMetadataPreview(
+  workId: number,
+  provider: string,
+  sourceId: string,
+): Promise<MetadataPreview> {
+  if (!isTauri()) {
+    const values = previewMetadataValues(workId);
+    const candidate = previewMetadataDetails[`${provider}:${sourceId}`];
+    if (!values || !candidate) {
+      throw new Error("候选不存在");
+    }
+    const claims = previewMetadataClaims.get(workId) ?? [];
+    const providerInfo = previewMetadataProviders.find((entry) => entry.id === provider);
+    const fields = previewMetadataFieldLabels.flatMap(([field, label]) => {
+      const candidateValue = previewMetadataCandidateValue(candidate, field);
+      if (previewMetadataEmpty(candidateValue)) {
+        return [];
+      }
+      const current = previewMetadataCurrent(values, field);
+      const fieldClaims = claims.filter((claim) => claim.field === field);
+      const lockedClaim = fieldClaims.find((claim) => claim.locked);
+      return [
+        {
+          field,
+          label,
+          current,
+          candidate: candidateValue,
+          source: provider,
+          sourceId,
+          locked: Boolean(lockedClaim),
+          lockSource: lockedClaim?.source ?? null,
+          defaultSelected: previewMetadataEmpty(current) && !lockedClaim,
+          priority: providerInfo?.priority ?? 100,
+          existing: fieldClaims.map((claim) => ({
+            source: claim.source,
+            sourceId: claim.sourceId,
+            value: claim.value,
+            priority: claim.priority,
+            locked: claim.locked,
+          })),
+        },
+      ];
+    });
+    return {
+      workId,
+      provider,
+      providerName: providerInfo?.name ?? provider,
+      sourceId,
+      candidate,
+      fields,
+      cover: candidate.coverUrl
+        ? {
+            currentSource: values.coverSource,
+            candidateUrl: candidate.coverUrl,
+            defaultSelected: !values.coverSource,
+            locked: false,
+          }
+        : null,
+    };
+  }
+  return invoke<MetadataPreview>("metadata_candidate_preview", { workId, provider, sourceId });
+}
+
+export async function importMetadata(
+  request: MetadataImportRequest,
+): Promise<MetadataImportResult> {
+  if (!isTauri()) {
+    const values = previewMetadataValues(request.workId);
+    const candidate = previewMetadataDetails[`${request.provider}:${request.sourceId}`];
+    if (!values || !candidate) {
+      throw new Error("候选不存在");
+    }
+    const claims = previewMetadataClaims.get(request.workId) ?? [];
+    const lockedFields = new Set(
+      claims.filter((claim) => claim.locked).map((claim) => claim.field),
+    );
+    const next = {
+      title: values.title,
+      originalTitle: values.originalTitle,
+      aliases: values.aliases,
+      description: values.description,
+      year: values.year,
+      developer: values.developer,
+      publisher: values.publisher,
+      edition: values.edition,
+      language: values.language,
+      releaseDate: values.releaseDate,
+      tags: values.tags,
+      notes: values.notes,
+      rating: values.rating,
+      status: values.status,
+      favorite: values.favorite,
+    };
+    const applied: string[] = [];
+    const skippedLocked: string[] = [];
+    for (const field of request.selectedFields) {
+      if (lockedFields.has(field)) {
+        skippedLocked.push(field);
+        continue;
+      }
+      const value = previewMetadataCandidateValue(candidate, field);
+      if (previewMetadataEmpty(value)) {
+        continue;
+      }
+      switch (field) {
+        case "title":
+          next.title = String(value);
+          break;
+        case "original_title":
+          next.originalTitle = String(value);
+          break;
+        case "aliases":
+          next.aliases = value as string[];
+          break;
+        case "description":
+          next.description = String(value);
+          break;
+        case "year":
+          next.year = value as number;
+          break;
+        case "tags":
+          next.tags = value as string[];
+          break;
+        case "developer":
+          next.developer = String(value);
+          break;
+        case "publisher":
+          next.publisher = String(value);
+          break;
+        case "release_date":
+          next.releaseDate = String(value);
+          break;
+      }
+      applied.push(field);
+    }
+    if (request.selectedCover && lockedFields.has("cover")) {
+      skippedLocked.push("cover");
+    }
+    previewWorkUpdates.set(request.workId, next);
+    const now = new Date().toISOString();
+    const providerInfo = previewMetadataProviders.find((entry) => entry.id === request.provider);
+    for (const field of applied) {
+      const value = previewMetadataCandidateValue(candidate, field);
+      const existing = claims.find(
+        (claim) =>
+          claim.field === field &&
+          claim.source === request.provider &&
+          claim.sourceId === request.sourceId,
+      );
+      if (existing) {
+        existing.value = value;
+        existing.fetchedAt = now;
+      } else {
+        claims.push({
+          id: previewMetadataClaimId++,
+          field,
+          source: request.provider,
+          sourceId: request.sourceId,
+          value,
+          confidence: 0.9,
+          locked: false,
+          fetchedAt: now,
+          providerName: providerInfo?.name ?? request.provider,
+          priority: providerInfo?.priority ?? 100,
+        });
+      }
+    }
+    previewMetadataClaims.set(request.workId, claims);
+    return {
+      applied,
+      skippedLocked,
+      coverApplied:
+        request.selectedCover && !lockedFields.has("cover") && Boolean(candidate.coverUrl),
+    };
+  }
+  return invoke<MetadataImportResult>("metadata_import", { request });
+}
+
+export async function setMetadataFieldLock(
+  workId: number,
+  field: string,
+  locked: boolean,
+): Promise<void> {
+  if (!isTauri()) {
+    const claims = previewMetadataClaims.get(workId) ?? [];
+    const fieldClaims = claims.filter((claim) => claim.field === field);
+    if (locked && fieldClaims.length === 0) {
+      const values = previewMetadataValues(workId);
+      const value = values ? previewMetadataCurrent(values, field) : null;
+      claims.push({
+        id: previewMetadataClaimId++,
+        field,
+        source: "manual",
+        sourceId: "",
+        value,
+        confidence: null,
+        locked: true,
+        fetchedAt: new Date().toISOString(),
+        providerName: "手动编辑",
+        priority: 0,
+      });
+    } else {
+      fieldClaims.forEach((claim) => {
+        claim.locked = locked;
+      });
+    }
+    previewMetadataClaims.set(workId, claims);
+    return;
+  }
+  await invoke("metadata_set_field_lock", { workId, field, locked });
 }

@@ -15,6 +15,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "screenshots": "node scripts/capture-prototypes.mjs",
+    "screenshots:c4": "node scripts/capture-c4.mjs",
     "probe:c2": "node scripts/probe-c2.mjs"
   },
   "dependencies": {

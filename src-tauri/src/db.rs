@@ -864,6 +864,22 @@ pub async fn update_work(pool: &SqlitePool, work_id: i64, input: WorkUpdateInput
     let tags_json = serde_json::to_string(&tags)?;
 
     let mut tx = pool.begin().await?;
+    let old = sqlx::query(
+        "SELECT w.canonical_title, w.original_title, w.aliases_json, w.description,
+                w.release_year, w.tags_json, r.developer, r.publisher, r.release_date
+         FROM works w
+         LEFT JOIN releases r ON r.id = (
+           SELECT r2.id FROM releases r2 JOIN local_copies lc ON lc.release_id = r2.id
+           WHERE r2.work_id = w.id ORDER BY lc.id ASC LIMIT 1
+         )
+         WHERE w.id = ?",
+    )
+    .bind(work_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    let developer_for_claim = developer.clone();
+    let publisher_for_claim = publisher.clone();
+    let release_date_for_claim = release_date.clone();
     sqlx::query(
         "UPDATE works
          SET canonical_title = ?, original_title = ?, aliases_json = ?, description = ?,
@@ -916,6 +932,64 @@ pub async fn update_work(pool: &SqlitePool, work_id: i64, input: WorkUpdateInput
     .bind(input.notes.trim())
     .execute(&mut *tx)
     .await?;
+
+    let mut manual_changes: Vec<(&str, serde_json::Value)> = Vec::new();
+    if old.get::<String, _>("canonical_title") != title {
+        manual_changes.push(("title", serde_json::Value::String(title.to_string())));
+    }
+    if old.get::<String, _>("original_title") != original_title {
+        manual_changes.push((
+            "original_title",
+            serde_json::Value::String(original_title.to_string()),
+        ));
+    }
+    if old.get::<String, _>("aliases_json") != serde_json::to_string(&aliases).unwrap_or_default() {
+        manual_changes.push(("aliases", serde_json::to_value(&aliases)?));
+    }
+    if old.get::<String, _>("description") != input.description.trim() {
+        manual_changes.push((
+            "description",
+            serde_json::Value::String(input.description.trim().to_string()),
+        ));
+    }
+    if old.get::<Option<i64>, _>("release_year") != input.year {
+        manual_changes.push((
+            "year",
+            input
+                .year
+                .map_or(serde_json::Value::Null, serde_json::Value::from),
+        ));
+    }
+    if old.get::<String, _>("tags_json") != serde_json::to_string(&tags).unwrap_or_default() {
+        manual_changes.push(("tags", serde_json::to_value(&tags)?));
+    }
+    if old.get::<Option<String>, _>("developer") != developer_for_claim {
+        manual_changes.push((
+            "developer",
+            developer_for_claim
+                .clone()
+                .map_or(serde_json::Value::Null, serde_json::Value::String),
+        ));
+    }
+    if old.get::<Option<String>, _>("publisher") != publisher_for_claim {
+        manual_changes.push((
+            "publisher",
+            publisher_for_claim
+                .clone()
+                .map_or(serde_json::Value::Null, serde_json::Value::String),
+        ));
+    }
+    if old.get::<Option<String>, _>("release_date") != release_date_for_claim {
+        manual_changes.push((
+            "release_date",
+            release_date_for_claim
+                .clone()
+                .map_or(serde_json::Value::Null, serde_json::Value::String),
+        ));
+    }
+    for (field, value) in manual_changes {
+        crate::metadata::record_manual_claim(&mut tx, work_id, field, &value).await?;
+    }
 
     tx.commit().await?;
     Ok(())

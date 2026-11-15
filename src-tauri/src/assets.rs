@@ -111,13 +111,50 @@ pub async fn set_cover(
         bail!("未知的封面来源");
     }
     let source_file = verify_source(Path::new(source_path))?;
-    let extension = extension_of(&source_file).context("无法识别图片格式")?;
     let bytes = std::fs::read(&source_file)
         .with_context(|| format!("无法读取图片：{}", source_file.display()))?;
-    let checksum = format!("{:x}", Sha256::digest(&bytes));
+    set_cover_bytes(
+        pool,
+        data_dir,
+        work_id,
+        &bytes,
+        &source_file.to_string_lossy(),
+        source,
+    )
+    .await
+}
+
+pub async fn set_cover_bytes(
+    pool: &SqlitePool,
+    data_dir: &Path,
+    work_id: i64,
+    bytes: &[u8],
+    source_path: &str,
+    source: &str,
+) -> Result<CoverAsset> {
+    if !db::work_exists(pool, work_id).await? {
+        bail!("作品不存在");
+    }
+    if !matches!(source, "manual" | "local" | "online") {
+        bail!("未知的封面来源");
+    }
+    if bytes.is_empty() {
+        bail!("封面图片为空");
+    }
+    if bytes.len() as u64 > MAX_SOURCE_BYTES {
+        bail!("图片不能超过 30 MB");
+    }
+    let checksum = format!("{:x}", Sha256::digest(bytes));
     let mut reader = ImageReader::new(std::io::Cursor::new(&bytes))
         .with_guessed_format()
         .context("无法识别图片格式")?;
+    let format = reader.format();
+    let extension = match format {
+        Some(ImageFormat::Jpeg) => "jpg",
+        Some(ImageFormat::WebP) => "webp",
+        Some(ImageFormat::Bmp) => "bmp",
+        _ => "png",
+    };
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(12_000);
     limits.max_image_height = Some(12_000);
@@ -136,7 +173,7 @@ pub async fn set_cover(
     let thumb_name = format!("thumb-{token}.webp");
     let original_file = directory.join(&original_name);
     let thumb_file = directory.join(&thumb_name);
-    std::fs::write(&original_file, &bytes).context("无法写入封面原图缓存")?;
+    std::fs::write(&original_file, bytes).context("无法写入封面原图缓存")?;
 
     let thumbnail = if width > THUMB_WIDTH || height > THUMB_HEIGHT {
         image.thumbnail(THUMB_WIDTH, THUMB_HEIGHT)
@@ -181,7 +218,7 @@ pub async fn set_cover(
     .bind(work_id)
     .bind(&original_relative)
     .bind(&thumb_relative)
-    .bind(source_file.to_string_lossy().to_string())
+    .bind(source_path)
     .bind(i64::from(width))
     .bind(i64::from(height))
     .bind(checksum)

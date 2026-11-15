@@ -243,3 +243,163 @@ export interface ImportResult {
   imported: number;
   updated: number;
 }
+
+export type MetadataValue = string | number | string[] | null;
+
+export interface MetadataProvider {
+  id: string;
+  name: string;
+  description: string;
+  fields: string[];
+  priority: number;
+  enabled: boolean;
+  requiresAuth: boolean;
+  authKind: string;
+  connected: boolean;
+  accountName: string | null;
+}
+
+export interface MetadataClaim {
+  id: number;
+  field: string;
+  source: string;
+  sourceId: string;
+  value: MetadataValue;
+  confidence: number | null;
+  locked: boolean;
+  fetchedAt: string;
+  providerName: string;
+  priority: number;
+}
+
+export interface MetadataFieldState {
+  field: string;
+  label: string;
+  current: MetadataValue;
+  source: string | null;
+  sourceId: string | null;
+  locked: boolean;
+  lockSource: string | null;
+  claims: MetadataClaim[];
+}
+
+export interface MetadataWorkState {
+  workId: number;
+  providers: MetadataProvider[];
+  fields: MetadataFieldState[];
+}
+
+export interface MetadataSearchCandidate {
+  provider: string;
+  sourceId: string;
+  title: string;
+  originalTitle: string;
+  year: number | null;
+  developer: string | null;
+  coverUrl: string | null;
+  summary: string;
+  score: number | null;
+  priority: number;
+}
+
+export interface MetadataProviderFailure {
+  provider: string;
+  providerName: string;
+  message: string;
+}
+
+export interface MetadataJobStart {
+  jobId: string;
+}
+
+export interface MetadataSearchProgress {
+  jobId: string;
+  workId: number;
+  provider: string;
+  providerName: string;
+  completed: number;
+  total: number;
+  message: string;
+}
+
+export interface MetadataSearchComplete {
+  jobId: string;
+  workId: number;
+  query: string;
+  results: MetadataSearchCandidate[];
+  errors: MetadataProviderFailure[];
+  cancelled: boolean;
+}
+
+export interface MetadataSearchError {
+  jobId: string;
+  workId: number;
+  message: string;
+}
+
+export interface ClaimPreview {
+  source: string;
+  sourceId: string;
+  value: MetadataValue;
+  priority: number;
+  locked: boolean;
+}
+
+export interface PreviewField {
+  field: string;
+  label: string;
+  current: MetadataValue;
+  candidate: MetadataValue;
+  source: string;
+  sourceId: string;
+  locked: boolean;
+  lockSource: string | null;
+  defaultSelected: boolean;
+  priority: number;
+  existing: ClaimPreview[];
+}
+
+export interface PreviewCover {
+  currentSource: string | null;
+  candidateUrl: string;
+  defaultSelected: boolean;
+  locked: boolean;
+}
+
+export interface MetadataPreview {
+  workId: number;
+  provider: string;
+  providerName: string;
+  sourceId: string;
+  candidate: {
+    provider: string;
+    sourceId: string;
+    title: string;
+    originalTitle: string;
+    aliases: string[];
+    description: string;
+    releaseDate: string | null;
+    year: number | null;
+    developer: string | null;
+    publisher: string | null;
+    tags: string[];
+    coverUrl: string | null;
+    related: { sourceId: string; relation: string; title: string }[];
+  };
+  fields: PreviewField[];
+  cover: PreviewCover | null;
+}
+
+export interface MetadataImportRequest {
+  workId: number;
+  provider: string;
+  sourceId: string;
+  selectedFields: string[];
+  selectedCover: boolean;
+}
+
+export interface MetadataImportResult {
+  applied: string[];
+  skippedLocked: string[];
+  coverApplied: boolean;
+}

@@ -41,6 +41,7 @@ import { formatDate, formatPlaytime, formatRelativeDate } from "../../lib/format
 import { cn } from "../../lib/cn";
 import { useInvalidateLibrary, useLibraryDetail, useMonitors } from "../library/useLibrary";
 import { LaunchConfigPanel } from "./LaunchConfigPanel";
+import { MetadataPanel } from "./MetadataPanel";
 import { WorkEditDialog } from "./WorkEditDialog";
 import "./work-detail.css";
 
@@ -680,38 +681,7 @@ export function WorkDetailPage() {
         ) : null}
 
         {tab === "sources" ? (
-          <div className="detail-sources">
-            <header>
-              <h2>元数据来源</h2>
-              <p>当前只有本地安装来源。VNDB、Bangumi、Steam 会在 C4/C5 接入。</p>
-            </header>
-            <div className="detail-source-row">
-              <span>本地安装</span>
-              <p title={item.exePath}>{item.exePath}</p>
-              <em>{formatRelativeDate(item.addedAt)}</em>
-              <Tag tone="status">可追溯</Tag>
-            </div>
-            {item.coverPath ? (
-              <div className="detail-source-row">
-                <span>封面缓存</span>
-                <p title={item.coverPath}>{item.coverPath}</p>
-                <em>
-                  {detail.data.coverUpdatedAt
-                    ? formatRelativeDate(detail.data.coverUpdatedAt)
-                    : "—"}
-                </em>
-                <Tag tone="data">
-                  {detail.data.coverSource === "local" ? "本地发现" : "手动选择"}
-                </Tag>
-              </div>
-            ) : null}
-            <div className="detail-source-row detail-source-row--placeholder">
-              <span>在线元数据</span>
-              <p>尚未接入 VNDB / Bangumi / Steam。</p>
-              <em>C4 / C5</em>
-              <Tag tone="muted">待接入</Tag>
-            </div>
-          </div>
+          <MetadataPanel key={detail.data.workId} detail={detail.data} onChanged={invalidate} />
         ) : null}
       </div>
 
