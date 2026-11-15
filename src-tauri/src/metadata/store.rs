@@ -63,6 +63,7 @@ pub struct WorkFieldValues {
     pub publisher: Option<String>,
     pub release_date: Option<String>,
     pub cover_source: Option<String>,
+    pub steam_app_id: Option<i64>,
 }
 
 impl WorkFieldValues {
@@ -376,7 +377,10 @@ pub async fn load_work_field_values(pool: &SqlitePool, work_id: i64) -> Result<W
         "SELECT w.canonical_title, w.original_title, w.aliases_json, w.description,
                 w.release_year, w.tags_json,
                 r.developer, r.publisher, r.release_date,
-                (SELECT a.source FROM assets a WHERE a.work_id = w.id AND a.kind = 'cover' LIMIT 1) AS cover_source
+                (SELECT a.source FROM assets a WHERE a.work_id = w.id AND a.kind = 'cover' LIMIT 1) AS cover_source,
+                (SELECT lc.steam_app_id FROM releases r2
+                 JOIN local_copies lc ON lc.release_id = r2.id
+                 WHERE r2.work_id = w.id ORDER BY lc.id ASC LIMIT 1) AS steam_app_id
          FROM works w
          LEFT JOIN releases r ON r.id = (
            SELECT r2.id FROM releases r2
@@ -404,6 +408,7 @@ pub async fn load_work_field_values(pool: &SqlitePool, work_id: i64) -> Result<W
         publisher: row.get("publisher"),
         release_date: row.get("release_date"),
         cover_source: row.get("cover_source"),
+        steam_app_id: row.get("steam_app_id"),
     })
 }
 

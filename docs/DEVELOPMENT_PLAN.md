@@ -1,6 +1,6 @@
 # MiyuManager 开发规划
 
-> 状态：v1 规划已锁定；C1、C2、C3、C4、C5 已完成，G2/G4 已确认；C6 尚未启动
+> 状态：v1 规划已锁定；C1–C6 已完成，G2/G4 已确认；C7 尚未启动
 >
 > 更新日期：2026-11-15  
 > 目标平台：Windows 10 22H2 / Windows 11，x64 优先  
@@ -232,7 +232,7 @@ C1 的设计工作必须按 `frontend-design` Skill 的流程执行：先写设�
 | M2 本地库与启动 | C3     | M    | C2         | 作品详情、封面、启动配置、实际启动       |
 | M3 元数据       | C4     | M    | C3         | VNDB/Bangumi 搜索、匹配、导入元数据      |
 | M3 元数据       | C5     | M    | C4         | Steam、多源合并、冲突处理、批量刮削      |
-| M4 时长与大屏   | C6     | L    | C3         | 自动记录时长、统计页、会话修正           |
+| M4 时长与大屏   | C6     | L    | C3         | 自动记录时长、统计页、会话修正（已完成） |
 | M4 时长与大屏   | C7     | M    | C6         | 独立大屏窗口、手柄导航、从大屏启动       |
 | M5 产品化       | C8     | M    | C5、C6、C7 | 首页、收藏集、设置、引导和全局搜索       |
 | M5 产品化       | C9     | M    | C8         | 性能/安全/打包/更新/发布候选             |
@@ -408,7 +408,7 @@ C1 的设计工作必须按 `frontend-design` Skill 的流程执行：先写设�
 **规模**：M  
 **依赖**：C4  
 **目标**：让多源刮削成为真正可用的产品功能，而不是单次 API 调用演示。
-**当前状态**：已完成；Steam Store、多源合并、字段级/全局优先级、冲突处理、封面画廊和两阶段批量队列均已接入。
+**当前状态**：已完成；Steam Store、Steam 库自动嗅探、多源合并、字段级/全局优先级、冲突处理、封面画廊和两阶段批量队列均已接入。
 
 **工作**
 
@@ -435,12 +435,13 @@ C1 的设计工作必须按 `frontend-design` Skill 的流程执行：先写设�
 
 **不包含**：EGS/Getchu/DLsite、插件 SDK、云端元数据服务。
 
-**主要产出**：`src-tauri/src/metadata/steam.rs`、`src-tauri/src/metadata/merge.rs`、`src-tauri/migrations/20261115000600_c5_metadata_merge.sql`、`src/features/metadata/**`、`src/features/settings/FieldPrioritySettings.tsx`。
+**主要产出**：`src-tauri/src/metadata/steam.rs`、`src-tauri/src/metadata/merge.rs`、`src-tauri/src/steam_library.rs`、`src-tauri/migrations/20261115000600_c5_metadata_merge.sql`、`20261115000800_steam_library.sql`、`src/features/metadata/**`、`src/features/library/SteamLibraryDialog.tsx`、`src/features/settings/FieldPrioritySettings.tsx`。
 
 ### C6 — 自动时长统计与统计页
 
 **规模**：L  
 **依赖**：C3  
+**当前状态**：已完成；`play_sessions`、Job Object 进程观察、前台宽限、心跳与异常恢复、会话修正、真实统计页均已接入。
 **目标**：用户启动作品后自动产生可靠会话，并在统计页看到总时长和历史。
 
 **工作**
@@ -468,7 +469,17 @@ C1 的设计工作必须按 `frontend-design` Skill 的流程执行：先写设�
 
 **不包含**：成就、路线进度、游戏内覆盖层、云同步。
 
-**主要产出**：`src-tauri/src/tracking/**`、`src-tauri/src/commands/sessions.rs`、`src/features/stats/**`。
+**主要产出**：`src-tauri/src/tracking/**`、`src-tauri/src/commands.rs`、`src-tauri/migrations/20261115000700_c6_play_sessions.sql`、`src/features/stats/**`、`src/features/work-detail/SessionHistory.tsx`。
+
+#### C6 完成记录
+
+- 数据层：`20261115000700_c6_play_sessions.sql` 新增 `play_sessions`，保存开始/结束/最后心跳、有效秒数、结束原因、来源、PID、exe 路径、备注和修正标记；每个本地副本最多一条未结束会话，并提供作品、开始时间和未结束心跳索引。
+- 会话引擎：Rust `tracking` 模块使用 Job Object 查询游戏进程树，按完整 exe 路径识别真正主程序；包装器和初始化进程不计时。每 2 秒观察进程和前台，每 30 秒心跳，失去前台超过 90 秒暂停累计，回到前台继续同一会话。
+- 恢复：异常退出后启动时按 `last_heartbeat_at` 截断未结束会话；正常关闭窗口通过 `CloseRequested` 结算为 `app_closed`。结算写入只作用于 `ended_at IS NULL`，避免重复事件产生重复时长。
+- IPC 与统计：新增 `sessions_list`、`session_create`、`session_update`、`session_delete`、`stats_get`；作品列表用会话聚合秒数和分钟数，详情返回真实记录；统计覆盖累计、近 7/30 天、本周启动、84 天热力图、作品排行和最近会话。
+- UI：统计页改为真实数据并支持本周/本月/今年/全部范围；作品详情支持补录、修正和删除会话，短会话按秒显示，明确区分手动、已修正、正常退出、手动停止和异常恢复。
+- 验证：前端 Vitest 覆盖统计范围切换和补录；Rust 覆盖计时宽限、暂停恢复、会话心跳/结算、手动 CRUD、异常恢复、正常关闭、Job Object 进程树、路径规范化与 10,000 条会话统计。真实 Tauri 窗口验证直接启动、包装器启动、手动停止、模拟崩溃恢复和统计/补录修正删除；截图覆盖 1440×900、1920×1080、150% 缩放和 4K。
+- 已知边界：只统计从 MiyuManager 启动且能准确匹配本地副本的游戏，不接管资源管理器或 Steam 客户端直接启动的游戏；热力图按会话开始日期归档；应用异常退出后的最长未落盘时长为一个心跳周期。
 
 ### C7 — 电视大屏与手柄导航
 

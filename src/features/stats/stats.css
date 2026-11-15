@@ -71,8 +71,47 @@
 .stats-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.8fr);
+  align-items: start;
   gap: 14px;
   margin-top: 14px;
+}
+
+.stats-period {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 14px;
+  padding: 4px;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  background: var(--color-surface-soft);
+}
+
+.stats-period button {
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-faint);
+  font: 11.5px var(--font-ui);
+  cursor: pointer;
+}
+
+.stats-period button:hover {
+  color: var(--color-text);
+}
+
+.stats-period button.is-active {
+  background: var(--color-status-soft);
+  color: var(--color-status);
+}
+
+.stats-period > span {
+  margin-left: auto;
+  padding-right: 8px;
+  color: var(--color-text-faint);
+  font: 11px var(--font-mono);
 }
 
 .stats-heatmap,
@@ -127,14 +166,26 @@
   background: rgba(143, 211, 193, 0.12);
 }
 
+.stats-heatmap > header i[data-level="2"] {
+  background: rgba(143, 211, 193, 0.3);
+}
+.stats-heatmap > header i[data-level="3"] {
+  background: rgba(143, 211, 193, 0.52);
+}
+.stats-heatmap > header i[data-level="4"] {
+  background: rgba(143, 211, 193, 0.78);
+}
+
 .stats-heatmap__grid {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows: repeat(7, auto);
+  grid-auto-flow: column;
   gap: 5px;
 }
 
 .stats-heatmap__grid span {
-  aspect-ratio: 1;
+  height: clamp(19px, 1.55vw, 34px);
   border-radius: 6px;
   background: rgba(143, 211, 193, 0.08);
 }
@@ -150,6 +201,14 @@
 }
 .stats-heatmap__grid span[data-level="4"] {
   background: rgba(143, 211, 193, 0.78);
+}
+
+.stats-heatmap__months {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  color: var(--color-text-faint);
+  font: 10px var(--font-mono);
 }
 
 .stats-top > header a {
@@ -211,6 +270,13 @@
   margin-top: 14px;
 }
 
+.stats-empty {
+  margin: 14px 0 4px;
+  color: var(--color-text-faint);
+  font-size: 12px;
+  line-height: 1.75;
+}
+
 .stats-session-row {
   display: grid;
   grid-template-columns: 1.2fr 0.9fr 0.7fr 0.7fr;
@@ -248,5 +314,12 @@
 @media (max-width: 1180px) {
   .stats-layout {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 980px) {
+  .stats-session-row {
+    grid-template-columns: minmax(150px, 1.2fr) minmax(130px, 0.9fr) 90px 90px;
+    gap: 8px;
   }
 }

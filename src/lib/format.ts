@@ -26,6 +26,16 @@ export function formatPlaytime(minutes: number): string {
   return rest === 0 ? hours + " 小时" : hours + " 小时 " + rest + " 分";
 }
 
+export function formatPlaytimeSeconds(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return "0 分";
+  }
+  if (seconds < 60) {
+    return Math.round(seconds) + " 秒";
+  }
+  return formatPlaytime(Math.max(1, Math.round(seconds / 60)));
+}
+
 export function formatDate(value: string | null | undefined): string {
   if (!value) {
     return "—";

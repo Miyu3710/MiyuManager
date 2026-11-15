@@ -1,7 +1,7 @@
 # MiyuManager 项目状态
 
 > 最后更新：2026-11-15  
-> 当前阶段：C5 已完成；C6 尚未启动
+> 当前阶段：C6 已完成；C7 尚未启动
 >
 > 计划文件：`docs/DEVELOPMENT_PLAN.md`  
 > 设计提案：`docs/DESIGN.md`
@@ -15,8 +15,8 @@
 | C2 SQLite、目录扫描与真实游戏库       | 已完成 | SQLite/WAL/FTS5、目录扫描、候选确认、汉化 exe 识别、扫描排除/手动导入、真实游戏库、搜索筛选排序、持久化和 5,000 条查询已接入；详见下文 |
 | C3 作品详情、图片缓存与启动器         | 已完成 | 真实详情编辑、封面缓存/发现、启动配置、包装器、路径校验、Job Object 启动跟踪与运行状态已接入；详见下文                                 |
 | C4 Metadata Provider、VNDB 与 Bangumi | 已完成 | Provider 框架、来源优先级、VNDB/Bangumi 搜索与导入、字段 claim/锁定、封面下载、来源账本和 OAuth 账号连接已接入；详见下文               |
-| C5 Steam、多源合并与批量刮削          | 已完成 | Steam 来源、字段级/全局优先级、冲突采用/锁定、封面画廊、两阶段批量队列、暂停/取消/重试和局部成功已接入；详见下文                       |
-| C6 自动时长统计与统计页               | 未开始 | 依赖 C3；可与 C4/C5 在不同 worktree 并行                                                                                               |
+| C5 Steam、多源合并与批量刮削          | 已完成 | Steam 来源、Steam 库自动嗅探、字段级/全局优先级、冲突采用/锁定、封面画廊、两阶段批量队列、暂停/取消/重试和局部成功已接入；详见下文     |
+| C6 自动时长统计与统计页               | 已完成 | `play_sessions`、Job Object 会话观察、前台宽限、心跳恢复、真实统计页和会话补录/修正/删除已接入；详见下文                               |
 | C7 电视大屏与手柄导航                 | 未开始 | 依赖 C6                                                                                                                                |
 | C8 首页、收藏集、设置与首次启动       | 未开始 | 依赖 C5、C6、C7                                                                                                                        |
 | C9 硬化、性能、打包与发布候选         | 未开始 | 依赖 C8                                                                                                                                |
@@ -49,19 +49,38 @@
 - pnpm `11.25.0`
 - Rust `1.100.0`
 - WebView2 Runtime `157.0.4341.46`
-- Git 仓库已有 C1 基线提交；C2 在 `codex/c2-library-import` 分支完成；C3 在 `codex/c3-detail-launch` 分支完成；C4 在 `codex/c4-metadata-providers` 分支完成；C5 在 `codex/c5-metadata-merge` 分支完成
+- Git 仓库已有 C1 基线提交；C2 在 `codex/c2-library-import` 分支完成；C3 在 `codex/c3-detail-launch` 分支完成；C4 在 `codex/c4-metadata-providers` 分支完成；C5 在 `codex/c5-metadata-merge` 分支完成；C6 在 `codex/c6-playtime-stats` 分支完成
+
+## C6 本轮产出
+
+- 数据层：`src-tauri/migrations/20261115000700_c6_play_sessions.sql`；`play_sessions` 保存本地副本、启动 ID、状态、开始/结束/最后心跳、有效时长、结束原因、来源、PID、exe 路径、备注和修正标记。部分唯一索引保证一个本地副本最多一条未结束会话；作品/开始时间和未结束心跳各有索引。
+- 会话引擎：`src-tauri/src/tracking/**`；Job Object 查询完整游戏进程树，按规范化 exe 路径识别主程序；包装器不计时。每 2 秒观察进程与前台窗口，每 30 秒心跳；失去前台超过 90 秒后暂停有效时长，回到游戏继续同一会话；单次 tick 有时长上限，系统时间变化不会直接改变累计值。
+- 启动与结算：`launcher` 不再只等待初始子进程，而是由观察任务在游戏进程树结束后结算；直接启动、包装器启动、手动停止和退出码均保留。正常关闭主窗口把未结束会话结算为 `app_closed`，异常退出由下次启动按最后心跳截断为 `recovered`。
+- IPC 与统计：新增 `sessions_list`、`session_create`、`session_update`、`session_delete`、`stats_get`。作品列表通过 `play_sessions` 聚合秒数和分钟数；统计返回累计、近 7/30 天、本周启动、84 天热力图、作品排行和最近会话。
+- UI：`StatsPage` 不再读取 mock，支持本周/本月/今年/全部范围；12 周热力图按开始日期聚合。作品详情“游玩记录”显示真实会话，支持补录、修正和删除；短会话按秒显示，状态区分计时中、后台暂停、正常退出、手动停止和异常恢复。
+- 验证：前端 Vitest 覆盖统计范围切换和分页外补录；Rust 覆盖前台宽限/暂停恢复、会话心跳与结算、手动 CRUD、异常恢复、正常关闭、Job Object 进程树、路径规范化及 10,000 条会话统计。真实 Tauri 窗口验证直接启动、包装器启动、手动停止、模拟崩溃恢复、统计页和补录/修正/删除。
+- 证据：`outputs/app/c6/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`；实际 Tauri 截图 `outputs/app/c6/tauri-running-final.png`、`tauri-sessions.png`、`tauri-stats.png`、`tauri-manual-stop.png`。
+
+### C6 已知边界
+
+- 只统计从 MiyuManager 启动且能在 Job Object 进程树中准确匹配到本地副本的游戏；不接管资源管理器、Steam 客户端或其它启动器直接启动的进程。
+- 有效时长按游戏进程仍在运行计算；失去前台超过 90 秒后停止累计，因此游戏一直显示在前台但用户离开时仍可能计为游玩。
+- 应用崩溃时最多丢失一个 30 秒心跳周期；崩溃后若游戏仍继续运行，重启应用不会重新接管该进程，只把旧会话截断并在界面标为异常恢复。
+- 包装器如果创建 breakaway 进程或绕过 Job Object，主程序可能无法被识别；这种情况会在 60 秒后报告启动失败，不会把包装器时间误记到作品。
+- 12 周热力图按会话开始日期归档，跨午夜会话不会拆分到两个日期；会话时间为本地输入，数据库保存 UTC，有效时长本身不受时区变化影响。
 
 ## C5 本轮产出
 
-- 数据层：`src-tauri/migrations/20261115000600_c5_metadata_merge.sql`；新增 `metadata_field_priorities`，保存每个字段的来源顺序；`settings` 增加 `metadata.field_priority_global` 开关。旧库迁移通过。
+- 数据层：`src-tauri/migrations/20261115000600_c5_metadata_merge.sql`、`20261115000800_steam_library.sql`；新增 `metadata_field_priorities`，保存每个字段的来源顺序；`settings` 增加 `metadata.field_priority_global` 开关；`local_copies` 增加 `steam_app_id` 和索引。旧库迁移通过。
 - Steam：`src-tauri/src/metadata/steam.rs`；支持名称搜索、AppID、`store.steampowered.com/app/...` 商店链接，过滤原声带/画集/漫画等附加内容，解析中英文发售日期、开发商、发行商、简介、类型标签，提供 600×900 封面、横幅和胶囊图。请求按来源限速、缓存详情并处理 429/重试；真实测试 AppID 324160 通过。
+- Steam 库扫描：`src-tauri/src/steam_library.rs`；从 Windows 注册表定位 Steam，读取 `libraryfolders.vdf`（兼容新版对象和旧版数字键格式）及每个库的 `appmanifest_*.acf`，过滤 Steamworks/Proton/运行库等附加项，再以 6 层深度扫描安装目录寻找 exe。游戏库提供“扫描 Steam 库”入口，支持扫描进度、取消、逐项改选显示名称和主程序、已入库标记；新增 `local_copies.steam_app_id`，详情页显示 Steam AppID，多源合并对 Steam 直接按 AppID 读取详情，不再依赖标题匹配。
 - 来源优先级：设置页支持全局来源顺序、字段级顺序，以及“全部字段跟随全局来源顺序”开关。字段开关持久化；打开后所有字段使用全局顺序，字段级覆盖保留但暂不生效，关闭后恢复。全局顺序缺失字段时按来源能力过滤，新增来源会自动出现。
 - 合并与冲突：`src-tauri/src/metadata/merge.rs`；按标题/别名/年份相似度为每个启用的来源选最可能的候选，聚合同一字段的多个来源值，默认只勾选空白且未锁定字段；支持逐字段改选、采用来源值、锁定/解锁。手动/锁定 claim 始终优先，字段账本显示冲突徽标、来源、时间和“采用此值”。
 - 封面：合并预览和手动搜索都改为图片画廊；支持封面、横幅、胶囊图，显示来源和类型。选择哪张图就下载哪张，原图与 WebP 缩略图缓存；已有封面默认不选，锁定封面跳过。每个来源最多展示 4 张、总计最多 12 张。
 - 批量刮削：`src/features/metadata/BatchScrapeDialog.tsx`、`src-tauri/src/commands.rs`；游戏库多选后两阶段执行（匹配提案 → 确认应用）。支持来源选择、每部作品状态、总进度、暂停/继续、取消、失败项重试和局部成功；应用时再次检查锁定和空字段，`only_if_empty` 防止提案生成后值变化被覆盖；封面为可选项。
 - UI：`src/features/metadata/MergePanel.tsx`、`FieldPrioritySettings.tsx`、`BatchScrapeDialog.tsx`；详情页新增多源合并工作台，设置页新增字段优先级/全局开关，游戏库新增批量选择条，来源账本新增封面缩略图和冲突处理。
-- 验证：`pnpm lint`、`pnpm typecheck`、`pnpm test`（15 passed，含 50 条提案和失败项重试）、`pnpm build`、`pnpm format:check`；`cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（43 passed / 8 ignored，含本地 429 退避重试测试）。主包约 407.86 KB（gzip 123.50 KB），详情页 lazy chunk 约 175.91 KB（gzip 51.74 KB）。Steam live AppID/详情测试通过。实际 Tauri 窗口（`MIYU_DATA_DIR=tmp/c5-appdata`）匹配 VNDB v4、Bangumi 13、NextMoe 86、Steam 324160，应用 6 个字段和 1 张封面；Bangumi 日期导入后采用 Steam 值并锁定；批量 1 部作品应用 6 个字段和封面；暂停、取消路径可用；批量失败项重试入口通过 Vitest 验证；手动选择 Steam 横幅后缓存原图 460×215 和 WebP 缩略图；全局字段优先级开关写入 SQLite 并即时生效。
-- 证据：`outputs/app/c5/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`，包含 `01-merge-preview`、`01b-merge-covers`、`01c-manual-cover-gallery`、`02-field-priorities`、`02b-field-priorities-global`、`03-library-selection`、`04-batch-setup`、`05-batch-review`；实际 Tauri 截图 `tauri-merge-preview.png`、`tauri-conflict-adopt.png`、`tauri-batch-review.png`、`tauri-batch-done.png`、`tauri-batch-paused.png`、`tauri-steam-appid.png`、`tauri-manual-cover-gallery.png`、`tauri-global-priority.png`、`tauri-ledger-cover.png`。
+- 验证：`pnpm lint`、`pnpm typecheck`、`pnpm test`（18 passed，含 50 条提案、失败项重试和 Steam 库对话框）、`pnpm build`、`pnpm format:check`；`cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（含 Steam VDF/清单、真实 Steam 库探测和本地 429 退避重试测试）。主包约 407.86 KB（gzip 123.50 KB），详情页 lazy chunk 约 175.91 KB（gzip 51.74 KB）。Steam live AppID/详情测试通过。实际 Tauri 窗口（`MIYU_DATA_DIR=tmp/c5-appdata`）匹配 VNDB v4、Bangumi 13、NextMoe 86、Steam 324160，应用 6 个字段和 1 张封面；Bangumi 日期导入后采用 Steam 值并锁定；批量 1 部作品应用 6 个字段和封面；暂停、取消路径可用；批量失败项重试入口通过 Vitest 验证；手动选择 Steam 横幅后缓存原图 460×215 和 WebP 缩略图；全局字段优先级开关写入 SQLite 并即时生效。另用 `MIYU_DATA_DIR=tmp/steam-appdata` 真实扫描本机 `D:\Steam`/`E:\SteamLibrary`，发现 28 部游戏、26 部有 exe 候选；导入 CLANNAD 后保存 AppID 324160，详情显示 Steam 行，多源合并直接匹配 Steam #324160。
+- 证据：`outputs/app/c5/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`，包含 `01-merge-preview`、`01b-merge-covers`、`01c-manual-cover-gallery`、`02-field-priorities`、`02b-field-priorities-global`、`03-library-selection`、`04-batch-setup`、`05-batch-review`；实际 Tauri 截图 `tauri-merge-preview.png`、`tauri-conflict-adopt.png`、`tauri-batch-review.png`、`tauri-batch-done.png`、`tauri-batch-paused.png`、`tauri-steam-appid.png`、`tauri-steam-scanning.png`、`tauri-steam-review.png`、`tauri-steam-review-clean.png`、`tauri-steam-done.png`、`tauri-steam-detail.png`、`tauri-manual-cover-gallery.png`、`tauri-global-priority.png`、`tauri-ledger-cover.png`。
 
 ### C5 已知边界
 
@@ -70,6 +89,7 @@
 - 自动匹配为每个来源取一个最高相似度候选，默认勾选要求置信度 ≥ 0.6；低于阈值仍可在合并预览中手动选择，但批量默认跳过。没有多候选自动合并或人工逐 claim 冲突向导。
 - 批量只按作品标题/原题/别名搜索，不读取游戏内信息；来源限速决定 50 部作品需要较长时间，UI 保持可操作。
 - 封面画廊有 4/来源、12/总数上限；选择非主封面会下载对应图片，但来源记录仍以 URL 形式保存，不在账本中直接展示 URL。
+- Steam 库扫描只读取目录、清单和 exe，不解析 Steam 启动参数/包装器，也不通过 `steam://` 启动；Steam 游戏仍使用本应用的启动配置。扫描深度为 6 层、单应用最多 80,000 条目，极深目录可能找不到 exe，可手动选择目录补充。
 - 没有 EGS/Getchu/DLsite、定时批次、后台队列持久化、云端元数据服务或插件 SDK。
 
 ## C4 本轮产出
@@ -110,7 +130,7 @@
 
 ### C3 已知边界
 
-- 自动游玩会话、累计时长和统计页仍在 C6；C3 只记录启动次数和最近启动时间，不生成 `play_sessions`。
+- C3 当时只记录启动次数和最近启动时间；C6 已补上 `play_sessions`、自动累计时长和统计页。
 - 封面只支持手动选择和本地发现；C4/C5 已补充在线封面候选、下载和画廊。
 - 包装器是通用模型：用户选择 exe 并填写参数，参数后接游戏 exe 与游戏参数；不内置 Locale Emulator/NTLEA，不自动检测安装路径，不提供 profile 选择器。
 - 显示器与全屏偏好只保存并展示，不强制移动游戏窗口；实际窗口放置留给大屏/后续阶段。
@@ -137,7 +157,7 @@
 
 - C2 阶段封面仍是标题排印占位；C3 已补充手动/本地封面缓存，C4 已补充 VNDB/Bangumi 在线封面和元数据，C5 已补充 Steam、多源冲突和批量刮削。
 - C2 阶段详情页只展示本地安装与启动路径；C3 已补上启动配置、路径校验和真实启动。
-- `play_sessions` 尚未建表；统计页仍是 C1 视觉占位，C6 接入真实会话。
+- C2 时 `play_sessions` 尚未建表，统计页仍是 C1 视觉占位；C6 已接入真实会话。
 - C2 阶段 `install_status` 只写 installed；C3 已补充 exe/工作目录校验和 missing 状态。
 - 5,000 条数据的 Rust 查询与 Tauri 首屏/滚动加载已验证；未做完整 5,000 条连续滚到手底的性能基准。
 - 语言/汉化后缀是启发式；标题本身以 `_zh`、`_sc` 等结尾的 exe 也可能被标记为语言版本，确认页可以取消。
@@ -168,6 +188,17 @@
 ## 验证记录
 
 已通过：
+
+### C6
+
+- `pnpm lint`、`pnpm typecheck`、`pnpm test`（18 passed，新增统计范围切换与补录表单）、`pnpm build`、`pnpm format:check`。
+- `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（59 passed / 10 ignored，新增计时宽限、暂停恢复、会话 CRUD、异常恢复、正常关闭、Job Object 进程树、范围筛选和 10,000 条统计测试）。
+- 实际 Tauri 窗口（`MIYU_DATA_DIR=tmp/c6-appdata`）直接启动 12 秒 dummy 游戏，生成 `running` → `ended` / `exited` 会话，时长 10–12 秒；换成包装器启动后同样只生成一条会话，`exe_path` 指向游戏主程序而不是包装器。
+- 实际窗口手动停止正在运行的游戏，会话在约 2 秒内结算为 `endReason=manual_stop`，`launch_state` 清空；以 `WM_CLOSE` 正常关闭主窗口时，正在运行的第 10 条会话结算为 `endReason=app_closed`。另用强制结束进程验证崩溃恢复。
+- 模拟崩溃：停止应用后插入一条 `status=running`、`last_heartbeat_at` 为 1 分钟前的会话；重启后启动恢复把 `ended_at` 截断到该心跳，`end_reason=recovered`，时长保持 45 秒，再次启动不重复恢复。
+- 实际窗口调用 `session_create` / `session_update` / `session_delete`：补录 30 分钟、修正为 45 分钟、删除后统计归零；统计页显示真实累计、近 7 天、本周启动、84 天热力图、作品排行和最近会话。
+- 界面截图覆盖 `outputs/app/c6/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/`，包含统计页、作品游玩记录和补录表单；所有尺寸无横向溢出，84 个热力图单元均加载。
+- 主包约 412.45 KB（gzip 124.85 KB）；统计页 chunk 约 6.32 KB（gzip 2.50 KB），详情页 chunk 约 180.45 KB（gzip 53.00 KB）。
 
 ### C4
 
@@ -267,6 +298,12 @@ C2/C3 不再扩展；已知边界见上文，C4 及之后内容不在本对话�
 - 分支：`codex/c5-metadata-merge`
 - 结论：C5 已完成；Steam 来源、字段级/全局来源优先级、冲突采用/锁定、封面画廊、两阶段批量队列、暂停/取消/重试、`only_if_empty` 保护和 50 条提案 UI 均有自动化或实际窗口证据。
 
+## C6 完成记录
+
+- 完成日期：2026-11-15
+- 分支：`codex/c6-playtime-stats`
+- 结论：C6 已完成；`play_sessions`、Job Object 进程树观察、前台宽限、心跳恢复、真实统计页、会话补录/修正/删除和 10,000 条统计查询均有自动化或实际窗口证据。
+
 ## C4 完成记录
 
 - 完成日期：2026-11-15
@@ -275,12 +312,11 @@ C2/C3 不再扩展；已知边界见上文，C4 及之后内容不在本对话�
 
 ## 下一轮入口
 
-C5 已完成，本对话到此结束，不启动 C6。若后续另开对话并明确要求 C6，再按以下入口执行：
+C6 已完成，本对话到此结束，不启动 C7。若后续另开对话并明确要求 C7，再按以下入口执行：
 
-1. C6 处理自动游玩会话、时长统计、统计页和手动修正；本轮不修改 C6 范围。
-2. C6 继续遵守 C5 的锁定字段和 `only_if_empty` 语义；时长统计不得改变元数据 claim。
-3. 只有用户明确要求进入 C6 时，才开始 `play_sessions` 迁移、Windows 进程观察器、统计查询和统计页。
-4. 继续调整 C5 视觉或来源设置时，按 token/密度/布局修正，并同步更新 `docs/DESIGN.md` 与 `outputs/app/c5/` 截图证据。
+1. C7 处理独立大屏窗口、显示器选择、10-foot 布局、手柄/键盘焦点管理、从大屏启动与返回。
+2. 会话统计已经成为 C7 的真实数据来源；大屏仍只展示本地库、会话时长、用户状态和可追溯元数据，不伪造游戏内进度。
+3. 继续调整统计或会话体验时，保持 `play_sessions` 为事实来源，并同步更新 `docs/DESIGN.md` 与 `outputs/app/c6/` 截图证据。
 
 ## 待决策与风险
 
@@ -293,7 +329,8 @@ C5 已完成，本对话到此结束，不启动 C6。若后续另开对话并�
 - C3 封面只支持手动选择和本地发现；C4/C5 已补充在线封面下载、多源元数据、Steam、封面画廊和批量刮削。
 - C3 的显示偏好只保存，不强制移动游戏窗口；实际窗口放置留到后续阶段。
 - C3 启动状态只在内存中，应用重启后不会恢复正在运行的进程；关闭管理器不会强制结束游戏。
-- 统计页仍是 C1 mock 视觉占位；`play_sessions` 表和真实会话在 C6 接入。
+- C6 的自动计时只覆盖从 MiyuManager 启动的游戏；外部启动、breakaway 包装器进程和一直保持前台但无人操作的情况仍可能漏记或误记。
+- 热力图按会话开始日期归档；跨午夜会话不会拆分到两天。应用异常退出最多丢失一个 30 秒心跳周期。
 - 4K、150% 缩放和 1440/1920 截图已覆盖主路由；C3 详情、启动配置、编辑弹窗和游戏库缩略图已覆盖。扫描弹窗的 4K 单独手测仍属于 C9 回归范围。
 - NextMoe/Kungal、Bangumi 与 Hikarinagi 均已完成真实登录；OAuth 配置和 DPAPI 已接入，不依赖明文令牌文件。
 

@@ -6,6 +6,8 @@ mod metadata;
 mod net;
 mod oauth;
 mod scan;
+mod steam_library;
+mod tracking;
 
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
@@ -60,6 +62,11 @@ pub fn run() {
             commands::launch_start,
             commands::launch_stop,
             commands::launch_state,
+            commands::sessions_list,
+            commands::session_create,
+            commands::session_update,
+            commands::session_delete,
+            commands::stats_get,
             commands::monitors_list,
             commands::library_set_status,
             commands::library_set_favorite,
@@ -68,6 +75,7 @@ pub fn run() {
             commands::library_remove_root,
             commands::library_scan_start,
             commands::library_scan_cancel,
+            commands::steam_scan_start,
             commands::library_import_candidates,
             commands::library_scan_exclusions,
             commands::library_remove_scan_exclusion,
@@ -112,6 +120,14 @@ pub fn run() {
                 eprintln!("fullscreen probe: set={set_result:?}, is_fullscreen={is_fullscreen:?}");
             }
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if window.label() == "main"
+                && matches!(event, tauri::WindowEvent::CloseRequested { .. })
+            {
+                let state = window.state::<commands::AppState>();
+                let _ = tauri::async_runtime::block_on(tracking::close_open_sessions(&state.pool));
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

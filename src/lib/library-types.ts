@@ -28,10 +28,12 @@ export interface LibraryItem {
   addedAt: string;
   lastPlayedAt: string | null;
   playtimeMinutes: number;
+  playtimeSeconds?: number;
   launchCount: number;
   catalogNo: string;
   coverThumbPath: string | null;
   coverPath: string | null;
+  steamAppId?: number | null;
 }
 
 export interface LibraryItemDetail extends LibraryItem {
@@ -129,6 +131,76 @@ export interface LaunchSnapshot {
   jobTracked: boolean;
   exitCode: number | null;
   message: string | null;
+}
+
+export type PlaySessionStatus = "running" | "paused" | "ended";
+export type PlaySessionSource = "launcher" | "manual";
+
+export interface PlaySessionRecord {
+  id: number;
+  workId: number;
+  localCopyId: number;
+  launchId: string | null;
+  status: PlaySessionStatus;
+  startedAt: string;
+  lastHeartbeatAt: string;
+  endedAt: string | null;
+  durationSec: number;
+  endReason: string | null;
+  source: PlaySessionSource;
+  processId: number | null;
+  exePath: string | null;
+  note: string;
+  corrected: boolean;
+}
+
+export interface PlaySessionWithWork extends PlaySessionRecord {
+  workTitle: string;
+  originalTitle: string;
+}
+
+export interface SessionCreateInput {
+  workId: number;
+  startedAt: string;
+  endedAt: string;
+  note: string;
+}
+
+export interface SessionUpdateInput {
+  startedAt: string;
+  endedAt: string;
+  note: string;
+}
+
+export type StatsPeriod = "week" | "month" | "year" | "all";
+
+export interface DailyPlaytime {
+  date: string;
+  seconds: number;
+}
+
+export interface TopGame {
+  workId: number;
+  title: string;
+  originalTitle: string;
+  seconds: number;
+  sessionCount: number;
+}
+
+export interface StatsOverview {
+  allTimeSeconds: number;
+  allTimeSessions: number;
+  last7Seconds: number;
+  last30Seconds: number;
+  currentWeekLaunches: number;
+  currentWeekGames: number;
+  previous7Seconds: number;
+  range: StatsPeriod;
+  rangeSeconds: number;
+  rangeLaunches: number;
+  daily: DailyPlaytime[];
+  topGames: TopGame[];
+  recentSessions: PlaySessionWithWork[];
 }
 
 export interface LibraryCounts {
@@ -237,11 +309,54 @@ export interface ImportCandidateInput {
   displayName: string;
   rootPath: string;
   sizeBytes: number;
+  steamAppId?: number | null;
 }
 
 export interface ImportResult {
   imported: number;
   updated: number;
+}
+
+export interface SteamLibraryInfo {
+  path: string;
+  appCount: number;
+}
+
+export interface SteamGameScan {
+  appId: number;
+  name: string;
+  installDir: string;
+  sizeOnDisk: number;
+  lastUpdated: number | null;
+  candidates: ScanCandidate[];
+  alreadyImported: boolean;
+  error: string | null;
+}
+
+export interface SteamScanProgress {
+  jobId: string;
+  phase: string;
+  currentLibrary: string;
+  currentGame: string;
+  completed: number;
+  total: number;
+  foundCandidates: number;
+  scannedDirs: number;
+  elapsedMs: number;
+}
+
+export interface SteamScanReport {
+  steamRoot: string;
+  libraries: SteamLibraryInfo[];
+  games: SteamGameScan[];
+  errors: string[];
+  cancelled: boolean;
+  scannedDirs: number;
+  durationMs: number;
+}
+
+export interface SteamScanStart {
+  jobId: string;
 }
 
 export type MetadataValue = string | number | string[] | null;

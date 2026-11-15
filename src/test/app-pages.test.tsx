@@ -8,6 +8,7 @@ import { HomePage } from "../features/home/HomePage";
 import { LibraryPage } from "../features/library/LibraryPage";
 import { WorkDetailPage } from "../features/work-detail/WorkDetailPage";
 import { CoverArt } from "../design-system/components/CoverArt";
+import { StatsPage } from "../features/stats/StatsPage";
 
 afterEach(() => cleanup());
 
@@ -80,6 +81,39 @@ describe("main app pages", () => {
     expect(screen.getByLabelText("工作目录")).toBeInTheDocument();
     expect(screen.getByLabelText("包装器程序（可选）")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /保存并启动/ })).toBeInTheDocument();
+  });
+
+  it("renders real-shaped playtime stats and changes the reporting period", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<StatsPage />);
+
+    expect(await screen.findByRole("heading", { level: 1, name: "游戏时间" })).toBeInTheDocument();
+    expect(screen.getByText("累计游玩")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "最近 12 周" })).toBeInTheDocument();
+    expect(screen.getAllByText(/月影工房/).length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("tab", { name: "本周" }));
+    expect(screen.getByRole("tab", { name: "本周" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("opens play history and backfills a manual session", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <Routes>
+        <Route path="/work/:id" element={<WorkDetailPage />} />
+      </Routes>,
+      ["/work/moonlit-atelier?tab=sessions"],
+    );
+
+    expect(await screen.findByRole("heading", { name: "游玩记录" })).toBeInTheDocument();
+    expect(screen.queryByText(/C6 接入/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /补录会话/ }));
+    expect(screen.getByLabelText("开始时间")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("备注"), "补录测试");
+    await user.click(screen.getByRole("button", { name: /保存补录/ }));
+
+    expect(await screen.findByText("补录测试")).toBeInTheDocument();
+    expect(screen.getByText("手动")).toBeInTheDocument();
   });
 
   it("focuses the first edit field and closes the dialog with Escape", async () => {

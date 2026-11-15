@@ -20,6 +20,10 @@ use crate::launcher::{self, LaunchManager, LaunchSnapshot};
 use crate::metadata::{self, MetadataHttp, MetadataImportRequest, MetadataImportResult};
 use crate::oauth::OAuthService;
 use crate::scan::{self, ScanCandidate, ScanCoordinator};
+use crate::steam_library;
+use crate::tracking::{
+    self, PlaySessionWithWork, SessionCreateInput, SessionUpdateInput, StatsOverview, StatsPeriod,
+};
 
 pub struct AppState {
     pub pool: SqlitePool,
@@ -148,6 +152,19 @@ pub struct ScanStart {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SteamScanStart {
+    pub job_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SteamScanError {
+    pub job_id: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ScanComplete {
     pub job_id: String,
     pub root_path: String,
@@ -180,6 +197,10 @@ pub async fn create_app_state(app: &AppHandle) -> anyhow::Result<AppState> {
         .with_context(|| format!("无法创建数据目录 {}", data_dir.display()))?;
     let db_path = data_dir.join("miyumanager.sqlite3");
     let pool = db::open_pool(&db_path).await?;
+    let recovered = tracking::recover_open_sessions(&pool).await?;
+    if recovered > 0 {
+        eprintln!("recovered {recovered} interrupted play session(s)");
+    }
     let oauth = Arc::new(OAuthService::new(&data_dir)?);
 
     Ok(AppState {
@@ -347,6 +368,54 @@ pub async fn launch_state(
     work_id: i64,
 ) -> Result<Option<LaunchSnapshot>, String> {
     Ok(launcher::state(&state.launches, work_id))
+}
+
+#[tauri::command]
+pub async fn sessions_list(
+    state: State<'_, AppState>,
+    work_id: i64,
+) -> Result<Vec<PlaySessionWithWork>, String> {
+    tracking::list_work_sessions(&state.pool, work_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn session_create(
+    state: State<'_, AppState>,
+    input: SessionCreateInput,
+) -> Result<PlaySessionWithWork, String> {
+    tracking::create_manual_session(&state.pool, input)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn session_update(
+    state: State<'_, AppState>,
+    session_id: i64,
+    input: SessionUpdateInput,
+) -> Result<PlaySessionWithWork, String> {
+    tracking::update_manual_session(&state.pool, session_id, input)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn session_delete(state: State<'_, AppState>, session_id: i64) -> Result<(), String> {
+    tracking::delete_session(&state.pool, session_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn stats_get(
+    state: State<'_, AppState>,
+    period: Option<String>,
+) -> Result<StatsOverview, String> {
+    tracking::stats_overview(&state.pool, StatsPeriod::parse(period.as_deref()))
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -545,6 +614,76 @@ pub async fn library_scan_start(
 #[tauri::command]
 pub async fn library_scan_cancel(state: State<'_, AppState>) -> Result<bool, String> {
     Ok(state.scan.cancel())
+}
+
+#[tauri::command]
+pub async fn steam_scan_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<SteamScanStart, String> {
+    let job_id = uuid::Uuid::new_v4().to_string();
+    let cancel = state.scan.start(job_id.clone())?;
+    let existing = db::existing_exe_keys(&state.pool)
+        .await
+        .map_err(|error| error.to_string())?;
+    let existing_app_ids = db::existing_steam_app_ids(&state.pool)
+        .await
+        .map_err(|error| error.to_string())?;
+    let exclusions = db::load_scan_exclusions(&state.pool)
+        .await
+        .map_err(|error| error.to_string())?;
+    let exclusions = scan::ScanExclusions {
+        exe_keys: exclusions.exe_keys,
+        dir_keys: exclusions.dir_keys,
+    };
+    let app_handle = app.clone();
+    let coordinator = state.scan.clone();
+    let task_job_id = job_id.clone();
+
+    tauri::async_runtime::spawn(async move {
+        let progress_app = app_handle.clone();
+        let progress_job = task_job_id.clone();
+        let result = tauri::async_runtime::spawn_blocking(move || {
+            steam_library::scan_steam_libraries(
+                &task_job_id,
+                cancel,
+                &exclusions,
+                &existing,
+                &existing_app_ids,
+                move |progress| {
+                    let _ = progress_app.emit("steam-scan-progress", progress);
+                },
+            )
+        })
+        .await;
+
+        match result {
+            Ok(Ok(report)) => {
+                let _ = app_handle.emit("steam-scan-complete", report);
+            }
+            Ok(Err(error)) => {
+                let _ = app_handle.emit(
+                    "steam-scan-error",
+                    SteamScanError {
+                        job_id: progress_job.clone(),
+                        message: error.to_string(),
+                    },
+                );
+            }
+            Err(error) => {
+                let _ = app_handle.emit(
+                    "steam-scan-error",
+                    SteamScanError {
+                        job_id: progress_job.clone(),
+                        message: format!("Steam 扫描任务失败：{error}"),
+                    },
+                );
+            }
+        }
+        coordinator.finish(&progress_job);
+    });
+
+    Ok(SteamScanStart { job_id })
 }
 
 #[tauri::command]

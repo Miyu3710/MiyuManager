@@ -161,6 +161,20 @@ for (const viewport of viewports) {
       path: path.join(directory, "05-batch-review.png"),
       animations: "disabled",
     });
+    await libraryPage.getByRole("button", { name: "关闭批量刮削" }).click();
+    await libraryPage.getByRole("button", { name: "扫描 Steam 库" }).click();
+    await libraryPage.waitForSelector(".steam-dialog");
+    await libraryPage.waitForTimeout(180);
+    await libraryPage.screenshot({
+      path: path.join(directory, "06-steam-scanning.png"),
+      animations: "disabled",
+    });
+    await libraryPage.waitForSelector(".steam-game", { timeout: 5000 });
+    await libraryPage.waitForTimeout(300);
+    await libraryPage.screenshot({
+      path: path.join(directory, "06b-steam-review.png"),
+      animations: "disabled",
+    });
     await libraryPage.close();
   }
 

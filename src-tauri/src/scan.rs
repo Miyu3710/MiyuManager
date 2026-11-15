@@ -179,6 +179,23 @@ pub struct ScanExclusions {
     pub dir_keys: HashSet<String>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ScanLimits {
+    pub max_depth: usize,
+    pub max_entries: u64,
+    pub compute_size: bool,
+}
+
+impl Default for ScanLimits {
+    fn default() -> Self {
+        Self {
+            max_depth: 16,
+            max_entries: 250_000,
+            compute_size: true,
+        }
+    }
+}
+
 impl ScanExclusions {
     pub fn is_excluded(&self, exe_path: &Path, working_dir: &Path) -> bool {
         let exe_key = path_string(exe_path).to_lowercase();
@@ -254,6 +271,27 @@ pub fn scan_root(
     cancel: Arc<AtomicBool>,
     exclusions: &ScanExclusions,
     include_excluded: bool,
+    on_progress: impl FnMut(ScanProgress),
+) -> Result<ScanOutcome> {
+    scan_root_with_limits(
+        root,
+        job_id,
+        cancel,
+        exclusions,
+        include_excluded,
+        ScanLimits::default(),
+        on_progress,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn scan_root_with_limits(
+    root: &Path,
+    job_id: &str,
+    cancel: Arc<AtomicBool>,
+    exclusions: &ScanExclusions,
+    include_excluded: bool,
+    limits: ScanLimits,
     mut on_progress: impl FnMut(ScanProgress),
 ) -> Result<ScanOutcome> {
     let started = Instant::now();
@@ -269,7 +307,7 @@ pub fn scan_root(
 
     let walker = WalkDir::new(root)
         .follow_links(false)
-        .max_depth(16)
+        .max_depth(limits.max_depth)
         .into_iter()
         .filter_entry(|entry| {
             if entry.depth() == 0 {
@@ -289,7 +327,7 @@ pub fn scan_root(
         }
 
         visited_entries += 1;
-        if visited_entries > 250_000 {
+        if visited_entries > limits.max_entries {
             truncated = true;
             break;
         }
@@ -364,7 +402,11 @@ pub fn scan_root(
     let mut candidates = Vec::new();
     for (working_dir, entries) in candidates_by_dir {
         for (score, reasons, exe_path) in entries {
-            let (size_bytes, size_is_estimate) = directory_size(&working_dir, &cancel);
+            let (size_bytes, size_is_estimate) = if limits.compute_size {
+                directory_size(&working_dir, &cancel)
+            } else {
+                (0, true)
+            };
             let file_size_bytes = fs::metadata(&exe_path)
                 .map(|metadata| metadata.len() as i64)
                 .unwrap_or(0);

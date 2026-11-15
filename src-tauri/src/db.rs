@@ -81,10 +81,12 @@ pub struct LibraryItem {
     pub working_dir: String,
     pub root_path: String,
     pub display_name: String,
+    pub steam_app_id: Option<i64>,
     pub install_status: String,
     pub added_at: String,
     pub last_played_at: Option<String>,
     pub playtime_minutes: i64,
+    pub playtime_seconds: i64,
     pub launch_count: i64,
     pub catalog_no: String,
     pub cover_thumb_path: Option<String>,
@@ -256,6 +258,8 @@ pub struct ImportCandidateInput {
     pub root_path: String,
     #[serde(default)]
     pub size_bytes: i64,
+    #[serde(default)]
+    pub steam_app_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -396,6 +400,10 @@ WITH primary_copy AS (
   SELECT lc.*, ROW_NUMBER() OVER (PARTITION BY r.work_id ORDER BY lc.id ASC) AS rn
   FROM local_copies lc
   JOIN releases r ON r.id = lc.release_id
+), session_totals AS (
+  SELECT local_copy_id, COALESCE(SUM(duration_sec), 0) AS duration_sec
+  FROM play_sessions
+  GROUP BY local_copy_id
 )
 ";
 
@@ -404,6 +412,7 @@ FROM works w
 JOIN primary_copy lc ON lc.rn = 1
 JOIN releases r ON r.id = lc.release_id AND r.work_id = w.id
 LEFT JOIN user_entries ue ON ue.work_id = w.id
+LEFT JOIN session_totals st ON st.local_copy_id = lc.id
 ";
 
 struct FilterParts {
@@ -537,10 +546,12 @@ async fn query_library_inner(
            lc.working_dir,
            lc.root_path,
            lc.display_name,
+           lc.steam_app_id,
            lc.install_status,
            lc.created_at AS added_at,
            lc.last_launched_at AS last_played_at,
-           0 AS playtime_minutes,
+           COALESCE(st.duration_sec, 0) / 60 AS playtime_minutes,
+           COALESCE(st.duration_sec, 0) AS playtime_seconds,
            lc.launch_count,
            printf('LOCAL-%04d', lc.id) AS catalog_no,
            (SELECT a.thumb_path FROM assets a
@@ -626,10 +637,12 @@ fn row_to_library_item(row: &sqlx::sqlite::SqliteRow) -> Result<LibraryItem> {
         working_dir: row.try_get("working_dir")?,
         root_path: row.try_get("root_path")?,
         display_name: row.try_get("display_name")?,
+        steam_app_id: row.try_get("steam_app_id")?,
         install_status: row.try_get("install_status")?,
         added_at: row.try_get("added_at")?,
         last_played_at: row.try_get("last_played_at")?,
         playtime_minutes: row.try_get("playtime_minutes")?,
+        playtime_seconds: row.try_get("playtime_seconds")?,
         launch_count: row.try_get("launch_count")?,
         catalog_no: row.try_get("catalog_no")?,
         cover_thumb_path: row.try_get("cover_thumb_path")?,
@@ -667,10 +680,12 @@ pub async fn get_library_item(
            lc.working_dir,
            lc.root_path,
            lc.display_name,
+           lc.steam_app_id,
            lc.install_status,
            lc.created_at AS added_at,
            lc.last_launched_at AS last_played_at,
-           0 AS playtime_minutes,
+           COALESCE(st.duration_sec, 0) / 60 AS playtime_minutes,
+           COALESCE(st.duration_sec, 0) AS playtime_seconds,
            lc.launch_count,
            printf('LOCAL-%04d', lc.id) AS catalog_no,
            (SELECT a.thumb_path FROM assets a
@@ -1259,6 +1274,7 @@ pub async fn get_launch_target(pool: &SqlitePool, work_id: i64) -> Result<Launch
     })
 }
 
+#[cfg(test)]
 pub async fn record_launch_started(pool: &SqlitePool, local_copy_id: i64) -> Result<String> {
     sqlx::query(
         "UPDATE local_copies
@@ -1450,6 +1466,15 @@ pub async fn existing_exe_keys(pool: &SqlitePool) -> Result<HashSet<String>> {
     Ok(keys.into_iter().collect())
 }
 
+pub async fn existing_steam_app_ids(pool: &SqlitePool) -> Result<HashSet<i64>> {
+    let ids = sqlx::query_scalar::<_, i64>(
+        "SELECT steam_app_id FROM local_copies WHERE steam_app_id IS NOT NULL",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(ids.into_iter().collect())
+}
+
 pub async fn list_scan_exclusions(pool: &SqlitePool) -> Result<Vec<ScanExclusionRecord>> {
     let rows = sqlx::query(
         "SELECT id, exe_key, exe_path, dir_key, working_dir, root_path, reason, created_at
@@ -1516,6 +1541,7 @@ pub async fn import_candidates(
         display_name: String,
         size_bytes: i64,
         file_size_bytes: i64,
+        steam_app_id: Option<i64>,
     }
 
     let mut validated = Vec::with_capacity(candidates.len());
@@ -1568,6 +1594,7 @@ pub async fn import_candidates(
             display_name: display_name.to_string(),
             size_bytes: candidate.size_bytes.max(0),
             file_size_bytes,
+            steam_app_id: candidate.steam_app_id,
         });
     }
 
@@ -1595,6 +1622,7 @@ pub async fn import_candidates(
                 "UPDATE local_copies
                  SET root_id = ?, root_path = ?, working_dir = ?, display_name = ?,
                      size_bytes = ?, file_size_bytes = ?, install_status = 'installed',
+                     steam_app_id = ?,
                      last_seen_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                  WHERE exe_key = ?",
             )
@@ -1604,6 +1632,7 @@ pub async fn import_candidates(
             .bind(&candidate.display_name)
             .bind(candidate.size_bytes)
             .bind(candidate.file_size_bytes)
+            .bind(candidate.steam_app_id)
             .bind(&candidate.exe_key)
             .execute(&mut *tx)
             .await?;
@@ -1648,8 +1677,8 @@ pub async fn import_candidates(
         sqlx::query(
             "INSERT INTO local_copies
                (release_id, root_id, root_path, exe_path, exe_key, working_dir, display_name,
-                size_bytes, file_size_bytes, install_status, last_seen_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'installed', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+                size_bytes, file_size_bytes, steam_app_id, install_status, last_seen_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'installed', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
         )
         .bind(release_id)
         .bind(root_id)
@@ -1660,6 +1689,7 @@ pub async fn import_candidates(
         .bind(&candidate.display_name)
         .bind(candidate.size_bytes)
         .bind(candidate.file_size_bytes)
+        .bind(candidate.steam_app_id)
         .execute(&mut *tx)
         .await?;
 
@@ -1715,6 +1745,7 @@ mod tests {
             display_name: "月影工房".to_string(),
             root_path: root.to_string_lossy().to_string(),
             size_bytes: 512 * 1024,
+            steam_app_id: None,
         };
         import_candidates(&pool, vec![candidate])
             .await
@@ -1738,6 +1769,7 @@ mod tests {
             display_name: "月影工房".to_string(),
             root_path: root.to_string_lossy().to_string(),
             size_bytes: 512 * 1024,
+            steam_app_id: None,
         };
 
         let result = import_candidates(&pool, vec![candidate.clone()])
@@ -1986,6 +2018,7 @@ mod tests {
                 display_name: "扫描器的新名称".to_string(),
                 root_path: root.to_string_lossy().to_string(),
                 size_bytes: 1,
+                steam_app_id: None,
             }],
         )
         .await

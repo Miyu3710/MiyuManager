@@ -37,13 +37,19 @@ import {
   validateWork,
 } from "../../lib/library-api";
 import type { CoverCandidate, LaunchSnapshot, ValidationReport } from "../../lib/library-types";
-import { formatDate, formatPlaytime, formatRelativeDate } from "../../lib/format";
+import { formatDate, formatPlaytimeSeconds, formatRelativeDate } from "../../lib/format";
 import { cn } from "../../lib/cn";
-import { useInvalidateLibrary, useLibraryDetail, useMonitors } from "../library/useLibrary";
+import {
+  useInvalidateLibrary,
+  useLibraryDetail,
+  useMonitors,
+  useWorkSessions,
+} from "../library/useLibrary";
 import { LaunchConfigPanel } from "./LaunchConfigPanel";
 import { MetadataPanel } from "./MetadataPanel";
 import { MergePanel } from "../metadata/MergePanel";
 import { WorkEditDialog } from "./WorkEditDialog";
+import { SessionHistory } from "./SessionHistory";
 import "./work-detail.css";
 
 type Tab = "overview" | "sessions" | "launch" | "sources";
@@ -87,6 +93,7 @@ export function WorkDetailPage() {
   const [validation, setValidation] = useState<ValidationReport | null>(null);
 
   const workId = detail.data?.workId;
+  const sessions = useWorkSessions(workId);
   const launch = launchSnapshot?.workId === workId ? launchSnapshot : null;
 
   useEffect(() => {
@@ -95,6 +102,7 @@ export function WorkDetailPage() {
     }
     let disposed = false;
     let unlisten: (() => void) | undefined;
+    let unlistenSession: (() => void) | undefined;
     void getLaunchState(workId)
       .then((snapshot) => {
         if (!disposed) {
@@ -119,9 +127,21 @@ export function WorkDetailPage() {
         }
       })
       .catch(() => undefined);
+    void listen("play-session", () => {
+      invalidate();
+    })
+      .then((cleanup) => {
+        if (disposed) {
+          cleanup();
+        } else {
+          unlistenSession = cleanup;
+        }
+      })
+      .catch(() => undefined);
     return () => {
       disposed = true;
       unlisten?.();
+      unlistenSession?.();
     };
   }, [invalidate, workId]);
 
@@ -183,7 +203,8 @@ export function WorkDetailPage() {
   const coverWork = { ...game, coverUrl };
   const hasLocalCopy = Boolean(item.localCopyId);
   const isRunning = launch?.state === "running";
-  const playtime = item.playtimeMinutes > 0 ? formatPlaytime(item.playtimeMinutes) : "尚未记录";
+  const playtimeSeconds = item.playtimeSeconds ?? item.playtimeMinutes * 60;
+  const playtime = playtimeSeconds > 0 ? formatPlaytimeSeconds(playtimeSeconds) : "尚未记录";
   const lastPlayed = item.lastPlayedAt ? formatRelativeDate(item.lastPlayedAt) : game.lastPlayed;
 
   const selectTab = (next: Tab) => {
@@ -483,20 +504,27 @@ export function WorkDetailPage() {
             <span>最近游玩</span>
             <em>共 {game.launchCount} 次启动</em>
           </header>
-          {game.sessions.length > 0 ? (
-            game.sessions.slice(0, 3).map((session) => (
+          {sessions.data && sessions.data.length > 0 ? (
+            sessions.data.slice(0, 3).map((session) => (
               <div className="detail-session" key={session.id}>
                 <span>
-                  {session.date} {session.time}
+                  {new Date(session.startedAt).toLocaleString("zh-CN", {
+                    month: "2-digit",
+                    day: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </span>
-                <b>{session.duration}</b>
-                <i style={{ width: Math.min(session.minutes / 1.4, 100) + "%" }} />
+                <b>{formatPlaytimeSeconds(session.durationSec)}</b>
+                <i
+                  style={{
+                    width: Math.min(session.durationSec / 60 / 1.4, 100) + "%",
+                  }}
+                />
               </div>
             ))
           ) : (
-            <p className="detail-side__empty">
-              还没有游玩记录。C3 会记录启动时间和次数；自动会话与时长统计在 C6 接入。
-            </p>
+            <p className="detail-side__empty">还没有游玩记录。启动游戏后会自动开始计时。</p>
           )}
           <div className="detail-install">
             <span>本地安装</span>
@@ -602,6 +630,12 @@ export function WorkDetailPage() {
                   <dt>平台</dt>
                   <dd>{detail.data.platform}</dd>
                 </div>
+                {detail.data.steamAppId ? (
+                  <div>
+                    <dt>Steam</dt>
+                    <dd>AppID {detail.data.steamAppId}</dd>
+                  </div>
+                ) : null}
                 <div>
                   <dt>安装大小</dt>
                   <dd>{game.installedSize}</dd>
@@ -626,39 +660,7 @@ export function WorkDetailPage() {
 
         {tab === "sessions" ? (
           <div className="detail-sessions">
-            <header>
-              <div>
-                <h2>游玩记录</h2>
-                <p>会话由启动器开始和结束时间计算；C3 只记录启动，自动时长统计在 C6 接入。</p>
-              </div>
-              <Button variant="secondary" size="sm" disabled>
-                C6 接入补录
-              </Button>
-            </header>
-            <div className="detail-session-table">
-              <div className="detail-session-table__head">
-                <span>开始时间</span>
-                <span>时长</span>
-                <span>结束方式</span>
-                <span>操作</span>
-              </div>
-              {game.sessions.length > 0 ? (
-                game.sessions.map((session) => (
-                  <div className="detail-session-table__row" key={session.id}>
-                    <span>
-                      {session.date} {session.time}
-                    </span>
-                    <b>{session.duration}</b>
-                    <span>{session.ended}</span>
-                    <span className="detail-session-table__locked">C6</span>
-                  </div>
-                ))
-              ) : (
-                <p className="detail-empty-row">
-                  还没有会话。启动游戏后这里会显示启动记录；完整会话和时长在 C6 接入。
-                </p>
-              )}
-            </div>
+            <SessionHistory workId={item.workId} onChanged={invalidate} />
           </div>
         ) : null}
 

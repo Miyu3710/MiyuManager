@@ -1,6 +1,6 @@
 # 前端组件与依赖选型
 
-> 状态：C5 已完成；C2 已接入 TanStack Query、TanStack Virtual 和 Tauri dialog；C3 详情/启动表单已接入 React Hook Form + Zod；C4/C5 元数据搜索、合并、冲突、字段优先级、批量队列、事件进度和封面画廊复用 TanStack Query，不新增前端依赖；Motion、cmdk 仍待页面需要时加入并锁定版本
+> 状态：C6 已完成；C2 已接入 TanStack Query、TanStack Virtual 和 Tauri dialog；C3 详情/启动表单已接入 React Hook Form + Zod；C4/C5 元数据搜索、合并、冲突、字段优先级、批量队列、事件进度和封面画廊复用 TanStack Query；C6 统计页和会话 CRUD 复用 TanStack Query 与 Tauri 事件，不新增前端依赖；Motion、cmdk 仍待页面需要时加入并锁定版本
 >
 > 日期：2026-11-15  
 > 目标：为 MiyuManager 的桌面与大屏界面建立一致的组件、图标、动画和交互规范
@@ -83,6 +83,7 @@ GSAP 适合复杂时间线，但不是 React 声明式状态的首选；React Sp
 - **Home**：TanStack Query、Motion（仅主视觉编排）、Lucide、Sonner。
 - **游戏库**：TanStack Virtual、Radix DropdownMenu/Select/Tooltip、cva、TanStack Query。
 - **作品详情**：Radix Tabs/Popover/Dialog、Motion（封面/面板）、RHF + Zod（启动配置）、TanStack Query + Tauri 事件（元数据搜索、进度、取消和字段导入）。
+- **统计与游玩记录**：TanStack Query、Tauri `play-session` 事件、原生日期时间输入；图表使用 CSS Grid 绘制 84 天热力图，不引入图表库。
 - **大屏**：自建 focus manager、Radix 基础行为、Motion（焦点移动/抽屉）、Gamepad API 或 Rust XInput。
 - **设置**：RHF + Zod、Radix Switch/Select/RadioGroup、Sonner、TanStack Query（来源顺序/启停）。
 - **首次启动**：Radix Dialog/Progress、TanStack Query、Motion（步骤切换）。

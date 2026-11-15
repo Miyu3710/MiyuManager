@@ -50,8 +50,18 @@ import type {
   BatchApplyRequest,
   BatchApplyResult,
   BatchApplyWorkResult,
+  SteamScanReport,
+  SteamScanStart,
+  SteamGameScan,
+  DailyPlaytime,
+  PlaySessionWithWork,
+  SessionCreateInput,
+  SessionUpdateInput,
+  StatsOverview,
+  StatsPeriod,
+  TopGame,
 } from "./library-types";
-import { formatBytes, formatPlaytime, formatRelativeDate } from "./format";
+import { formatBytes, formatPlaytimeSeconds, formatRelativeDate } from "./format";
 
 type PreviewLibraryItem = LibraryItem & { previewGame?: Game };
 
@@ -62,6 +72,8 @@ const previewStatus = new Map<number, LibraryStatus>();
 const previewFavorite = new Map<number, boolean>();
 const previewWorkUpdates = new Map<number, WorkUpdateInput>();
 const previewLaunchProfiles = new Map<number, LaunchProfile>();
+const previewPlaySessions: PlaySessionWithWork[] = createPreviewPlaySessions();
+let previewSessionId = 10_000;
 const previewRoots: ScanRoot[] = [
   {
     id: 1,
@@ -72,6 +84,45 @@ const previewRoots: ScanRoot[] = [
   },
 ];
 let previewWorkId = 1000;
+
+function createPreviewPlaySessions(): PlaySessionWithWork[] {
+  const now = Date.now();
+  return mockGames.flatMap((game, gameIndex) =>
+    game.sessions.map((session, sessionIndex) => {
+      const endedAt = new Date(
+        now - (gameIndex * 2 + sessionIndex + 1) * 86_400_000 - 3_600_000,
+      ).toISOString();
+      const startedAt = new Date(
+        new Date(endedAt).getTime() - session.minutes * 60_000,
+      ).toISOString();
+      const endReason =
+        session.ended === "手动结束"
+          ? "manual_stop"
+          : session.ended === "异常中断"
+            ? "recovered"
+            : "exited";
+      return {
+        id: gameIndex * 100 + sessionIndex + 1,
+        workId: gameIndex + 1,
+        localCopyId: gameIndex + 1,
+        launchId: null,
+        status: "ended",
+        startedAt,
+        lastHeartbeatAt: endedAt,
+        endedAt,
+        durationSec: session.minutes * 60,
+        endReason,
+        source: "launcher",
+        processId: null,
+        exePath: game.exePath,
+        note: "",
+        corrected: false,
+        workTitle: game.title,
+        originalTitle: game.originalTitle,
+      } satisfies PlaySessionWithWork;
+    }),
+  );
+}
 
 const emptyCounts = (): LibraryCounts => ({
   all: 0,
@@ -218,7 +269,9 @@ export async function getLibraryItem(id: string | undefined): Promise<LibraryIte
     return null;
   }
   if (!isTauri()) {
-    const item = previewItems().find((candidate) => libraryItemId(candidate) === id);
+    const item = previewItems().find(
+      (candidate) => libraryItemId(candidate) === id || String(candidate.workId) === id,
+    );
     if (!item) {
       return null;
     }
@@ -347,6 +400,20 @@ export async function cancelLibraryScan(): Promise<boolean> {
   return invoke<boolean>("library_scan_cancel");
 }
 
+export async function startSteamScan(): Promise<SteamScanStart> {
+  if (!isTauri()) {
+    return { jobId: "preview-steam" };
+  }
+  return invoke<SteamScanStart>("steam_scan_start");
+}
+
+export async function cancelSteamScan(): Promise<boolean> {
+  if (!isTauri()) {
+    return true;
+  }
+  return invoke<boolean>("library_scan_cancel");
+}
+
 export async function listScanExclusions(): Promise<ScanExclusion[]> {
   if (!isTauri()) {
     return [...previewExclusions];
@@ -396,6 +463,76 @@ export function previewScanCandidates(rootPath: string, includeExcluded = false)
   );
 }
 
+export function previewSteamScanReport(): SteamScanReport {
+  const commonRoot = "E:\\SteamLibrary\\steamapps\\common";
+  const clannadDir = commonRoot + "\\CLANNAD";
+  const moonlitDir = "D:\\SteamLibrary\\steamapps\\common\\Moonlit Atelier";
+  const games: SteamGameScan[] = [
+    {
+      appId: 324160,
+      name: "CLANNAD",
+      installDir: clannadDir,
+      sizeOnDisk: 4_698_349_963,
+      lastUpdated: 1_760_000_000,
+      candidates: [
+        {
+          id: (clannadDir + "\\CLANNAD.exe").toLowerCase(),
+          exeKey: (clannadDir + "\\CLANNAD.exe").toLowerCase(),
+          exePath: clannadDir + "\\CLANNAD.exe",
+          workingDir: clannadDir,
+          rootPath: commonRoot,
+          suggestedTitle: "CLANNAD",
+          fileSizeBytes: 12_400_000,
+          sizeBytes: 4_698_349_963,
+          sizeIsEstimate: false,
+          confidence: "high",
+          reason: "Steam AppID 324160 · 常见主程序名",
+          alreadyImported: false,
+        },
+      ],
+      alreadyImported: false,
+      error: null,
+    },
+    {
+      appId: 240001,
+      name: "月影工房",
+      installDir: moonlitDir,
+      sizeOnDisk: 3_240_000_000,
+      lastUpdated: 1_760_300_000,
+      candidates: [
+        {
+          id: (moonlitDir + "\\MoonlitAtelier.exe").toLowerCase(),
+          exeKey: (moonlitDir + "\\MoonlitAtelier.exe").toLowerCase(),
+          exePath: moonlitDir + "\\MoonlitAtelier.exe",
+          workingDir: moonlitDir,
+          rootPath: "D:\\SteamLibrary\\steamapps\\common",
+          suggestedTitle: "月影工房",
+          fileSizeBytes: 9_800_000,
+          sizeBytes: 3_240_000_000,
+          sizeIsEstimate: false,
+          confidence: "high",
+          reason: "Steam AppID 240001 · 常见主程序名",
+          alreadyImported: false,
+        },
+      ],
+      alreadyImported: false,
+      error: null,
+    },
+  ];
+  return {
+    steamRoot: "D:\\Steam",
+    libraries: [
+      { path: "D:\\Steam", appCount: 1 },
+      { path: "E:\\SteamLibrary", appCount: 1 },
+    ],
+    games,
+    errors: [],
+    cancelled: false,
+    scannedDirs: 128,
+    durationMs: 4200,
+  };
+}
+
 export async function importLibraryCandidates(
   candidates: ImportCandidateInput[],
 ): Promise<ImportResult> {
@@ -440,6 +577,7 @@ export async function importLibraryCandidates(
         catalogNo: "LOCAL-" + String(workId).padStart(4, "0"),
         coverThumbPath: null,
         coverPath: null,
+        steamAppId: candidate.steamAppId ?? null,
       });
     }
     return { imported: candidates.length, updated: 0 };
@@ -604,6 +742,196 @@ export async function getLaunchState(workId: number): Promise<LaunchSnapshot | n
   return invoke<LaunchSnapshot | null>("launch_state", { workId });
 }
 
+export async function listWorkSessions(workId: number): Promise<PlaySessionWithWork[]> {
+  if (!isTauri()) {
+    return previewPlaySessions
+      .filter((session) => session.workId === workId)
+      .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+  }
+  return invoke<PlaySessionWithWork[]>("sessions_list", { workId });
+}
+
+export async function createSession(input: SessionCreateInput): Promise<PlaySessionWithWork> {
+  if (!isTauri()) {
+    const endedAt = new Date(input.endedAt);
+    const startedAt = new Date(input.startedAt);
+    if (endedAt <= startedAt) {
+      throw new Error("结束时间必须晚于开始时间");
+    }
+    const item = previewItems().find((candidate) => candidate.workId === input.workId);
+    if (!item) {
+      throw new Error("作品没有本地安装副本，无法补录会话");
+    }
+    const session: PlaySessionWithWork = {
+      id: previewSessionId++,
+      workId: item.workId,
+      localCopyId: item.localCopyId,
+      launchId: null,
+      status: "ended",
+      startedAt: startedAt.toISOString(),
+      lastHeartbeatAt: endedAt.toISOString(),
+      endedAt: endedAt.toISOString(),
+      durationSec: Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000),
+      endReason: "manual",
+      source: "manual",
+      processId: null,
+      exePath: item.exePath,
+      note: input.note.trim(),
+      corrected: false,
+      workTitle: item.title,
+      originalTitle: item.originalTitle,
+    };
+    previewPlaySessions.push(session);
+    return session;
+  }
+  return invoke<PlaySessionWithWork>("session_create", { input });
+}
+
+export async function updateSession(
+  sessionId: number,
+  input: SessionUpdateInput,
+): Promise<PlaySessionWithWork> {
+  if (!isTauri()) {
+    const session = previewPlaySessions.find((candidate) => candidate.id === sessionId);
+    if (!session) {
+      throw new Error("游玩会话不存在");
+    }
+    const endedAt = new Date(input.endedAt);
+    const startedAt = new Date(input.startedAt);
+    if (endedAt <= startedAt) {
+      throw new Error("结束时间必须晚于开始时间");
+    }
+    Object.assign(session, {
+      startedAt: startedAt.toISOString(),
+      endedAt: endedAt.toISOString(),
+      lastHeartbeatAt: endedAt.toISOString(),
+      durationSec: Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000),
+      note: input.note.trim(),
+      corrected: true,
+    });
+    return { ...session };
+  }
+  return invoke<PlaySessionWithWork>("session_update", { sessionId, input });
+}
+
+export async function deleteSession(sessionId: number): Promise<void> {
+  if (!isTauri()) {
+    const index = previewPlaySessions.findIndex((session) => session.id === sessionId);
+    if (index < 0) {
+      throw new Error("游玩会话不存在");
+    }
+    previewPlaySessions.splice(index, 1);
+    return;
+  }
+  await invoke("session_delete", { sessionId });
+}
+
+function localDayKey(value: Date): string {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function previewStats(period: StatsPeriod): StatsOverview {
+  const now = new Date();
+  const rangeStart =
+    period === "week"
+      ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7))
+      : period === "month"
+        ? new Date(now.getFullYear(), now.getMonth(), 1)
+        : period === "year"
+          ? new Date(now.getFullYear(), 0, 1)
+          : null;
+  const completed = previewPlaySessions.filter((session) => session.status === "ended");
+  const sum = (sessions: PlaySessionWithWork[]) =>
+    sessions.reduce((total, session) => total + session.durationSec, 0);
+  const currentWeekStart = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() - ((now.getDay() + 6) % 7),
+  );
+  const previous7Start = new Date(now.getTime() - 14 * 86_400_000);
+  const currentWeek = completed.filter(
+    (session) => new Date(session.startedAt) >= currentWeekStart,
+  );
+  const ranged = rangeStart
+    ? completed.filter((session) => new Date(session.startedAt) >= rangeStart)
+    : completed;
+
+  const dailyMap = new Map<string, number>();
+  for (const session of completed) {
+    if (new Date(session.startedAt) < new Date(now.getTime() - 84 * 86_400_000)) {
+      continue;
+    }
+    const key = localDayKey(new Date(session.startedAt));
+    dailyMap.set(key, (dailyMap.get(key) ?? 0) + session.durationSec);
+  }
+  const daily: DailyPlaytime[] = Array.from({ length: 84 }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 83 + index);
+    const key = localDayKey(date);
+    return { date: key, seconds: dailyMap.get(key) ?? 0 };
+  });
+
+  const grouped = new Map<number, TopGame>();
+  for (const session of ranged) {
+    const current = grouped.get(session.workId);
+    if (current) {
+      current.seconds += session.durationSec;
+      current.sessionCount += 1;
+    } else {
+      grouped.set(session.workId, {
+        workId: session.workId,
+        title: session.workTitle,
+        originalTitle: session.originalTitle,
+        seconds: session.durationSec,
+        sessionCount: 1,
+      });
+    }
+  }
+  const topGames = [...grouped.values()]
+    .sort((left, right) => right.seconds - left.seconds)
+    .slice(0, 5);
+
+  return {
+    allTimeSeconds: sum(completed),
+    allTimeSessions: completed.length,
+    last7Seconds: sum(
+      completed.filter(
+        (session) => new Date(session.startedAt) >= new Date(now.getTime() - 7 * 86_400_000),
+      ),
+    ),
+    last30Seconds: sum(
+      completed.filter(
+        (session) => new Date(session.startedAt) >= new Date(now.getTime() - 30 * 86_400_000),
+      ),
+    ),
+    currentWeekLaunches: currentWeek.length,
+    currentWeekGames: new Set(currentWeek.map((session) => session.workId)).size,
+    previous7Seconds: sum(
+      completed.filter((session) => {
+        const started = new Date(session.startedAt);
+        return started >= previous7Start && started < new Date(now.getTime() - 7 * 86_400_000);
+      }),
+    ),
+    range: period,
+    rangeSeconds: sum(ranged),
+    rangeLaunches: ranged.length,
+    daily,
+    topGames,
+    recentSessions: [...ranged]
+      .sort((left, right) => (right.endedAt ?? "").localeCompare(left.endedAt ?? ""))
+      .slice(0, 20),
+  };
+}
+
+export async function getStats(period: StatsPeriod = "all"): Promise<StatsOverview> {
+  if (!isTauri()) {
+    return previewStats(period);
+  }
+  return invoke<StatsOverview>("stats_get", { period });
+}
+
 export async function listMonitors(): Promise<MonitorInfo[]> {
   if (!isTauri()) {
     return [{ index: 0, name: "主显示器", width: 1920, height: 1080, scaleFactor: 1 }];
@@ -670,7 +998,7 @@ export function libraryItemToGame(item: LibraryItem): Game {
       favorite: item.favorite,
       rating: item.rating ?? previewGame.rating,
       description: item.description || previewGame.description,
-      playtime: formatPlaytime(item.playtimeMinutes),
+      playtime: formatPlaytimeSeconds(item.playtimeSeconds ?? item.playtimeMinutes * 60),
       playtimeMinutes: item.playtimeMinutes,
       lastPlayed: item.lastPlayedAt
         ? formatRelativeDate(item.lastPlayedAt)
@@ -695,7 +1023,7 @@ export function libraryItemToGame(item: LibraryItem): Game {
     developer: item.developer ?? "未知会社",
     tags: item.tags,
     status: item.status,
-    playtime: formatPlaytime(item.playtimeMinutes),
+    playtime: formatPlaytimeSeconds(item.playtimeSeconds ?? item.playtimeMinutes * 60),
     playtimeMinutes: item.playtimeMinutes,
     lastPlayed: item.lastPlayedAt ? formatRelativeDate(item.lastPlayedAt) : "尚未启动",
     addedAt: formatRelativeDate(item.addedAt),

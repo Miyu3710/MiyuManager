@@ -4,6 +4,7 @@ import {
   ChevronDown,
   FolderInput,
   FolderPlus,
+  Gamepad2,
   Grid2X2,
   List,
   MoreHorizontal,
@@ -41,6 +42,7 @@ import type {
 } from "../../lib/library-types";
 import { ScanImportDialog } from "./ScanImportDialog";
 import { BatchScrapeDialog } from "../metadata/BatchScrapeDialog";
+import { SteamLibraryDialog } from "./SteamLibraryDialog";
 import { useInvalidateLibrary, useLibraryInfinite, useLibraryRoots } from "./useLibrary";
 import { useLibraryScan } from "./useLibraryScan";
 import "./library.css";
@@ -283,6 +285,7 @@ export function LibraryPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedWorkIds, setSelectedWorkIds] = useState<Set<number>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
+  const [steamOpen, setSteamOpen] = useState(false);
   const handledRequest = useRef<string | null>(null);
 
   const toggleSelectedWork = (workId: number) => {
@@ -573,6 +576,10 @@ export function LibraryPage() {
           <Button variant="primary" size="sm" onClick={() => void pickAndStart()}>
             <FolderPlus size={14} strokeWidth={1.8} />
             添加目录
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => setSteamOpen(true)}>
+            <Gamepad2 size={14} strokeWidth={1.7} />
+            扫描 Steam 库
           </Button>
           <Button
             variant="ghost"
@@ -892,6 +899,10 @@ export function LibraryPage() {
           }}
           onApplied={invalidate}
         />
+      ) : null}
+
+      {steamOpen ? (
+        <SteamLibraryDialog open onClose={() => setSteamOpen(false)} onImported={invalidate} />
       ) : null}
     </div>
   );

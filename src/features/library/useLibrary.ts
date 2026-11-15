@@ -12,8 +12,10 @@ import {
   listLibraryRoots,
   listScanExclusions,
   listMonitors,
+  listWorkSessions,
+  getStats,
 } from "../../lib/library-api";
-import type { LibraryQuery } from "../../lib/library-types";
+import type { LibraryQuery, StatsPeriod } from "../../lib/library-types";
 
 export function useLibraryInfinite(query: Omit<LibraryQuery, "page" | "pageSize">) {
   return useInfiniteQuery({
@@ -98,6 +100,23 @@ export function useMonitors() {
   });
 }
 
+export function useWorkSessions(workId: number | undefined) {
+  return useQuery({
+    queryKey: ["work-sessions", workId],
+    queryFn: () => listWorkSessions(workId as number),
+    enabled: Number.isInteger(workId),
+    staleTime: 1_000,
+  });
+}
+
+export function useStats(period: StatsPeriod) {
+  return useQuery({
+    queryKey: ["stats", period],
+    queryFn: () => getStats(period),
+    staleTime: 3_000,
+  });
+}
+
 export function useScanExclusions() {
   return useQuery({
     queryKey: ["scan-exclusions"],
@@ -116,5 +135,7 @@ export function useInvalidateLibrary() {
     void queryClient.invalidateQueries({ queryKey: ["library-roots"] });
     void queryClient.invalidateQueries({ queryKey: ["app-info"] });
     void queryClient.invalidateQueries({ queryKey: ["scan-exclusions"] });
+    void queryClient.invalidateQueries({ queryKey: ["work-sessions"] });
+    void queryClient.invalidateQueries({ queryKey: ["stats"] });
   }, [queryClient]);
 }

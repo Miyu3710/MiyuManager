@@ -312,6 +312,34 @@ async fn best_matches(
         } else {
             None
         };
+        if provider_info.id == "steam"
+            && let Some(app_id) = values.steam_app_id
+        {
+            let source_id = app_id.to_string();
+            match candidate_detail(pool, http, oauth, "steam", &source_id, cancel).await {
+                Ok(detail) => {
+                    matched.push(MatchedDetail {
+                        info: MergeMatch {
+                            provider: provider_info.id.clone(),
+                            provider_name: provider_info.name.clone(),
+                            source_id,
+                            title: detail.title.clone(),
+                            original_title: detail.original_title.clone(),
+                            year: detail.year,
+                            score: 1.0,
+                            priority: provider_info.priority,
+                        },
+                        detail,
+                    });
+                }
+                Err(error) => errors.push(ProviderFailure {
+                    provider: provider_info.id.clone(),
+                    provider_name: provider_info.name.clone(),
+                    message: format!("Steam AppID {app_id}：{error}"),
+                }),
+            }
+            continue;
+        }
         let mut candidates = match provider
             .search(http, &primary, token.as_deref(), cancel)
             .await
