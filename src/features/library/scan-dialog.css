@@ -104,7 +104,7 @@
   gap: 14px;
   padding: 12px 22px;
   border-top: 1px solid var(--color-line);
-  background: var(--color-bg-deep);
+  background: var(--color-bg);
 }
 
 .scan-dialog__foot p {

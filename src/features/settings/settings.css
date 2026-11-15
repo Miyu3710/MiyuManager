@@ -1274,8 +1274,11 @@
 .settings-nav {
   position: sticky;
   top: 0;
+  flex-direction: column;
+  flex-wrap: nowrap;
   gap: 3px;
-  padding-right: 22px;
+  padding: 0 22px 0 0;
+  border-bottom: 0;
   border-right-color: var(--color-line);
 }
 

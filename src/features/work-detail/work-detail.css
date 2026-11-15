@@ -673,7 +673,7 @@
 
 .detail-path-check .is-error,
 .detail-check-row .is-error {
-  color: #f08b8b;
+  color: var(--color-danger);
 }
 
 .detail-launch-form {
@@ -919,7 +919,7 @@
   outline: none;
   background: var(--color-bg-raised);
   color: var(--color-text);
-  color-scheme: dark;
+  color-scheme: light;
   font: 11.5px var(--font-mono);
 }
 

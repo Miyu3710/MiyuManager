@@ -489,7 +489,7 @@
 }
 
 .collection-add__hint.is-error {
-  color: #f0a0a0;
+  color: var(--color-danger);
 }
 
 .collection-add__more {

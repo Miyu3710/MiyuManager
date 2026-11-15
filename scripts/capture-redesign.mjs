@@ -5,6 +5,7 @@ import { chromium } from "playwright-core";
 const edgePath = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const baseUrl = process.env.APP_BASE_URL ?? "http://localhost:1420";
 const outputRoot = path.resolve("outputs", "app", "redesign");
+const requested = process.env.CAPTURE_VIEWPORT;
 const routes = [
   { name: "00-home", path: "/", ready: ".home-page" },
   { name: "01-library", path: "/library", ready: ".library-page" },
@@ -19,7 +20,8 @@ const viewports = [
   { name: "1440x900", width: 1440, height: 900, deviceScaleFactor: 1 },
   { name: "1920x1080", width: 1920, height: 1080, deviceScaleFactor: 1 },
   { name: "150pct-1280x720", width: 1280, height: 720, deviceScaleFactor: 1.5 },
-];
+  { name: "min-1120x720", width: 1120, height: 720, deviceScaleFactor: 1 },
+].filter((viewport) => !requested || viewport.name === requested);
 
 await fs.mkdir(outputRoot, { recursive: true });
 const browser = await chromium.launch({

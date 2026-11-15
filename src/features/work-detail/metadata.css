@@ -61,10 +61,21 @@
   padding: 6px 8px;
   border: 1px solid var(--color-line);
   border-radius: 9px;
-  background: var(--color-bg-deep);
-  color: var(--color-text-muted);
+  background: var(--color-surface);
+  color: var(--color-text);
   font: inherit;
   font-size: 11px;
+}
+
+.metadata-searchbar {
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.metadata-results,
+.metadata-preview,
+.metadata-ledger {
+  background: transparent;
 }
 
 .metadata-search-hint {
@@ -127,15 +138,15 @@
 }
 
 .metadata-notice--error {
-  border: 1px solid rgba(217, 75, 61, 0.35);
-  background: rgba(217, 75, 61, 0.08);
-  color: #f0b7ad;
+  border: 1px solid rgba(165, 69, 79, 0.24);
+  background: rgba(165, 69, 79, 0.07);
+  color: var(--color-danger);
 }
 
 .metadata-notice--warning {
-  border: 1px solid rgba(217, 164, 65, 0.3);
-  background: rgba(217, 164, 65, 0.07);
-  color: #e6c786;
+  border: 1px solid rgba(132, 96, 45, 0.24);
+  background: var(--color-data-soft);
+  color: var(--color-data);
 }
 
 .metadata-workbench {
@@ -619,9 +630,9 @@
 .metadata-related {
   display: grid;
   gap: 4px;
-  padding: 8px 9px;
-  border-left: 2px solid var(--color-data);
-  border-radius: 8px;
+  padding: 9px 10px;
+  border: 1px solid rgba(132, 96, 45, 0.16);
+  border-radius: 6px;
   background: var(--color-data-soft);
 }
 

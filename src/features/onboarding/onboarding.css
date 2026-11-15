@@ -359,7 +359,7 @@
 }
 
 .onboarding-error {
-  color: #f0a0a0;
+  color: var(--color-danger);
 }
 
 .onboarding-error > div {
@@ -1351,6 +1351,24 @@
 
   .onboarding-welcome__card {
     max-width: 520px;
+  }
+}
+
+@media (max-width: 1350px) {
+  .onboarding-welcome h1 {
+    font-size: 48px;
+    text-wrap: balance;
+  }
+}
+
+@media (max-width: 1180px) {
+  .onboarding-welcome {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .onboarding-welcome__card {
+    width: min(560px, 100%);
   }
 }
 
