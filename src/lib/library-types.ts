@@ -123,7 +123,19 @@ export interface AppInfo {
   dataDir: string;
   dbPath: string;
   libraryCount: number;
+  exclusionCount: number;
   version: string;
+}
+
+export interface ScanExclusion {
+  id: number;
+  exeKey: string;
+  exePath: string;
+  dirKey: string;
+  workingDir: string;
+  rootPath: string;
+  reason: string;
+  createdAt: string;
 }
 
 export interface ImportCandidateInput {

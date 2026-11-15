@@ -52,15 +52,17 @@
 
 ## C2 本轮产出
 
-- 数据层：`src-tauri/migrations/20261115000100_initial.sql`、`src-tauri/src/db.rs`；SQLite WAL、外键、迁移、FTS5 trigram、works/releases/local_copies/user_entries/scan_roots/settings 和索引。
+- 数据层：`src-tauri/migrations/20261115000100_initial.sql`、`20261115000200_scan_exclusions.sql`、`src-tauri/src/db.rs`；SQLite WAL、外键、迁移、FTS5 trigram、works/releases/local_copies/user_entries/scan_roots/scan_exclusions/settings 和索引。
 - 数据库默认 `%APPDATA%\MiyuManager\miyumanager.sqlite3`；开发/测试可用 `MIYU_DATA_DIR` 指向独立目录。
-- 扫描器：`src-tauri/src/scan.rs`；递归扫描、忽略规则、候选评分、每目录最多 3 个候选、进度事件、取消、中文/日文/空格/深层路径、按规范化 exe 路径去重、目录大小估算。
+- 扫描器：`src-tauri/src/scan.rs`；递归扫描、忽略规则、候选评分、每目录最多 5 个候选、进度事件、取消、中文/日文/空格/深层路径、按规范化 exe 路径去重、目录大小估算。
+- 汉化/语言版本：识别 `_zh`、`_chs`、`_cht`、`_cn`、`_sc`、`_tc`、`_jp`、`_ja`、`_en`、`_patch` 等后缀，作为同一主程序的候选并适当加分，用户可在确认页选择。
+- 扫描排除：从库中移除作品时写入 `scan_exclusions`；普通扫描按 exe 和/或工作目录跳过，游戏库“手动导入”可强制包含并清除排除。Settings 可查看和恢复单个排除项。
 - IPC：`src-tauri/src/commands.rs`；library_query/get、set_status/set_favorite、remove_work、roots list/remove、scan_start/cancel、import_candidates、app_info。
 - UI：`src/features/library/**`；原生目录选择、扫描进度、候选确认、可编辑显示名、选择/取消选择、导入；游戏库搜索、状态筛选、排序、封面/列表、右键状态/收藏/移除、虚拟列表与滚动加载、空/错误/加载状态。
 - 详情与首页：真实扫描作品可进入最小详情页；Home 使用真实库数据，空库显示首次导入引导；Settings 显示真实扫描根目录、SQLite 路径和版本。
 - 去重：重新扫描把已入库候选标为“已在库中”，导入同一 exe 更新已有记录；移除只删管理记录，不删除游戏文件。
 - 预览：浏览器 `pnpm dev` 使用 mock 数据；Tauri 窗口使用真实 SQLite。
-- 性能与分包：Library/Detail/Stats/Settings/Big Screen 已 lazy split；主包约 376 KB（gzip 114.8 KB）。
+- 性能与分包：Library/Detail/Stats/Settings/Big Screen 已 lazy split；主包约 377 KB（gzip 115.1 KB）。
 
 ### C2 已知边界
 
@@ -69,6 +71,9 @@
 - `play_sessions` 尚未建表；统计页仍是 C1 视觉占位，C6 接入真实会话。
 - `install_status` 当前只写 installed；缺失路径检测未实现。
 - 5,000 条数据的 Rust 查询与 Tauri 首屏/滚动加载已验证；未做完整 5,000 条连续滚到手底的性能基准。
+- 语言/汉化后缀是启发式；标题本身以 `_zh`、`_sc` 等结尾的 exe 也可能被标记为语言版本，确认页可以取消。
+- 排除按 exe 路径和工作目录同时生效；同一目录下的多个 exe 会被视为同一游戏，恢复时一起恢复。
+- 扫描排除与手动导入已通过 Rust 测试和浏览器预览验证；尚未在 Tauri 实机窗口完整走一遍“移除→重扫→手动导入”。
 
 ## C1 视觉基线（已完成）
 
@@ -98,14 +103,17 @@
 ### C2
 
 - `pnpm typecheck`、`pnpm lint`、`pnpm test`（3 个前端测试）、`pnpm build`。
-- `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（6 个 Rust 测试）。
+- `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（8 个 Rust 测试）。
+- 汉化/语言版本测试：`game_zh.exe`、`game_CHS.exe` 与原版一起成为候选，并带“语言/汉化版本”提示和加分。
+- 扫描排除测试：移出作品写入排除表；默认扫描跳过，`include_excluded` 手动扫描重新包含；再次导入会清除排除。
+- 浏览器预览验证：移除一部后游戏库 10→9，Settings 显示 1 个扫描排除，手动导入弹窗带“手动导入”标记。
 - 扫描测试：100 个 fixture 游戏、中文/日文标题、空格路径、深层目录、忽略 `_CommonRedist`/`vcredist`/辅助 exe、取消标志。
 - 查询测试：5,000 条作品的分页查询、状态计数和 FTS5/模糊搜索；搜索结果与状态筛选均通过。
 - Tauri 实际窗口（`MIYU_DATA_DIR=tmp/c2-appdata-1`）：系统目录选择器选择夹具目录，扫描到 10 个候选/12 个目录；确认导入 10 部；重新扫描显示 10 个“已在库中”、导入按钮禁用；右键标记“在玩”后计数更新；关闭并重启后仍有 10 部作品、1 个扫描目录和 1 部在玩。
 - Tauri 实际窗口（`MIYU_DATA_DIR=tmp/c2-appdata-5000`）：5,000 部作品、5 个状态各 1,000 部；首屏只渲染 120 条，拉动滚动条后加载到 240 条，未崩溃。
-- 截图证据：`outputs/app/c2/00-scan-progress*.png`、`01-scan-review*.png`、`02-library-after-import*.png`（1440×900 与 1280×720）；弹窗在视口内，候选列表在弹窗内部滚动，无控制台错误。
+- 截图证据：`outputs/app/c2/00-scan-progress*.png`、`01-scan-review*.png`、`02-library-after-import*.png`、`03-manual-import*.png`（1440×900 与 1280×720）；弹窗在视口内，候选列表在弹窗内部滚动，无控制台错误。
 - 主应用截图已重新生成到 `outputs/app/1440x900/`、`1920x1080/`、`150pct-1280x720/` 和 `4k/`；Library 页无横向溢出。
-- 主包 376.24 KB（gzip 114.81 KB），Library/Detail/Stats/Settings/Big Screen 已按路由拆分。
+- 主包 377.25 KB（gzip 115.09 KB），Library/Detail/Stats/Settings/Big Screen 已按路由拆分。
 
 ### C1 视觉基线
 

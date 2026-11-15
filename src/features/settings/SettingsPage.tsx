@@ -16,9 +16,14 @@ import { Button } from "../../design-system/components/Button";
 import { Tag } from "../../design-system/components/Tag";
 import { useAppearance } from "../../app/useAppearance";
 import { formatRelativeDate } from "../../lib/format";
-import { removeLibraryRoot } from "../../lib/library-api";
+import { removeLibraryRoot, removeScanExclusion } from "../../lib/library-api";
 import { cn } from "../../lib/cn";
-import { useAppInfo, useInvalidateLibrary, useLibraryRoots } from "../library/useLibrary";
+import {
+  useAppInfo,
+  useInvalidateLibrary,
+  useLibraryRoots,
+  useScanExclusions,
+} from "../library/useLibrary";
 import "./settings.css";
 
 const settingsSections = [
@@ -43,6 +48,7 @@ export function SettingsPage() {
   const invalidate = useInvalidateLibrary();
   const roots = useLibraryRoots();
   const appInfo = useAppInfo();
+  const exclusions = useScanExclusions();
   const density = useAppearance((state) => state.density);
   const setDensity = useAppearance((state) => state.setDensity);
   const reduceMotion = useAppearance((state) => state.reduceMotion);
@@ -62,6 +68,16 @@ export function SettingsPage() {
       await removeLibraryRoot(rootId);
       invalidate();
       toast.success("已移除扫描目录");
+    } catch (error) {
+      toast.error(String(error));
+    }
+  };
+
+  const restoreExclusion = async (exeKey: string) => {
+    try {
+      await removeScanExclusion(exeKey);
+      invalidate();
+      toast.success("已恢复扫描；下次重新扫描时可以再次发现它");
     } catch (error) {
       toast.error(String(error));
     }
@@ -212,6 +228,38 @@ export function SettingsPage() {
                 </div>
               ))
             )}
+            <div className="settings-row">
+              <div>
+                <b>扫描排除</b>
+                <span>
+                  {exclusions.data?.length ?? 0}
+                  个已从库中移除的游戏；默认扫描跳过，手动导入可重新加入。
+                </span>
+              </div>
+              <Tag tone="muted">{exclusions.data?.length ?? 0} 个</Tag>
+            </div>
+            {exclusions.data?.slice(0, 5).map((entry) => (
+              <div className="settings-row" key={entry.exeKey}>
+                <div>
+                  <b className="settings-path" title={entry.exePath}>
+                    {entry.exePath}
+                  </b>
+                  <span>
+                    {entry.reason === "removed_from_library" ? "已从库中移除" : entry.reason}
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void restoreExclusion(entry.exeKey)}
+                >
+                  恢复扫描
+                </Button>
+              </div>
+            ))}
+            {exclusions.data && exclusions.data.length > 5 ? (
+              <p className="settings-hint">还有 {exclusions.data.length - 5} 个排除项未展开。</p>
+            ) : null}
             <div className="settings-row">
               <div>
                 <b>忽略规则</b>

@@ -132,7 +132,9 @@ export function ScanImportDialog({
 
   const title =
     state.status === "scanning"
-      ? "正在扫描目录"
+      ? state.manual
+        ? "正在扫描目录（手动导入）"
+        : "正在扫描目录"
       : state.status === "error"
         ? "扫描没有完成"
         : state.cancelled
@@ -250,6 +252,7 @@ export function ScanImportDialog({
                   <span>个目录</span>
                 </div>
                 <div className="scan-summary__tags">
+                  {state.manual ? <Tag tone="data">手动导入</Tag> : null}
                   {state.cancelled ? <Tag tone="muted">已取消 · 部分结果</Tag> : null}
                   {state.stats?.truncated ? <Tag tone="accent">目录过多 · 提前结束</Tag> : null}
                   {state.candidates.some((candidate) => candidate.alreadyImported) ? (
@@ -388,7 +391,9 @@ export function ScanImportDialog({
         <footer className="scan-dialog__foot">
           <p>
             {state.status === "review" && state.candidates.length > 0
-              ? "导入只会写入本地数据库和扫描路径，不会改动游戏目录。"
+              ? state.manual
+                ? "手动导入包含已排除的游戏；确认导入后会清除对应扫描排除。"
+                : "导入只会写入本地数据库和扫描路径，不会改动游戏目录。"
               : state.status === "scanning"
                 ? "可以取消扫描，已发现的候选不会自动入库。"
                 : "扫描和导入都在本机完成。"}

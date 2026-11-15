@@ -1,5 +1,5 @@
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -74,6 +74,52 @@ const COMMON_GAME_STEMS: &[&str] = &[
     "adv",
 ];
 
+const PATCH_SUFFIXES: &[(&str, &str)] = &[
+    ("_zh-cn", "简中"),
+    ("_zh_cn", "简中"),
+    ("_zh-tw", "繁中"),
+    ("_zh_tw", "繁中"),
+    ("_zh-hans", "简中"),
+    ("_zh_hans", "简中"),
+    ("_zh-hant", "繁中"),
+    ("_zh_hant", "繁中"),
+    ("_zhcn", "简中"),
+    ("_zhtw", "繁中"),
+    ("_chinese", "中文"),
+    ("_japanese", "日文"),
+    ("_english", "英文"),
+    ("_hanhua", "汉化"),
+    ("_汉化补丁", "汉化补丁"),
+    ("_汉化版", "汉化"),
+    ("_中文版", "中文"),
+    ("_简体中文", "简中"),
+    ("_繁体中文", "繁中"),
+    ("_patched", "补丁"),
+    ("_patch", "补丁"),
+    ("_chs", "简中"),
+    ("_cht", "繁中"),
+    ("_sc", "简中"),
+    ("_tc", "繁中"),
+    ("_zh", "中文"),
+    ("_cn", "中文"),
+    ("_jpn", "日文"),
+    ("_jp", "日文"),
+    ("_ja", "日文"),
+    ("_eng", "英文"),
+    ("_en", "英文"),
+    ("_汉化", "汉化"),
+    ("_中文", "中文"),
+    ("-zh-cn", "简中"),
+    ("-zh-tw", "繁中"),
+    ("-chs", "简中"),
+    ("-cht", "繁中"),
+    ("-zh", "中文"),
+    ("-cn", "中文"),
+    (".zh", "中文"),
+    (".chs", "简中"),
+    (".cht", "繁中"),
+];
+
 const STRONG_ASSETS: &[&str] = &[
     "xp3", "arc", "pak", "rpa", "pck", "gpk", "bgi", "cpk", "ks", "scn", "dat",
 ];
@@ -125,6 +171,20 @@ pub struct ScanOutcome {
     pub skipped_dirs: u64,
     pub truncated: bool,
     pub duration_ms: u64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ScanExclusions {
+    pub exe_keys: HashSet<String>,
+    pub dir_keys: HashSet<String>,
+}
+
+impl ScanExclusions {
+    pub fn is_excluded(&self, exe_path: &Path, working_dir: &Path) -> bool {
+        let exe_key = path_string(exe_path).to_lowercase();
+        let dir_key = path_string(working_dir).to_lowercase();
+        self.exe_keys.contains(&exe_key) || self.dir_keys.contains(&dir_key)
+    }
 }
 
 struct ActiveScan {
@@ -192,6 +252,8 @@ pub fn scan_root(
     root: &Path,
     job_id: &str,
     cancel: Arc<AtomicBool>,
+    exclusions: &ScanExclusions,
+    include_excluded: bool,
     mut on_progress: impl FnMut(ScanProgress),
 ) -> Result<ScanOutcome> {
     let started = Instant::now();
@@ -268,6 +330,9 @@ pub fn scan_root(
             continue;
         };
         let parent = parent.to_path_buf();
+        if !include_excluded && exclusions.is_excluded(path, &parent) {
+            continue;
+        }
         let facts = facts_cache
             .entry(parent.clone())
             .or_insert_with(|| read_dir_facts(&parent));
@@ -279,7 +344,7 @@ pub fn scan_root(
         let list = candidates_by_dir.entry(parent).or_default();
         list.push((score, reasons, path.to_path_buf()));
         list.sort_by_key(|left| std::cmp::Reverse(left.0));
-        list.truncate(3);
+        list.truncate(5);
 
         if last_progress.elapsed() >= Duration::from_millis(90) {
             let found = candidates_by_dir.values().map(Vec::len).sum();
@@ -431,7 +496,8 @@ fn score_candidate(path: &Path, root: &Path, facts: &DirFacts) -> (i32, Vec<Stri
         .and_then(|value| value.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    let normalized_stem = normalize_compare(&stem);
+    let (base_stem, patch_labels) = strip_patch_suffixes(&stem);
+    let normalized_stem = normalize_compare(base_stem);
     let normalized_folder = normalize_compare(&folder);
     let file_size = fs::metadata(path)
         .map(|metadata| metadata.len())
@@ -444,9 +510,13 @@ fn score_candidate(path: &Path, root: &Path, facts: &DirFacts) -> (i32, Vec<Stri
     let mut score = 20i32;
     let mut reasons: Vec<String> = Vec::new();
 
-    if COMMON_GAME_STEMS.contains(&stem.as_str()) {
+    if COMMON_GAME_STEMS.contains(&base_stem) {
         score += 34;
         reasons.push("常见主程序名".to_string());
+    }
+    if !patch_labels.is_empty() {
+        score += 8;
+        reasons.push(format!("语言/汉化版本（{}）", patch_labels.join("+")));
     }
     if normalized_stem.len() >= 4
         && (normalized_folder.contains(&normalized_stem)
@@ -490,7 +560,7 @@ fn score_candidate(path: &Path, root: &Path, facts: &DirFacts) -> (i32, Vec<Stri
         score += 2;
     }
     if matches!(
-        stem.as_str(),
+        base_stem,
         "launcher"
             | "config"
             | "settings"
@@ -513,6 +583,30 @@ fn score_candidate(path: &Path, root: &Path, facts: &DirFacts) -> (i32, Vec<Stri
     }
 
     (score.clamp(0, 100), reasons)
+}
+
+fn strip_patch_suffixes(stem: &str) -> (&str, Vec<&'static str>) {
+    let mut base = stem;
+    let mut labels: Vec<&'static str> = Vec::new();
+
+    loop {
+        let mut matched = false;
+        for (suffix, label) in PATCH_SUFFIXES {
+            if base.len() > suffix.len() && base.ends_with(suffix) {
+                base = &base[..base.len() - suffix.len()];
+                if !labels.contains(label) {
+                    labels.push(label);
+                }
+                matched = true;
+                break;
+            }
+        }
+        if !matched {
+            break;
+        }
+    }
+
+    (base, labels)
 }
 
 fn normalize_compare(value: &str) -> String {
@@ -693,6 +787,8 @@ mod tests {
             &root,
             "test",
             Arc::new(AtomicBool::new(false)),
+            &ScanExclusions::default(),
+            false,
             |_progress| {},
         )
         .expect("scan");
@@ -721,7 +817,15 @@ mod tests {
         write_exe(&root.join("Game").join("game.exe"), 128_000);
         let cancel = Arc::new(AtomicBool::new(true));
 
-        let outcome = scan_root(&root, "test", cancel, |_progress| {}).expect("scan");
+        let outcome = scan_root(
+            &root,
+            "test",
+            cancel,
+            &ScanExclusions::default(),
+            false,
+            |_progress| {},
+        )
+        .expect("scan");
         assert!(outcome.cancelled);
         assert!(outcome.candidates.is_empty());
     }
@@ -740,6 +844,8 @@ mod tests {
             &root,
             "test",
             Arc::new(AtomicBool::new(false)),
+            &ScanExclusions::default(),
+            false,
             |_progress| {},
         )
         .expect("scan");
@@ -764,6 +870,8 @@ mod tests {
             &root,
             "test",
             Arc::new(AtomicBool::new(false)),
+            &ScanExclusions::default(),
+            false,
             |_progress| {},
         )
         .expect("scan");
@@ -772,5 +880,97 @@ mod tests {
         assert_eq!(candidate.suggested_title, "Game With Spaces");
         assert!(candidate.exe_path.contains("Game With Spaces"));
         assert!(candidate.working_dir.contains("层一"));
+    }
+
+    #[test]
+    fn recognizes_chinese_patch_executables() {
+        let temp = TempDir::new().expect("temp");
+        let root = temp.path().join("library");
+        let game = root.join("月影工房");
+        write_exe(&game.join("game.exe"), 220_000);
+        write_exe(&game.join("game_zh.exe"), 220_000);
+        write_exe(&game.join("game_CHS.exe"), 220_000);
+        write_exe(&game.join("game_cht.exe"), 220_000);
+        fs::write(game.join("data.xp3"), vec![0u8; 512]).expect("asset");
+
+        let outcome = scan_root(
+            &root,
+            "test",
+            Arc::new(AtomicBool::new(false)),
+            &ScanExclusions::default(),
+            false,
+            |_progress| {},
+        )
+        .expect("scan");
+
+        let reasons = outcome
+            .candidates
+            .iter()
+            .map(|candidate| candidate.reason.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(outcome.candidates.len(), 4);
+        assert!(
+            reasons
+                .iter()
+                .any(|reason| reason.contains("语言/汉化版本"))
+        );
+        assert!(
+            outcome
+                .candidates
+                .iter()
+                .any(|candidate| candidate.exe_path.ends_with("game_zh.exe"))
+        );
+        assert!(
+            outcome
+                .candidates
+                .iter()
+                .any(|candidate| candidate.exe_path.ends_with("game_CHS.exe"))
+        );
+        assert!(
+            outcome
+                .candidates
+                .iter()
+                .any(|candidate| candidate.exe_path.ends_with("game_cht.exe"))
+        );
+    }
+
+    #[test]
+    fn excludes_removed_directories_unless_manual_import() {
+        let temp = TempDir::new().expect("temp");
+        let root = temp.path().join("library");
+        let removed = root.join("Removed Game");
+        let kept = root.join("Kept Game");
+        write_exe(&removed.join("game.exe"), 180_000);
+        fs::write(removed.join("data.xp3"), vec![0u8; 256]).expect("removed asset");
+        write_exe(&kept.join("game.exe"), 180_000);
+        fs::write(kept.join("data.xp3"), vec![0u8; 256]).expect("kept asset");
+
+        let mut exclusions = ScanExclusions::default();
+        exclusions
+            .dir_keys
+            .insert(path_string(&removed).to_lowercase());
+
+        let normal = scan_root(
+            &root,
+            "test",
+            Arc::new(AtomicBool::new(false)),
+            &exclusions,
+            false,
+            |_progress| {},
+        )
+        .expect("normal scan");
+        assert_eq!(normal.candidates.len(), 1);
+        assert_eq!(normal.candidates[0].suggested_title, "Kept Game");
+
+        let manual = scan_root(
+            &root,
+            "test",
+            Arc::new(AtomicBool::new(false)),
+            &exclusions,
+            true,
+            |_progress| {},
+        )
+        .expect("manual scan");
+        assert_eq!(manual.candidates.len(), 2);
     }
 }

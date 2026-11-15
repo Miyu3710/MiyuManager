@@ -55,6 +55,14 @@ await page.screenshot({
   path: path.join(outputRoot, "02-library-after-import" + suffix + ".png"),
 });
 
+await page.getByRole("button", { name: "手动导入", exact: true }).click();
+await page.waitForSelector(".scan-candidate", { timeout: 5000 });
+await page.screenshot({
+  path: path.join(outputRoot, "03-manual-import" + suffix + ".png"),
+});
+const manualDialogText = await page.locator(".scan-dialog").innerText();
+await page.locator(".scan-dialog__close").click();
+
 const libraryMetrics = await page.evaluate(() => {
   const scroller = document.querySelector(".library-scroll");
   const footer = document.querySelector(".library-foot");
@@ -71,5 +79,11 @@ const libraryMetrics = await page.evaluate(() => {
   };
 });
 
-console.log(JSON.stringify({ dialogMetrics, libraryMetrics, errors }, null, 2));
+console.log(
+  JSON.stringify(
+    { dialogMetrics, libraryMetrics, manualTag: manualDialogText.includes("手动导入"), errors },
+    null,
+    2,
+  ),
+);
 await browser.close();

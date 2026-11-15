@@ -46,6 +46,8 @@ pub fn run() {
             commands::library_scan_start,
             commands::library_scan_cancel,
             commands::library_import_candidates,
+            commands::library_scan_exclusions,
+            commands::library_remove_scan_exclusion,
         ])
         .setup(|app| {
             let state = tauri::async_runtime::block_on(commands::create_app_state(app.handle()))?;

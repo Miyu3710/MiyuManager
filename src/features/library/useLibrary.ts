@@ -5,7 +5,13 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useCallback } from "react";
-import { getAppInfo, getLibraryItem, queryLibrary, listLibraryRoots } from "../../lib/library-api";
+import {
+  getAppInfo,
+  getLibraryItem,
+  queryLibrary,
+  listLibraryRoots,
+  listScanExclusions,
+} from "../../lib/library-api";
 import type { LibraryQuery } from "../../lib/library-types";
 
 export function useLibraryInfinite(query: Omit<LibraryQuery, "page" | "pageSize">) {
@@ -83,6 +89,14 @@ export function useAppInfo() {
   });
 }
 
+export function useScanExclusions() {
+  return useQuery({
+    queryKey: ["scan-exclusions"],
+    queryFn: listScanExclusions,
+    staleTime: 3_000,
+  });
+}
+
 export function useInvalidateLibrary() {
   const queryClient = useQueryClient();
   return useCallback(() => {
@@ -91,5 +105,6 @@ export function useInvalidateLibrary() {
     void queryClient.invalidateQueries({ queryKey: ["library-summary"] });
     void queryClient.invalidateQueries({ queryKey: ["library-roots"] });
     void queryClient.invalidateQueries({ queryKey: ["app-info"] });
+    void queryClient.invalidateQueries({ queryKey: ["scan-exclusions"] });
   }, [queryClient]);
 }

@@ -26,6 +26,7 @@ export type ScanView =
       rootPath: string;
       jobId: string | null;
       progress: ScanProgress | null;
+      manual: boolean;
       cancelling?: boolean;
     }
   | {
@@ -34,8 +35,9 @@ export type ScanView =
       candidates: ScanCandidate[];
       cancelled: boolean;
       stats: ScanComplete | null;
+      manual: boolean;
     }
-  | { status: "error"; rootPath: string; message: string };
+  | { status: "error"; rootPath: string; message: string; manual?: boolean };
 
 function describeError(error: unknown): string {
   if (typeof error === "string") {
@@ -103,13 +105,14 @@ export function useLibraryScan() {
         return;
       }
       activeJob.current = null;
-      setState({
+      setState((previous) => ({
         status: "review",
         rootPath: complete.rootPath,
         candidates: complete.candidates,
         cancelled: complete.cancelled,
         stats: complete,
-      });
+        manual: previous.status === "scanning" ? previous.manual : false,
+      }));
     });
 
     register<ScanErrorEvent>("library-scan-error", (error) => {
@@ -133,7 +136,7 @@ export function useLibraryScan() {
     };
   }, []);
 
-  const start = useCallback(async (rootPath: string) => {
+  const start = useCallback(async (rootPath: string, includeExcluded = false) => {
     const token = ++runToken.current;
     activeJob.current = null;
     acceptingEvents.current = true;
@@ -142,6 +145,7 @@ export function useLibraryScan() {
       rootPath,
       jobId: null,
       progress: null,
+      manual: includeExcluded,
       cancelling: false,
     });
 
@@ -172,12 +176,13 @@ export function useLibraryScan() {
       if (token !== runToken.current) {
         return;
       }
-      const candidates = previewScanCandidates(rootPath);
+      const candidates = previewScanCandidates(rootPath, includeExcluded);
       setState({
         status: "review",
         rootPath,
         candidates,
         cancelled: false,
+        manual: includeExcluded,
         stats: {
           jobId: "preview",
           rootPath,
@@ -193,7 +198,7 @@ export function useLibraryScan() {
     }
 
     try {
-      const result = await startLibraryScan(rootPath);
+      const result = await startLibraryScan(rootPath, includeExcluded);
       if (token !== runToken.current) {
         return;
       }
@@ -207,24 +212,29 @@ export function useLibraryScan() {
         status: "error",
         rootPath,
         message: describeError(error),
+        manual: includeExcluded,
       });
     }
   }, []);
 
-  const pickAndStart = useCallback(async () => {
-    try {
-      const rootPath = await pickLibraryRoot();
-      if (rootPath) {
-        await start(rootPath);
+  const pickAndStart = useCallback(
+    async (includeExcluded = false) => {
+      try {
+        const rootPath = await pickLibraryRoot(includeExcluded);
+        if (rootPath) {
+          await start(rootPath, includeExcluded);
+        }
+      } catch (error) {
+        setState({
+          status: "error",
+          rootPath: "",
+          message: describeError(error),
+          manual: includeExcluded,
+        });
       }
-    } catch (error) {
-      setState({
-        status: "error",
-        rootPath: "",
-        message: describeError(error),
-      });
-    }
-  }, [start]);
+    },
+    [start],
+  );
 
   const cancel = useCallback(async () => {
     if (!isTauri()) {
@@ -237,9 +247,10 @@ export function useLibraryScan() {
         return {
           status: "review",
           rootPath: previous.rootPath,
-          candidates: previewScanCandidates(previous.rootPath).slice(0, 4),
+          candidates: previewScanCandidates(previous.rootPath, previous.manual).slice(0, 4),
           cancelled: true,
           stats: null,
+          manual: previous.manual,
         };
       });
       return;
@@ -301,7 +312,7 @@ export function useLibraryScan() {
 
   const retry = useCallback(async () => {
     if (state.status === "error" && state.rootPath) {
-      await start(state.rootPath);
+      await start(state.rootPath, state.manual ?? false);
     }
   }, [start, state]);
 

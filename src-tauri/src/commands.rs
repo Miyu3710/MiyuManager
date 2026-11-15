@@ -9,7 +9,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::db::{
     self, AppInfo, ImportCandidateInput, ImportResult, LibraryItemDetail, LibraryPage,
-    LibraryQuery, ScanRoot,
+    LibraryQuery, ScanExclusionRecord, ScanRoot,
 };
 use crate::scan::{self, ScanCandidate, ScanCoordinator};
 
@@ -139,10 +139,15 @@ pub async fn app_info(state: State<'_, AppState>) -> Result<AppInfo, String> {
     let library_count = db::library_count(&state.pool)
         .await
         .map_err(|error| error.to_string())?;
+    let exclusion_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scan_exclusions")
+        .fetch_one(&state.pool)
+        .await
+        .map_err(|error| error.to_string())?;
     Ok(AppInfo {
         data_dir: state.data_dir.to_string_lossy().to_string(),
         db_path: state.db_path.to_string_lossy().to_string(),
         library_count,
+        exclusion_count,
         version: env!("CARGO_PKG_VERSION").to_string(),
     })
 }
@@ -152,6 +157,7 @@ pub async fn library_scan_start(
     app: AppHandle,
     state: State<'_, AppState>,
     root_path: String,
+    include_excluded: Option<bool>,
 ) -> Result<ScanStart, String> {
     let canonical =
         db::canonical_directory(Path::new(&root_path)).map_err(|error| error.to_string())?;
@@ -163,6 +169,14 @@ pub async fn library_scan_start(
     let existing = db::existing_exe_keys(&state.pool)
         .await
         .map_err(|error| error.to_string())?;
+    let exclusions = db::load_scan_exclusions(&state.pool)
+        .await
+        .map_err(|error| error.to_string())?;
+    let exclusions = scan::ScanExclusions {
+        exe_keys: exclusions.exe_keys,
+        dir_keys: exclusions.dir_keys,
+    };
+    let manual_import = include_excluded.unwrap_or(false);
 
     let app_handle = app.clone();
     let pool = state.pool.clone();
@@ -183,6 +197,8 @@ pub async fn library_scan_start(
                 &root_for_task,
                 &progress_job_id,
                 scan_cancel,
+                &exclusions,
+                manual_import,
                 move |progress| {
                     let _ = progress_app.emit("library-scan-progress", progress);
                 },
@@ -252,6 +268,25 @@ pub async fn library_import_candidates(
     candidates: Vec<ImportCandidateInput>,
 ) -> Result<ImportResult, String> {
     db::import_candidates(&state.pool, candidates)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn library_scan_exclusions(
+    state: State<'_, AppState>,
+) -> Result<Vec<ScanExclusionRecord>, String> {
+    db::list_scan_exclusions(&state.pool)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn library_remove_scan_exclusion(
+    state: State<'_, AppState>,
+    exe_key: String,
+) -> Result<(), String> {
+    db::remove_scan_exclusion(&state.pool, &exe_key)
         .await
         .map_err(|error| error.to_string())
 }

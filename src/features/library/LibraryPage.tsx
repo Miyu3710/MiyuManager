@@ -2,6 +2,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   Check,
   ChevronDown,
+  FolderInput,
   FolderPlus,
   Grid2X2,
   List,
@@ -423,7 +424,7 @@ export function LibraryPage() {
   const removeWork = async (item: LibraryItem) => {
     setContextMenu(null);
     const confirmed = window.confirm(
-      "从库中移除“" + item.title + "”？只会删除管理记录，不会删除游戏文件。",
+      "从库中移除“" + item.title + "”？只会删除管理记录，不会删除游戏文件；后续扫描会跳过它。",
     );
     if (!confirmed) {
       return;
@@ -431,7 +432,7 @@ export function LibraryPage() {
     try {
       await removeLibraryWork(item.workId);
       invalidate();
-      toast.success("已从库中移除");
+      toast.success("已从库中移除；后续扫描会跳过，需要重新加入时使用手动导入。");
     } catch (error) {
       toast.error(String(error));
     }
@@ -497,6 +498,15 @@ export function LibraryPage() {
           <Button variant="primary" size="sm" onClick={() => void pickAndStart()}>
             <FolderPlus size={14} strokeWidth={1.8} />
             添加目录
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            title="选择单个游戏目录，包含已排除的游戏"
+            onClick={() => void pickAndStart(true)}
+          >
+            <FolderInput size={14} strokeWidth={1.8} />
+            手动导入
           </Button>
         </div>
       </header>

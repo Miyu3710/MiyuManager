@@ -121,10 +121,30 @@ pub struct ScanRoot {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ScanExclusionRecord {
+    pub id: i64,
+    pub exe_key: String,
+    pub exe_path: String,
+    pub dir_key: String,
+    pub working_dir: String,
+    pub root_path: String,
+    pub reason: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ScanExclusionSets {
+    pub exe_keys: HashSet<String>,
+    pub dir_keys: HashSet<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppInfo {
     pub data_dir: String,
     pub db_path: String,
     pub library_count: i64,
+    pub exclusion_count: i64,
     pub version: String,
 }
 
@@ -597,13 +617,60 @@ pub async fn set_library_favorite(pool: &SqlitePool, work_id: i64, favorite: boo
 }
 
 pub async fn remove_library_work(pool: &SqlitePool, work_id: i64) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    let copies = sqlx::query(
+        "SELECT lc.exe_path, lc.exe_key, lc.working_dir, lc.root_path
+         FROM local_copies lc
+         JOIN releases r ON r.id = lc.release_id
+         WHERE r.work_id = ?",
+    )
+    .bind(work_id)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    if copies.is_empty() {
+        let exists: i64 = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM works WHERE id = ?)")
+            .bind(work_id)
+            .fetch_one(&mut *tx)
+            .await?;
+        if exists == 0 {
+            bail!("作品不存在");
+        }
+    }
+
+    for copy in copies {
+        let exe_path: String = copy.try_get("exe_path")?;
+        let exe_key: String = copy.try_get("exe_key")?;
+        let working_dir: String = copy.try_get("working_dir")?;
+        let root_path: String = copy.try_get("root_path")?;
+        let dir_key = working_dir.to_lowercase();
+        sqlx::query(
+            "INSERT INTO scan_exclusions (exe_key, exe_path, dir_key, working_dir, root_path, reason)
+             VALUES (?, ?, ?, ?, ?, 'removed_from_library')
+             ON CONFLICT(exe_key) DO UPDATE SET
+               exe_path = excluded.exe_path,
+               dir_key = excluded.dir_key,
+               working_dir = excluded.working_dir,
+               root_path = excluded.root_path,
+               reason = excluded.reason",
+        )
+        .bind(&exe_key)
+        .bind(&exe_path)
+        .bind(&dir_key)
+        .bind(&working_dir)
+        .bind(&root_path)
+        .execute(&mut *tx)
+        .await?;
+    }
+
     let result = sqlx::query("DELETE FROM works WHERE id = ?")
         .bind(work_id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
     if result.rows_affected() == 0 {
         bail!("作品不存在");
     }
+    tx.commit().await?;
     Ok(())
 }
 
@@ -626,6 +693,56 @@ pub async fn existing_exe_keys(pool: &SqlitePool) -> Result<HashSet<String>> {
         .fetch_all(pool)
         .await?;
     Ok(keys.into_iter().collect())
+}
+
+pub async fn list_scan_exclusions(pool: &SqlitePool) -> Result<Vec<ScanExclusionRecord>> {
+    let rows = sqlx::query(
+        "SELECT id, exe_key, exe_path, dir_key, working_dir, root_path, reason, created_at
+         FROM scan_exclusions ORDER BY created_at DESC, id DESC",
+    )
+    .fetch_all(pool)
+    .await?;
+
+    rows.iter().map(row_to_scan_exclusion).collect()
+}
+
+pub async fn load_scan_exclusions(pool: &SqlitePool) -> Result<ScanExclusionSets> {
+    let records = list_scan_exclusions(pool).await?;
+    let mut exclusions = ScanExclusionSets::default();
+    for record in records {
+        exclusions.exe_keys.insert(record.exe_key);
+        exclusions.dir_keys.insert(record.dir_key);
+    }
+    Ok(exclusions)
+}
+
+pub async fn remove_scan_exclusion(pool: &SqlitePool, exe_key: &str) -> Result<()> {
+    let dir_key: Option<String> =
+        sqlx::query_scalar("SELECT dir_key FROM scan_exclusions WHERE exe_key = ?")
+            .bind(exe_key)
+            .fetch_optional(pool)
+            .await?;
+    if let Some(dir_key) = dir_key {
+        sqlx::query("DELETE FROM scan_exclusions WHERE exe_key = ? OR dir_key = ?")
+            .bind(exe_key)
+            .bind(dir_key)
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
+fn row_to_scan_exclusion(row: &sqlx::sqlite::SqliteRow) -> Result<ScanExclusionRecord> {
+    Ok(ScanExclusionRecord {
+        id: row.try_get("id")?,
+        exe_key: row.try_get("exe_key")?,
+        exe_path: row.try_get("exe_path")?,
+        dir_key: row.try_get("dir_key")?,
+        working_dir: row.try_get("working_dir")?,
+        root_path: row.try_get("root_path")?,
+        reason: row.try_get("reason")?,
+        created_at: row.try_get("created_at")?,
+    })
 }
 
 pub async fn import_candidates(
@@ -749,6 +866,11 @@ pub async fn import_candidates(
             .bind(&candidate.exe_key)
             .execute(&mut *tx)
             .await?;
+            sqlx::query("DELETE FROM scan_exclusions WHERE exe_key = ? OR dir_key = ?")
+                .bind(&candidate.exe_key)
+                .bind(candidate.working_dir.to_lowercase())
+                .execute(&mut *tx)
+                .await?;
             result.updated += 1;
             continue;
         }
@@ -786,6 +908,11 @@ pub async fn import_candidates(
 
         sqlx::query("INSERT INTO user_entries (work_id, status) VALUES (?, 'unclassified')")
             .bind(work_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM scan_exclusions WHERE exe_key = ? OR dir_key = ?")
+            .bind(&candidate.exe_key)
+            .bind(candidate.working_dir.to_lowercase())
             .execute(&mut *tx)
             .await?;
         result.imported += 1;
@@ -884,7 +1011,7 @@ mod tests {
         assert_eq!(playing.total, 1);
         assert_eq!(playing.counts.playing, 1);
 
-        let second = import_candidates(&pool, vec![candidate])
+        let second = import_candidates(&pool, vec![candidate.clone()])
             .await
             .expect("reimport");
         assert_eq!(second.updated, 1);
@@ -905,6 +1032,23 @@ mod tests {
                 .unwrap()
                 .total,
             0
+        );
+        let exclusions = list_scan_exclusions(&pool).await.expect("exclusions");
+        assert_eq!(exclusions.len(), 1);
+        let loaded = load_scan_exclusions(&pool)
+            .await
+            .expect("loaded exclusions");
+        assert!(loaded.dir_keys.contains(&exclusions[0].dir_key));
+
+        let manual = import_candidates(&pool, vec![candidate])
+            .await
+            .expect("manual reimport");
+        assert_eq!(manual.imported, 1);
+        assert!(
+            list_scan_exclusions(&pool)
+                .await
+                .expect("cleared exclusions")
+                .is_empty()
         );
     }
 

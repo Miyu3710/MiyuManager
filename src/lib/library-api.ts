@@ -12,6 +12,7 @@ import type {
   LibraryQuery,
   LibraryStatus,
   ScanCandidate,
+  ScanExclusion,
   ScanRoot,
   ScanStart,
 } from "./library-types";
@@ -21,6 +22,7 @@ type PreviewLibraryItem = LibraryItem & { previewGame?: Game };
 
 const previewImported: PreviewLibraryItem[] = [];
 const previewRemoved = new Set<number>();
+const previewExclusions: ScanExclusion[] = [];
 const previewStatus = new Map<number, LibraryStatus>();
 const previewFavorite = new Map<number, boolean>();
 const previewRoots: ScanRoot[] = [
@@ -204,13 +206,26 @@ export async function setLibraryFavorite(workId: number, favorite: boolean): Pro
 
 export async function removeLibraryWork(workId: number): Promise<void> {
   if (!isTauri()) {
+    const item = previewItems().find((candidate) => candidate.workId === workId);
+    if (item && !previewExclusions.some((entry) => entry.exeKey === item.exePath.toLowerCase())) {
+      previewExclusions.push({
+        id: previewExclusions.length + 1,
+        exeKey: item.exePath.toLowerCase(),
+        exePath: item.exePath,
+        dirKey: item.workingDir.toLowerCase(),
+        workingDir: item.workingDir,
+        rootPath: item.rootPath,
+        reason: "removed_from_library",
+        createdAt: new Date().toISOString(),
+      });
+    }
     previewRemoved.add(workId);
     return;
   }
   await invoke("library_remove_work", { workId });
 }
 
-export async function pickLibraryRoot(): Promise<string | null> {
+export async function pickLibraryRoot(manualImport = false): Promise<string | null> {
   if (!isTauri()) {
     return previewRoots[0]?.path ?? "D:\\Games\\Preview";
   }
@@ -218,7 +233,7 @@ export async function pickLibraryRoot(): Promise<string | null> {
   const selected = await open({
     directory: true,
     multiple: false,
-    title: "选择 Galgame / AVG 所在目录",
+    title: manualImport ? "选择要手动导入的游戏目录" : "选择 Galgame / AVG 所在目录",
   });
   if (typeof selected === "string") {
     return selected;
@@ -229,7 +244,10 @@ export async function pickLibraryRoot(): Promise<string | null> {
   return null;
 }
 
-export async function startLibraryScan(rootPath: string): Promise<ScanStart> {
+export async function startLibraryScan(
+  rootPath: string,
+  includeExcluded = false,
+): Promise<ScanStart> {
   if (!isTauri()) {
     if (!previewRoots.some((root) => root.path === rootPath)) {
       previewRoots.push({
@@ -246,7 +264,7 @@ export async function startLibraryScan(rootPath: string): Promise<ScanStart> {
       rootId: previewRoots.find((root) => root.path === rootPath)?.id ?? 1,
     };
   }
-  return invoke<ScanStart>("library_scan_start", { rootPath });
+  return invoke<ScanStart>("library_scan_start", { rootPath, includeExcluded });
 }
 
 export async function cancelLibraryScan(): Promise<boolean> {
@@ -256,8 +274,26 @@ export async function cancelLibraryScan(): Promise<boolean> {
   return invoke<boolean>("library_scan_cancel");
 }
 
-export function previewScanCandidates(rootPath: string): ScanCandidate[] {
-  return mockGames.slice(0, 8).map((game, index) => {
+export async function listScanExclusions(): Promise<ScanExclusion[]> {
+  if (!isTauri()) {
+    return [...previewExclusions];
+  }
+  return invoke<ScanExclusion[]>("library_scan_exclusions");
+}
+
+export async function removeScanExclusion(exeKey: string): Promise<void> {
+  if (!isTauri()) {
+    const index = previewExclusions.findIndex((entry) => entry.exeKey === exeKey);
+    if (index >= 0) {
+      previewExclusions.splice(index, 1);
+    }
+    return;
+  }
+  await invoke("library_remove_scan_exclusion", { exeKey });
+}
+
+export function previewScanCandidates(rootPath: string, includeExcluded = false): ScanCandidate[] {
+  const candidates = mockGames.slice(0, 8).map((game, index) => {
     const folder = game.originalTitle || game.title;
     const workingDir = rootPath + "\\" + folder;
     const exePath = workingDir + "\\game.exe";
@@ -277,6 +313,14 @@ export function previewScanCandidates(rootPath: string): ScanCandidate[] {
       alreadyImported: false,
     } satisfies ScanCandidate;
   });
+  return candidates.filter(
+    (candidate) =>
+      includeExcluded ||
+      !previewExclusions.some(
+        (entry) =>
+          entry.exeKey === candidate.exeKey || entry.dirKey === candidate.workingDir.toLowerCase(),
+      ),
+  );
 }
 
 export async function importLibraryCandidates(
@@ -284,6 +328,14 @@ export async function importLibraryCandidates(
 ): Promise<ImportResult> {
   if (!isTauri()) {
     for (const candidate of candidates) {
+      const exeKey = candidate.exePath.toLowerCase();
+      const dirKey = candidate.workingDir.toLowerCase();
+      for (let index = previewExclusions.length - 1; index >= 0; index -= 1) {
+        const entry = previewExclusions[index];
+        if (entry && (entry.exeKey === exeKey || entry.dirKey === dirKey)) {
+          previewExclusions.splice(index, 1);
+        }
+      }
       const workId = previewWorkId;
       previewWorkId += 1;
       previewImported.push({
@@ -326,6 +378,7 @@ export async function getAppInfo(): Promise<AppInfo> {
       dataDir: "浏览器预览",
       dbPath: "未连接 SQLite",
       libraryCount: previewItems().length,
+      exclusionCount: previewExclusions.length,
       version: "0.1.0-preview",
     };
   }
