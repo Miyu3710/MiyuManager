@@ -1,25 +1,47 @@
+import { listen } from "@tauri-apps/api/event";
+import { isTauri } from "@tauri-apps/api/core";
 import {
   ArrowLeft,
   ArrowUpRight,
   Check,
-  Clock3,
+  CheckCircle2,
   FolderOpen,
   HardDrive,
+  ImagePlus,
+  Images,
+  Loader2,
   Monitor,
+  Pencil,
   Play,
-  ShieldCheck,
+  StopCircle,
+  XCircle,
 } from "lucide-react";
-import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "../../design-system/components/Button";
 import { CoverArt } from "../../design-system/components/CoverArt";
 import { EmptyState } from "../../design-system/components/EmptyState";
 import { Tag } from "../../design-system/components/Tag";
 import { statusLabels } from "../../lib/game-data";
-import { libraryItemToGame } from "../../lib/library-api";
+import {
+  assetUrl,
+  clearWorkCover,
+  discoverWorkCovers,
+  getLaunchState,
+  libraryItemToGame,
+  pickImageFile,
+  setWorkCover,
+  startWork,
+  stopWork,
+  validateWork,
+} from "../../lib/library-api";
+import type { CoverCandidate, LaunchSnapshot, ValidationReport } from "../../lib/library-types";
+import { formatDate, formatPlaytime, formatRelativeDate } from "../../lib/format";
 import { cn } from "../../lib/cn";
-import { useLibraryDetail } from "../library/useLibrary";
+import { useInvalidateLibrary, useLibraryDetail, useMonitors } from "../library/useLibrary";
+import { LaunchConfigPanel } from "./LaunchConfigPanel";
+import { WorkEditDialog } from "./WorkEditDialog";
 import "./work-detail.css";
 
 type Tab = "overview" | "sessions" | "launch" | "sources";
@@ -31,10 +53,75 @@ const tabs: { id: Tab; label: string }[] = [
   { id: "sources", label: "来源与字段" },
 ];
 
+function tabFrom(value: string | null): Tab {
+  return tabs.some((tab) => tab.id === value) ? (value as Tab) : "overview";
+}
+
+function launchLabel(snapshot: LaunchSnapshot | null): string {
+  if (!snapshot) {
+    return "尚未运行";
+  }
+  if (snapshot.state === "running") {
+    return "运行中 · PID " + snapshot.pid;
+  }
+  if (snapshot.exitCode === null) {
+    return "已退出";
+  }
+  return "已退出 · 退出码 " + snapshot.exitCode;
+}
+
 export function WorkDetailPage() {
   const { id } = useParams();
   const detail = useLibraryDetail(id);
-  const [tab, setTab] = useState<Tab>("overview");
+  const invalidate = useInvalidateLibrary();
+  const monitors = useMonitors();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = tabFrom(searchParams.get("tab"));
+  const [editOpen, setEditOpen] = useState(false);
+  const [coverCandidates, setCoverCandidates] = useState<CoverCandidate[] | null>(null);
+  const [coverBusy, setCoverBusy] = useState(false);
+  const [launchSnapshot, setLaunchSnapshot] = useState<LaunchSnapshot | null>(null);
+  const [launchBusy, setLaunchBusy] = useState(false);
+  const [validation, setValidation] = useState<ValidationReport | null>(null);
+
+  const workId = detail.data?.workId;
+  const launch = launchSnapshot?.workId === workId ? launchSnapshot : null;
+
+  useEffect(() => {
+    if (!workId || !isTauri()) {
+      return;
+    }
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void getLaunchState(workId)
+      .then((snapshot) => {
+        if (!disposed) {
+          setLaunchSnapshot(snapshot);
+        }
+      })
+      .catch(() => undefined);
+    void listen<LaunchSnapshot>("launch-state", (event) => {
+      if (event.payload.workId !== workId) {
+        return;
+      }
+      setLaunchSnapshot(event.payload);
+      if (event.payload.state === "exited") {
+        invalidate();
+      }
+    })
+      .then((cleanup) => {
+        if (disposed) {
+          cleanup();
+        } else {
+          unlisten = cleanup;
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [invalidate, workId]);
 
   if (detail.isPending) {
     return (
@@ -88,8 +175,145 @@ export function WorkDetailPage() {
     );
   }
 
-  const game = libraryItemToGame(detail.data);
-  const isLocal = Boolean(game.isLocal);
+  const item = detail.data;
+  const game = libraryItemToGame(item);
+  const coverUrl = assetUrl(item.coverPath) ?? assetUrl(item.coverThumbPath);
+  const coverWork = { ...game, coverUrl };
+  const hasLocalCopy = Boolean(item.localCopyId);
+  const isRunning = launch?.state === "running";
+  const playtime = item.playtimeMinutes > 0 ? formatPlaytime(item.playtimeMinutes) : "尚未记录";
+  const lastPlayed = item.lastPlayedAt ? formatRelativeDate(item.lastPlayedAt) : game.lastPlayed;
+
+  const selectTab = (next: Tab) => {
+    const params = new URLSearchParams(searchParams);
+    if (next === "overview") {
+      params.delete("tab");
+    } else {
+      params.set("tab", next);
+    }
+    setSearchParams(params, { replace: true });
+  };
+
+  const handleLaunch = async () => {
+    if (!workId) {
+      return;
+    }
+    setLaunchBusy(true);
+    try {
+      const snapshot = await startWork(workId);
+      setLaunchSnapshot((current) =>
+        current?.launchId === snapshot.launchId && current.state === "exited" ? current : snapshot,
+      );
+      invalidate();
+      toast.success("游戏进程已启动");
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setLaunchBusy(false);
+    }
+  };
+
+  const handleStop = async () => {
+    if (!workId) {
+      return;
+    }
+    try {
+      const stopped = await stopWork(workId);
+      toast(stopped ? "已请求结束游戏进程树" : "这个进程没有启用作业对象跟踪，无法从应用内结束");
+    } catch (error) {
+      toast.error(String(error));
+    }
+  };
+
+  const handleValidate = async () => {
+    if (!workId) {
+      return;
+    }
+    try {
+      const report = await validateWork(workId);
+      setValidation(report);
+      invalidate();
+      toast(report.valid ? "安装路径可用" : "安装路径需要修复");
+    } catch (error) {
+      setValidation(null);
+      toast.error(String(error));
+    }
+  };
+
+  const handlePickCover = async () => {
+    if (!workId) {
+      return;
+    }
+    const selected = await pickImageFile();
+    if (!selected) {
+      return;
+    }
+    setCoverBusy(true);
+    try {
+      await setWorkCover(workId, selected);
+      invalidate();
+      toast.success("封面已缓存");
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setCoverBusy(false);
+    }
+  };
+
+  const handleDiscoverCover = async () => {
+    if (!workId) {
+      return;
+    }
+    if (!isTauri()) {
+      toast("浏览器预览不读取游戏目录；请在 Tauri 窗口中发现本地图片。");
+      return;
+    }
+    try {
+      const candidates = await discoverWorkCovers(workId);
+      setCoverCandidates(candidates);
+      if (candidates.length === 0) {
+        toast("游戏目录附近没有找到常见封面图片");
+      }
+    } catch (error) {
+      toast.error(String(error));
+    }
+  };
+
+  const handleApplyCandidate = async (candidate: CoverCandidate) => {
+    if (!workId) {
+      return;
+    }
+    setCoverBusy(true);
+    try {
+      await setWorkCover(workId, candidate.path, true);
+      setCoverCandidates(null);
+      invalidate();
+      toast.success("已使用本地封面图片");
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setCoverBusy(false);
+    }
+  };
+
+  const handleClearCover = async () => {
+    if (!workId) {
+      return;
+    }
+    if (!window.confirm("清除这部作品的封面缓存？游戏文件不会被删除。")) {
+      return;
+    }
+    setCoverBusy(true);
+    try {
+      await clearWorkCover(workId);
+      invalidate();
+      toast.success("已清除封面");
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setCoverBusy(false);
+    }
+  };
 
   return (
     <div className="detail-page">
@@ -104,17 +328,75 @@ export function WorkDetailPage() {
 
       <div className="detail-hero">
         <div className="detail-poster">
-          <CoverArt work={game} />
+          <CoverArt work={coverWork} />
           <div className="detail-poster__meta">
             <span>{game.catalogNo}</span>
             <span>{game.year ?? "年份未知"}</span>
           </div>
+          <div className="detail-poster__actions">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={coverBusy}
+              onClick={() => void handlePickCover()}
+            >
+              <ImagePlus size={13} strokeWidth={1.6} />
+              {coverUrl ? "更换封面" : "选择封面"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={coverBusy}
+              onClick={() => void handleDiscoverCover()}
+            >
+              <Images size={13} strokeWidth={1.6} /> 本地图片
+            </Button>
+            {coverUrl ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={coverBusy}
+                onClick={() => void handleClearCover()}
+              >
+                清除
+              </Button>
+            ) : null}
+          </div>
+          {coverCandidates ? (
+            <div className="detail-cover-candidates" aria-live="polite">
+              <header>
+                <b>找到 {coverCandidates.length} 张本地图片</b>
+                <button type="button" onClick={() => setCoverCandidates(null)}>
+                  关闭
+                </button>
+              </header>
+              {coverCandidates.length === 0 ? (
+                <p>游戏目录和常见封面子目录里没有匹配的图片。</p>
+              ) : (
+                coverCandidates.map((candidate) => (
+                  <button
+                    type="button"
+                    className="detail-cover-candidate"
+                    key={candidate.path}
+                    disabled={coverBusy}
+                    title={candidate.path}
+                    onClick={() => void handleApplyCandidate(candidate)}
+                  >
+                    <span>{candidate.fileName}</span>
+                    <em>
+                      {candidate.width}×{candidate.height}
+                    </em>
+                  </button>
+                ))
+              )}
+            </div>
+          ) : null}
         </div>
 
         <div className="detail-copy">
           <p className="app-kicker">
             <span className="app-status-dot" />
-            {isLocal ? "LOCAL COPY / 本地副本" : "Galgame / AVG"} · {game.year ?? "年份未知"} ·{" "}
+            {hasLocalCopy ? "LOCAL COPY / 本地副本" : "Galgame / AVG"} · {game.year ?? "年份未知"} ·{" "}
             {game.developer}
           </p>
           <h1>{game.title}</h1>
@@ -124,13 +406,17 @@ export function WorkDetailPage() {
               {game.romaji ? <span>{game.romaji}</span> : null}
             </p>
           ) : null}
+          {detail.data.aliases.length > 0 ? (
+            <p className="detail-aliases">别名：{detail.data.aliases.join(" / ")}</p>
+          ) : null}
           <div className="detail-tags">
             {game.tags.map((tag) => (
               <Tag key={tag}>{tag}</Tag>
             ))}
-            {isLocal ? <Tag tone="status">本地扫描</Tag> : null}
+            {hasLocalCopy ? <Tag tone="status">本地扫描</Tag> : null}
             {game.ageRating !== "未标记" ? <Tag tone="data">{game.ageRating}</Tag> : null}
             {game.edition !== "未标记" ? <Tag tone="muted">{game.edition}</Tag> : null}
+            {item.installStatus === "missing" ? <Tag tone="accent">路径缺失</Tag> : null}
           </div>
           <p className="detail-score">
             {game.rating > 0 ? "个人评分 " + game.rating.toFixed(1) + " / 10" : "尚未评分"} ·{" "}
@@ -139,11 +425,11 @@ export function WorkDetailPage() {
           <p className="detail-desc">{game.description}</p>
           <div className="detail-stats">
             <div>
-              <b>{game.playtime}</b>
+              <b>{playtime}</b>
               <span>累计时长</span>
             </div>
             <div>
-              <b>{game.lastPlayed}</b>
+              <b>{lastPlayed}</b>
               <span>上次游玩</span>
             </div>
             <div>
@@ -156,24 +442,38 @@ export function WorkDetailPage() {
             </div>
           </div>
           <div className="detail-actions">
-            <Button
-              variant="primary"
-              onClick={() =>
-                toast(
-                  isLocal
-                    ? "启动器将在 C3 接入；当前只保存本地启动路径。"
-                    : "原型预览：启动器将在 C3 接入。",
-                )
-              }
-            >
-              <Play size={14} fill="currentColor" strokeWidth={0} />
-              启动游戏
+            {isRunning ? (
+              <Button
+                variant="danger"
+                onClick={() => void handleStop()}
+                disabled={launchBusy || !launch?.jobTracked}
+                title={launch?.jobTracked ? "结束整个游戏进程树" : "此进程未启用作业对象跟踪"}
+              >
+                <StopCircle size={14} strokeWidth={1.6} /> 停止游戏
+              </Button>
+            ) : (
+              <Button variant="primary" onClick={() => void handleLaunch()} disabled={launchBusy}>
+                {launchBusy ? (
+                  <Loader2 size={14} className="detail-spin" />
+                ) : (
+                  <Play size={14} fill="currentColor" strokeWidth={0} />
+                )}
+                {launchBusy ? "正在启动…" : "启动游戏"}
+              </Button>
+            )}
+            <Button variant="secondary" onClick={() => setEditOpen(true)}>
+              <Pencil size={13} strokeWidth={1.6} /> 编辑资料
             </Button>
-            <Button variant="secondary" onClick={() => setTab("launch")}>
-              查看启动路径
+            <Button variant="ghost" onClick={() => selectTab("launch")}>
+              启动配置
               <ArrowUpRight size={14} strokeWidth={1.6} />
             </Button>
           </div>
+          <p className={cn("detail-launch-status", isRunning && "is-running")}>
+            <span />
+            {launchLabel(launch)}
+            {launch?.state === "exited" && launch.message ? " · " + launch.message : null}
+          </p>
         </div>
 
         <aside className="detail-side">
@@ -193,9 +493,7 @@ export function WorkDetailPage() {
             ))
           ) : (
             <p className="detail-side__empty">
-              {isLocal
-                ? "还没有游玩记录。启动器与自动计时将在 C3/C6 接入。"
-                : "还没有游玩记录。启动游戏后会自动生成会话。"}
+              还没有游玩记录。C3 会记录启动时间和次数；自动会话与时长统计在 C6 接入。
             </p>
           )}
           <div className="detail-install">
@@ -204,31 +502,47 @@ export function WorkDetailPage() {
               <FolderOpen size={13} strokeWidth={1.5} />
               <span>{game.exePath}</span>
             </p>
-            <p>
+            <p title={game.installedPath}>
               <HardDrive size={13} strokeWidth={1.5} />
+              <span>{game.installedPath}</span>
+            </p>
+            <p>
+              <Monitor size={13} strokeWidth={1.5} />
               <span>
                 {game.installedSize} · {game.edition}
               </span>
             </p>
-            <button type="button" onClick={() => toast("路径校验将在 C3 接入。")}>
+            <button type="button" onClick={() => void handleValidate()}>
               <Check size={12} strokeWidth={1.6} />
               校验路径
             </button>
+            {validation ? (
+              <div className="detail-path-check">
+                <span className={validation.exe.ok ? "is-ok" : "is-error"}>
+                  {validation.exe.ok ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                  {validation.exe.message}
+                </span>
+                <span className={validation.workingDir.ok ? "is-ok" : "is-error"}>
+                  {validation.workingDir.ok ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                  {validation.workingDir.message}
+                </span>
+              </div>
+            ) : null}
           </div>
         </aside>
       </div>
 
       <div className="detail-tabs" role="tablist" aria-label="作品详情分区">
-        {tabs.map((item) => (
+        {tabs.map((entry) => (
           <button
-            key={item.id}
+            key={entry.id}
             type="button"
             role="tab"
-            aria-selected={tab === item.id}
-            className={cn(tab === item.id && "is-active")}
-            onClick={() => setTab(item.id)}
+            aria-selected={tab === entry.id}
+            className={cn(tab === entry.id && "is-active")}
+            onClick={() => selectTab(entry.id)}
           >
-            {item.label}
+            {entry.label}
           </button>
         ))}
       </div>
@@ -238,35 +552,53 @@ export function WorkDetailPage() {
           <div className="detail-overview">
             <section>
               <h2>关于这部作品</h2>
+              <p>{game.description}</p>
+              {detail.data.aliases.length > 0 ? (
+                <p>
+                  <b>别名：</b>
+                  {detail.data.aliases.join(" / ")}
+                </p>
+              ) : null}
               <p>
-                {isLocal
-                  ? "本地副本已记录。MiyuManager 只管理本地安装、启动路径、用户状态和可追溯元数据。"
-                  : game.description}
-              </p>
-              <p>
-                {isLocal
-                  ? "管理器不会读取游戏内章节、路线、存档或成就；封面、发行信息和更多资料将在 C3/C4 完善。"
-                  : "原型使用虚构条目。正式版本会在这里显示可追溯的字段来源、发行版本和本地安装；游戏内章节、路线与存档不在管理器的自动读取范围内。"}
+                管理器只管理本地安装、启动路径、用户状态和可追溯元数据；不会读取游戏内章节、路线、存档或成就。
               </p>
             </section>
             <section>
               <h2>游戏资料</h2>
               <dl className="detail-ledger">
                 <div>
+                  <dt>原题</dt>
+                  <dd>{game.originalTitle || "未填写"}</dd>
+                </div>
+                <div>
                   <dt>发售</dt>
-                  <dd>{game.year ? game.year + " 年" : "未知"}</dd>
+                  <dd>
+                    {detail.data.releaseDate
+                      ? formatDate(detail.data.releaseDate)
+                      : game.year
+                        ? game.year + " 年"
+                        : "未知"}
+                  </dd>
                 </div>
                 <div>
                   <dt>开发商</dt>
                   <dd>{game.developer}</dd>
                 </div>
                 <div>
-                  <dt>引擎</dt>
-                  <dd>{game.engine}</dd>
+                  <dt>发行商</dt>
+                  <dd>{item.publisher ?? "未填写"}</dd>
+                </div>
+                <div>
+                  <dt>版本</dt>
+                  <dd>{game.edition}</dd>
                 </div>
                 <div>
                   <dt>语言</dt>
-                  <dd>{isLocal ? "未识别" : "日语 / 简体中文"}</dd>
+                  <dd>{detail.data.language ?? "未识别"}</dd>
+                </div>
+                <div>
+                  <dt>平台</dt>
+                  <dd>{detail.data.platform}</dd>
                 </div>
                 <div>
                   <dt>安装大小</dt>
@@ -281,14 +613,10 @@ export function WorkDetailPage() {
             <section>
               <h2>用户备注</h2>
               <p className="detail-note">
-                {game.notes
-                  ? game.notes
-                  : isLocal
-                    ? "尚未添加备注。备注是手动内容，不是游戏内自动读取的状态；编辑功能将在 C3 接入。"
-                    : "二周目想再走一遍月夜线。手动备注，不是游戏内自动读取的状态。"}
+                {detail.data.notes || "尚未添加备注。备注是手动内容，不是游戏内自动读取的状态。"}
               </p>
-              <Button variant="ghost" size="sm" disabled={isLocal}>
-                编辑备注
+              <Button variant="ghost" size="sm" onClick={() => setEditOpen(true)}>
+                编辑资料与备注
               </Button>
             </section>
           </div>
@@ -299,14 +627,10 @@ export function WorkDetailPage() {
             <header>
               <div>
                 <h2>游玩记录</h2>
-                <p>
-                  {isLocal
-                    ? "启动器将在 C3 接入；C6 接入后会自动生成会话并统计时长。"
-                    : "会话由启动器开始与结束时间计算，可手动修正。"}
-                </p>
+                <p>会话由启动器开始和结束时间计算；C3 只记录启动，自动时长统计在 C6 接入。</p>
               </div>
-              <Button variant="secondary" size="sm" disabled={isLocal}>
-                补录会话
+              <Button variant="secondary" size="sm" disabled>
+                C6 接入补录
               </Button>
             </header>
             <div className="detail-session-table">
@@ -324,68 +648,34 @@ export function WorkDetailPage() {
                     </span>
                     <b>{session.duration}</b>
                     <span>{session.ended}</span>
-                    <span>
-                      <button type="button">编辑</button>
-                      <button type="button">删除</button>
-                    </span>
+                    <span className="detail-session-table__locked">C6</span>
                   </div>
                 ))
               ) : (
                 <p className="detail-empty-row">
-                  {isLocal
-                    ? "还没有会话。C6 接入后，从启动器启动游戏会自动生成第一条记录。"
-                    : "还没有会话。启动游戏后会在这里生成第一条记录。"}
+                  还没有会话。启动游戏后这里会显示启动记录；完整会话和时长在 C6 接入。
                 </p>
               )}
             </div>
           </div>
         ) : null}
 
-        {tab === "launch" ? (
-          <div className="detail-launch-grid">
-            <section>
-              <h2>启动路径</h2>
-              <dl className="detail-ledger">
-                <div>
-                  <dt>可执行文件</dt>
-                  <dd>{game.exePath}</dd>
-                </div>
-                <div>
-                  <dt>工作目录</dt>
-                  <dd>{game.installedPath}</dd>
-                </div>
-                <div>
-                  <dt>启动参数</dt>
-                  <dd className="detail-code">—</dd>
-                </div>
-                <div>
-                  <dt>环境变量</dt>
-                  <dd className="detail-code">—</dd>
-                </div>
-              </dl>
-            </section>
-            <section>
-              <h2>显示与兼容</h2>
-              <div className="detail-launch-row">
-                <Monitor size={13} strokeWidth={1.5} />
-                <span>主显示器 · 全屏（C3 接入）</span>
-              </div>
-              <div className="detail-launch-row">
-                <ShieldCheck size={13} strokeWidth={1.5} />
-                <span>Locale Emulator · 未配置</span>
-              </div>
-              <div className="detail-launch-row">
-                <Clock3 size={13} strokeWidth={1.5} />
-                <span>启动后自动记录会话（C6）</span>
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => toast("路径校验和启动配置编辑将在 C3 接入。")}
-              >
-                校验并保存
-              </Button>
-            </section>
+        {tab === "launch" && hasLocalCopy ? (
+          <LaunchConfigPanel
+            key={detail.data.workId}
+            detail={detail.data}
+            monitors={monitors.data ?? []}
+            onSaved={invalidate}
+            onLaunch={() => void handleLaunch()}
+          />
+        ) : null}
+
+        {tab === "launch" && !hasLocalCopy ? (
+          <div className="detail-sources">
+            <header>
+              <h2>没有本地安装副本</h2>
+              <p>启动配置只对本地安装副本生效。</p>
+            </header>
           </div>
         ) : null}
 
@@ -393,44 +683,44 @@ export function WorkDetailPage() {
           <div className="detail-sources">
             <header>
               <h2>元数据来源</h2>
-              <p>
-                {isLocal
-                  ? "当前只有本地安装来源。VNDB、Bangumi、Steam 会在 C4/C5 接入，每个字段保留来源和锁定状态。"
-                  : "每个字段保留来源、更新时间和锁定状态。"}
-              </p>
+              <p>当前只有本地安装来源。VNDB、Bangumi、Steam 会在 C4/C5 接入。</p>
             </header>
-            {isLocal ? (
-              <>
-                <div className="detail-source-row">
-                  <span>本地安装</span>
-                  <p>{game.exePath}</p>
-                  <em>{game.addedAt}</em>
-                  <Tag tone="status">可追溯</Tag>
-                </div>
-                <div className="detail-source-row detail-source-row--placeholder">
-                  <span>在线元数据</span>
-                  <p>尚未接入 VNDB / Bangumi / Steam。</p>
-                  <em>C4 / C5</em>
-                  <Tag tone="muted">待接入</Tag>
-                </div>
-              </>
-            ) : (
-              [
-                ["VNDB", "原题、开发商、标签", "11 月 11 日"],
-                ["Bangumi", "中文标题、简介", "11 月 11 日"],
-                ["本地", "封面、安装目录、启动路径", "11 月 12 日"],
-              ].map(([source, fields, updated]) => (
-                <div className="detail-source-row" key={source}>
-                  <span>{source}</span>
-                  <p>{fields}</p>
-                  <em>{updated}</em>
-                  <Tag tone={source === "本地" ? "status" : "data"}>可追溯</Tag>
-                </div>
-              ))
-            )}
+            <div className="detail-source-row">
+              <span>本地安装</span>
+              <p title={item.exePath}>{item.exePath}</p>
+              <em>{formatRelativeDate(item.addedAt)}</em>
+              <Tag tone="status">可追溯</Tag>
+            </div>
+            {item.coverPath ? (
+              <div className="detail-source-row">
+                <span>封面缓存</span>
+                <p title={item.coverPath}>{item.coverPath}</p>
+                <em>
+                  {detail.data.coverUpdatedAt
+                    ? formatRelativeDate(detail.data.coverUpdatedAt)
+                    : "—"}
+                </em>
+                <Tag tone="data">
+                  {detail.data.coverSource === "local" ? "本地发现" : "手动选择"}
+                </Tag>
+              </div>
+            ) : null}
+            <div className="detail-source-row detail-source-row--placeholder">
+              <span>在线元数据</span>
+              <p>尚未接入 VNDB / Bangumi / Steam。</p>
+              <em>C4 / C5</em>
+              <Tag tone="muted">待接入</Tag>
+            </div>
           </div>
         ) : null}
       </div>
+
+      <WorkEditDialog
+        detail={detail.data}
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        onSaved={invalidate}
+      />
     </div>
   );
 }

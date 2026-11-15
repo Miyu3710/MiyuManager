@@ -75,7 +75,7 @@ export function ScreeningDetail({ work }: { work: Work }) {
             <button
               type="button"
               className="screening-button screening-button--primary"
-              onClick={() => toast("原型预览：启动器将在 C3 接入。")}
+              onClick={() => toast("原型预览：启动功能在主应用作品详情页中提供。")}
             >
               <Play size={14} fill="currentColor" strokeWidth={0} />
               启动游戏
@@ -125,7 +125,10 @@ export function ScreeningDetail({ work }: { work: Work }) {
               <Clock3 size={13} strokeWidth={1.5} />
               {work.installedSize} · {work.edition}
             </p>
-            <button type="button" onClick={() => toast("原型预览：路径校验将在 C3 接入。")}>
+            <button
+              type="button"
+              onClick={() => toast("原型预览：路径校验在主应用作品详情页中提供。")}
+            >
               <Check size={12} strokeWidth={1.6} />
               校验配置
             </button>

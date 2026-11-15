@@ -1,5 +1,5 @@
 import { ArrowRight, ArrowUpRight, Clock3, FolderPlus, Library, Play } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "../../design-system/components/Button";
@@ -7,19 +7,37 @@ import { CoverArt } from "../../design-system/components/CoverArt";
 import { EmptyState } from "../../design-system/components/EmptyState";
 import { Tag } from "../../design-system/components/Tag";
 import { statusLabels } from "../../lib/game-data";
-import { libraryItemToGame } from "../../lib/library-api";
-import { useHomeLibrary, useLibrarySummary } from "../library/useLibrary";
+import { libraryItemToGame, startWork } from "../../lib/library-api";
+import { useHomeLibrary, useInvalidateLibrary, useLibrarySummary } from "../library/useLibrary";
 import "./home.css";
 
 export function HomePage() {
   const navigate = useNavigate();
   const library = useHomeLibrary();
   const summary = useLibrarySummary();
+  const invalidate = useInvalidateLibrary();
+  const [launchBusy, setLaunchBusy] = useState(false);
   const games = useMemo(() => (library.data?.items ?? []).map(libraryItemToGame), [library.data]);
   const featured = games[0];
   const recent = games.slice(1, 5);
   const added = games.slice(5, 11);
   const total = summary.data?.total ?? library.data?.total ?? 0;
+
+  const handleLaunch = async () => {
+    if (!featured?.workId) {
+      return;
+    }
+    setLaunchBusy(true);
+    try {
+      await startWork(featured.workId);
+      invalidate();
+      toast.success("游戏进程已启动");
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setLaunchBusy(false);
+    }
+  };
 
   if (library.isPending) {
     return (
@@ -130,18 +148,9 @@ export function HomePage() {
             )}
           </div>
           <div className="home-actions">
-            <Button
-              variant="primary"
-              onClick={() =>
-                toast(
-                  featured.isLocal
-                    ? "启动器将在 C3 接入；当前只管理本地安装与启动路径。"
-                    : "原型预览：启动器将在 C3 接入。",
-                )
-              }
-            >
+            <Button variant="primary" disabled={launchBusy} onClick={() => void handleLaunch()}>
               <Play size={14} fill="currentColor" strokeWidth={0} />
-              启动游戏
+              {launchBusy ? "正在启动…" : "启动游戏"}
               {featured.isLocal ? null : (
                 <span className="home-actions__meta">{featured.edition}</span>
               )}

@@ -1,7 +1,7 @@
 # MiyuManager 项目状态
 
 > 最后更新：2026-11-15  
-> 当前阶段：C2 已完成；C3 尚未启动  
+> 当前阶段：C3 已完成；C4 尚未启动  
 > 计划文件：`docs/DEVELOPMENT_PLAN.md`  
 > 设计提案：`docs/DESIGN.md`
 
@@ -12,7 +12,7 @@
 | C0 规划与技术选型                     | 已完成 | 技术栈、范围、架构、数据模型、质量门槛和子对话拆分已写入 `docs/DEVELOPMENT_PLAN.md`                                                    |
 | C1 基础工程、设计系统与可点击壳       | 已完成 | 设计系统、应用壳、Home/Library/Detail/Big Screen、Stats/Settings 和探针已完成；2026-11-15 通过 G2 视觉确认                             |
 | C2 SQLite、目录扫描与真实游戏库       | 已完成 | SQLite/WAL/FTS5、目录扫描、候选确认、汉化 exe 识别、扫描排除/手动导入、真实游戏库、搜索筛选排序、持久化和 5,000 条查询已接入；详见下文 |
-| C3 作品详情、图片缓存与启动器         | 未开始 | 依赖 C2                                                                                                                                |
+| C3 作品详情、图片缓存与启动器         | 已完成 | 真实详情编辑、封面缓存/发现、启动配置、包装器、路径校验、Job Object 启动跟踪与运行状态已接入；详见下文                                 |
 | C4 Metadata Provider、VNDB 与 Bangumi | 未开始 | 依赖 C3                                                                                                                                |
 | C5 Steam、多源合并与批量刮削          | 未开始 | 依赖 C4                                                                                                                                |
 | C6 自动时长统计与统计页               | 未开始 | 依赖 C3；可与 C4/C5 在不同 worktree 并行                                                                                               |
@@ -48,7 +48,30 @@
 - pnpm `11.25.0`
 - Rust `1.100.0`
 - WebView2 Runtime `157.0.4341.46`
-- Git 仓库已有 C1 基线提交；C2 在 `codex/c2-library-import` 分支完成
+- Git 仓库已有 C1 基线提交；C2 在 `codex/c2-library-import` 分支完成；C3 在 `codex/c3-detail-launch` 分支完成
+
+## C3 本轮产出
+
+- 数据层：`src-tauri/migrations/20261115000300_c3_detail_launch.sql`；新增 `assets`、`launch_profiles`、`works.tags_json`、`local_copies.last_launched_at` 和 `launch_count`。C2 数据库迁移测试通过。
+- 详情资料：`work_update` 支持标题、原题、别名、简介、年份、开发商/发行商、版本、语言、发行日期、标签、状态、评分、收藏和备注；重新扫描不会覆盖用户手动修改的标题。
+- 封面资产：`src-tauri/src/assets.rs`；手动选择图片、在游戏目录及常见封面子目录发现候选、原图缓存、WebP 缩略图、SHA-256 校验和、旧文件替换、清除封面和缺失回退。
+- 封面读取：Tauri 自定义只读协议 `miyu-asset://`（Windows 为 `http://miyu-asset.localhost/...`），只允许读取数据目录 `assets` 下的文件；列表加载缩略图，详情使用原图。
+- 启动配置：`launch_config_save` / `launch_config_validate`；支持 exe、工作目录、参数数组、环境变量、可选包装器 exe 与参数、显示器偏好和全屏偏好；路径变更会同步本地副本。
+- 启动器：`src-tauri/src/launcher/**`；使用 `std::process::Command` 参数数组启动，不经过 shell；Windows Job Object 跟踪进程树；启动、运行、退出、停止状态通过 `launch-state` 事件回传。
+- UI：`src/features/work-detail/**`；真实详情、编辑资料弹窗（焦点管理、Tab 循环、Escape）、封面操作、启动配置表单、路径校验结果、运行/退出状态、无效路径反馈和来源占位。
+- 首页和设置：首页“启动游戏”接入真实启动；设置页启动器分区说明按作品配置包装器，不再显示 C3 待接入。
+- 证据：`outputs/app/c3/01-detail-cover.png`、`02-detail-launch.png`、`03-detail-edit.png`、`04-launch-running.png`、`05-launch-exited.png`、`06-library-thumbnail.png`、`07-invalid-path.png`、`08-cover-fallback.png`、`probe.log`。浏览器尺寸截图已重新生成到 `outputs/app/1440x900/`、`1920x1080/`、`150pct-1280x720/` 和 `4k/`，包含 `02-detail`、`02b-detail-launch`、`02c-detail-edit`。
+
+### C3 已知边界
+
+- 自动游玩会话、累计时长和统计页仍在 C6；C3 只记录启动次数和最近启动时间，不生成 `play_sessions`。
+- 封面只支持手动选择和本地发现，不支持在线封面候选或 VNDB/Bangumi/Steam 下载；来源面板仍为本地占位。
+- 包装器是通用模型：用户选择 exe 并填写参数，参数后接游戏 exe 与游戏参数；不内置 Locale Emulator/NTLEA，不自动检测安装路径，不提供 profile 选择器。
+- 显示器与全屏偏好只保存并展示，不强制移动游戏窗口；实际窗口放置留给大屏/后续阶段。
+- 启动状态保存在内存中，应用重启后不会恢复“正在运行”；进程树跟踪只在本次应用运行期间有效。关闭管理器不会强制结束游戏（Job Object 未设置 kill-on-close）。
+- 多本地副本目前仍以主副本作为详情和启动对象；多副本管理不在 C3。
+- 封面缓存文件在移除作品时不会随作品记录自动清理；记录级清理和备份在 C9。
+- 浏览器预览不写入封面缓存、不启动本地程序；这些操作只在 Tauri 窗口可用。
 
 ## C2 本轮产出
 
@@ -66,10 +89,10 @@
 
 ### C2 已知边界
 
-- 封面仍是标题排印占位；在线封面/元数据留到 C4/C5。
-- 详情页只展示本地安装与启动路径；启动配置、路径校验和真实启动留到 C3。
+- C2 阶段封面仍是标题排印占位；C3 已补充手动/本地封面缓存，但在线封面/元数据仍留到 C4/C5。
+- C2 阶段详情页只展示本地安装与启动路径；C3 已补上启动配置、路径校验和真实启动。
 - `play_sessions` 尚未建表；统计页仍是 C1 视觉占位，C6 接入真实会话。
-- `install_status` 当前只写 installed；缺失路径检测未实现。
+- C2 阶段 `install_status` 只写 installed；C3 已补充 exe/工作目录校验和 missing 状态。
 - 5,000 条数据的 Rust 查询与 Tauri 首屏/滚动加载已验证；未做完整 5,000 条连续滚到手底的性能基准。
 - 语言/汉化后缀是启发式；标题本身以 `_zh`、`_sc` 等结尾的 exe 也可能被标记为语言版本，确认页可以取消。
 - 排除按 exe 路径和工作目录同时生效；同一目录下的多个 exe 会被视为同一游戏，恢复时一起恢复。
@@ -99,6 +122,24 @@
 ## 验证记录
 
 已通过：
+
+### C3
+
+- `pnpm lint`、`pnpm typecheck`、`pnpm test`（7 个前端测试）、`pnpm build`。
+- `cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（16 个 Rust 测试）。
+- `pnpm tauri build --debug --no-bundle` 成功，生产资源构建未报错。
+- C3 迁移测试：在只应用 C2 两个迁移、且已有 works/releases/local_copies 数据的数据库上继续迁移成功；默认 tags 为空、launch_count 为 0、无封面和启动配置。
+- 资产测试：PNG 原图缓存、WebP 缩略图生成、尺寸校验、静态资产协议读取、封面清除和路径穿越拒绝。
+- 详情编辑测试：标题、原题、别名、简介、年份、开发商/发行商、版本、语言、发行日期、标签、状态、评分、收藏和备注写入；年份/日期/评分边界校验；重新扫描不覆盖手动标题。
+- 启动配置测试：保存参数/环境变量/包装器/显示器偏好；exe 和工作目录路径校验；无效路径报告不误改已有 install_status；`record_launch_started` 写入最近启动时间和启动次数。
+- 实际 Tauri 窗口（`MIYU_DATA_DIR=tmp/c3-appdata`）：导入带空格、中文、日文的 `game_zh.exe`；发现并应用本地封面；原图 600×900、缩略图 480×720；`miyu-asset` 协议在详情和游戏库中返回 200。
+- 实际 Tauri 启动：直接启动 dummy exe，`launch_state.jobTracked=true`；dummy 写回参数 `--window`、`--test-cjk 路径`、环境变量 `MIYU_C3=1`、`LOCALE=zh-CN` 和工作目录；退出码 0，详情页显示“已退出 · 退出码 0”。
+- 包装器验证：选择自定义 wrapper.exe，填写 `-runas` / `profile test`；wrapper 收到游戏 exe 和游戏参数，并成功启动游戏；清理包装器配置后恢复直接启动。
+- 停止验证：运行中点击“停止游戏”，`TerminateJobObject` 结束进程树，`launch_state` 返回 null。
+- 错误与回退：不存在的 exe、不存在的包装器均显示可操作校验结果；删除封面原图和缩略图后重新打开详情，回退到标题排印封面。
+- 截图证据：`outputs/app/c3/01-detail-cover.png`、`02-detail-launch.png`、`03-detail-edit.png`、`04-launch-running.png`、`05-launch-exited.png`、`06-library-thumbnail.png`、`07-invalid-path.png`、`08-cover-fallback.png`、`probe.log`。
+- 浏览器截图：`outputs/app/1440x900/`、`1920x1080/`、`150pct-1280x720/`、`4k/` 已包含 `02-detail`、`02b-detail-launch`、`02c-detail-edit`；所有尺寸无横向溢出，4K 详情页已确认完成加载而非骨架屏。
+- 主包约 381.97 KB（gzip 116.28 KB）；详情页 lazy chunk 约 151.33 KB（gzip 45.46 KB）。
 
 ### C2
 
@@ -143,9 +184,9 @@
 - G2 已完成：用户确认当前 Home、游戏库、详情、统计、设置和大屏视觉基线。
 - 视觉基线不是冻结规范：配色、主题、密度和布局仍集中在 token 与页面 CSS 中，后续可以继续修改。
 - C2 已完成：真实目录扫描、候选确认、SQLite 入库、搜索/筛选/排序、重复扫描去重和重启持久化均已验证。
-- C2 的视觉验收采用真实扫描数据和占位封面；真实封面/元数据属于 C4/C5，不能把占位图当成最终美术验收。
+- C2 的视觉验收采用真实扫描数据和占位封面；C3 已补充手动/本地封面缓存，在线封面/元数据仍属于 C4/C5。
 
-C2 不再扩展；已知边界见上文，C3 及之后内容不在本对话范围。
+C2/C3 不再扩展；已知边界见上文，C4 及之后内容不在本对话范围。
 
 ## C2 完成记录
 
@@ -153,27 +194,35 @@ C2 不再扩展；已知边界见上文，C3 及之后内容不在本对话范�
 - 提交：`24d1b36`（SQLite、目录扫描、候选确认与真实游戏库）；`7f706de`（汉化/语言 exe 识别、扫描排除与手动导入）
 - 结论：C2 已完成，具有可运行实现和自动化/预览验收证据；本对话停在 C2，不进入 C3。
 
+## C3 完成记录
+
+- 完成日期：2026-11-15
+- 分支：`codex/c3-detail-launch`
+- 提交：`36c6daf`（作品详情、封面缓存、启动配置与启动器）
+- 结论：C3 已完成；详情编辑、封面缓存/发现、启动配置、包装器、路径校验、真实启动、Job Object 跟踪和运行状态均有自动化或实际窗口证据。
+
 ## 下一轮入口
 
-C2 已完成，本对话到此结束，不启动 C3。若后续另开对话并明确要求 C3，再按以下入口执行：
+C3 已完成，本对话到此结束，不启动 C4。若后续另开对话并明确要求 C4，再按以下入口执行：
 
-1. C3 处理作品详情、封面缓存、启动配置和真实启动；本轮不修改 C3 范围。
-2. C3 需要先确定 G3（Locale Emulator/NTLEA 默认行为）和启动器路径校验策略。
-3. 只有用户明确要求进入 C3 时，才开始详情编辑、图片缓存与启动器。
-4. 继续调整 C2 视觉时，按 token/密度/布局修正，并同步更新 `docs/DESIGN.md` 与截图证据。
+1. C4 处理 Metadata Provider 框架、VNDB/Bangumi 搜索、字段 claim 和封面候选；本轮不修改 C4 范围。
+2. C4 开始前确认 G4 的多源字段优先级和锁定语义；C3 的本地封面与手动字段必须继续受保护。
+3. 只有用户明确要求进入 C4 时，才开始在线元数据、封面下载和来源面板。
+4. 继续调整 C3 视觉时，按 token/密度/布局修正，并同步更新 `docs/DESIGN.md` 与 `outputs/app/c3/` 截图证据。
 
 ## 待决策与风险
 
 - G1：已完成；A 已选，“深夜游戏盒”配色和逐页设想已确认。
 - G2：已完成；当前视觉基线已确认，后续修改不改变 C1 验收结论。
-- G3：C3 启动器是否内置 Locale Emulator/NTLEA 默认配置。
+- G3：已完成；默认直接启动，不捆绑/不自动下载 Locale Emulator 或 NTLEA；按作品可选包装器 exe 和参数数组。
 - G4：C5 多源冲突和字段优先级。
 - G5：C7 大屏布局和手柄映射。
 - G6：C9 安装包、签名、便携版和更新策略。
-- C2 扫描作品使用标题排印占位封面；真实封面下载和元数据留到 C4/C5。
-- 扫描缺失路径检测尚未实现：已入库副本的 `install_status` 仍只写 installed。
+- C3 封面只支持手动选择和本地发现；在线封面下载和元数据留到 C4/C5。
+- C3 的显示偏好只保存，不强制移动游戏窗口；实际窗口放置留到后续阶段。
+- C3 启动状态只在内存中，应用重启后不会恢复正在运行的进程；关闭管理器不会强制结束游戏。
 - 统计页仍是 C1 mock 视觉占位；`play_sessions` 表和真实会话在 C6 接入。
-- 4K、150% 缩放和 1440/1920 截图已覆盖主路由；扫描弹窗在 1440×900 和 1280×720 验证，4K 弹窗未单独手测。
+- 4K、150% 缩放和 1440/1920 截图已覆盖主路由；C3 详情、启动配置、编辑弹窗和游戏库缩略图已覆盖。扫描弹窗的 4K 单独手测仍属于 C9 回归范围。
 
 当前没有阻塞项。
 

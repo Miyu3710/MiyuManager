@@ -13,6 +13,7 @@ export interface PlaySession {
 
 export interface Game {
   id: string;
+  workId?: number;
   title: string;
   originalTitle: string;
   romaji: string;
@@ -27,6 +28,7 @@ export interface Game {
   rating: number;
   description: string;
   cover: CoverId | null;
+  coverUrl?: string | null;
   catalogNo: string;
   source: string;
   engine: string;

@@ -40,7 +40,7 @@ export function ChannelHome() {
               <button
                 type="button"
                 className="channel-button channel-button--primary"
-                onClick={() => toast("原型预览：启动器将在 C3 接入。")}
+                onClick={() => toast("原型预览：启动功能在主应用作品详情页中提供。")}
               >
                 <Play size={14} fill="currentColor" strokeWidth={0} />
                 启动游戏

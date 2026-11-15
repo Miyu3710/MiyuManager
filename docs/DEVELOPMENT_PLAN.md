@@ -1,6 +1,6 @@
 # MiyuManager 开发规划
 
-> 状态：v1 规划已锁定；C1、C2 已完成，G2 已确认；C3 尚未启动  
+> 状态：v1 规划已锁定；C1、C2、C3 已完成，G2 已确认；C4 尚未启动  
 > 更新日期：2026-11-15  
 > 目标平台：Windows 10 22H2 / Windows 11，x64 优先  
 > 产品形态：本地优先的 Windows Galgame / AVG 游戏库管理器  
@@ -325,6 +325,7 @@ C1 的设计工作必须按 `frontend-design` Skill 的流程执行：先写设�
 **规模**：M  
 **依赖**：C2  
 **目标**：用户能查看作品详情、设置封面和启动配置，并从应用启动作品。
+**当前状态**：已完成；真实详情资料编辑、手动/本地封面缓存、启动配置、路径校验、Windows Job Object 进程树跟踪、启动/退出/停止状态和无效路径提示已接入。
 
 **工作**
 
@@ -351,7 +352,7 @@ C1 的设计工作必须按 `frontend-design` Skill 的流程执行：先写设�
 
 **不包含**：在线刮削、自动时长统计、大屏。
 
-**主要产出**：`src/features/work-detail/**`、`src-tauri/src/launcher/**`、`src-tauri/src/assets/**`、`src-tauri/migrations/**`。
+**主要产出**：`src/features/work-detail/**`、`src-tauri/src/launcher/**`、`src-tauri/src/assets.rs`、`src-tauri/migrations/**`。
 
 ### C4 — 元数据 Provider 框架、VNDB 与 Bangumi
 
@@ -642,9 +643,9 @@ UI 变更额外要求：
 
 需要用户确认的节点：
 
-- **G1**：A 已选；“深夜游戏盒”配色与逐页设想待确认。
-- **G2**：C1 四个静态界面截图确认后才进入数据层（当前待确认）。
-- **G3**：C3 启动器默认行为确认（是否内置 Locale Emulator 配置、默认参数）。
+- **G1**：已完成；A 已选，“深夜游戏盒”配色与逐页设想已确认。
+- **G2**：已完成；C1 四个静态界面已确认后进入数据层。
+- **G3**：已完成；C3 默认直接启动，不捆绑/不自动下载 Locale Emulator 或 NTLEA；按作品可选包装器 exe 和参数数组。
 - **G4**：C5 多源冲突和字段优先级确认。
 - **G5**：C7 大屏布局和手柄映射确认。
 - **G6**：C9 安装包、签名、便携版和更新策略确认。

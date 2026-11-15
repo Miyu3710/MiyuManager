@@ -1,5 +1,7 @@
+mod assets;
 mod commands;
 mod db;
+mod launcher;
 mod scan;
 
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
@@ -33,11 +35,29 @@ fn open_bigscreen_probe(app: AppHandle) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .register_uri_scheme_protocol("miyu-asset", |context, request| {
+            let state = context.app_handle().state::<commands::AppState>();
+            assets::serve_asset(&state.data_dir, request.uri().path())
+        })
         .invoke_handler(tauri::generate_handler![
             open_bigscreen_probe,
             commands::app_info,
             commands::library_query,
             commands::library_get,
+            commands::work_update,
+            commands::work_validate,
+            commands::work_set_cover,
+            commands::work_apply_local_cover,
+            commands::work_clear_cover,
+            commands::work_discover_covers,
+            commands::launch_profile_save,
+            commands::launch_config_save,
+            commands::launch_config_validate,
+            commands::launch_validate,
+            commands::launch_start,
+            commands::launch_stop,
+            commands::launch_state,
+            commands::monitors_list,
             commands::library_set_status,
             commands::library_set_favorite,
             commands::library_remove_work,

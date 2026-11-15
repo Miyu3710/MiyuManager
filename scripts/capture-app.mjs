@@ -12,12 +12,27 @@ process.env.TEMP = tempRoot;
 process.env.TMP = tempRoot;
 
 const routes = [
-  { name: "00-home", path: "/" },
-  { name: "01-library", path: "/library" },
-  { name: "02-detail", path: "/work/moonlit-atelier" },
-  { name: "03-stats", path: "/stats" },
-  { name: "04-settings", path: "/settings" },
-  { name: "05-bigscreen", path: "/big-screen" },
+  { name: "00-home", path: "/", ready: ".home-page" },
+  { name: "01-library", path: "/library", ready: ".library-page" },
+  { name: "02-detail", path: "/work/moonlit-atelier", ready: ".detail-page" },
+  {
+    name: "02b-detail-launch",
+    path: "/work/moonlit-atelier?tab=launch",
+    ready: ".detail-launch-form",
+    scrollTo: ".detail-tabs",
+  },
+  {
+    name: "02c-detail-edit",
+    path: "/work/moonlit-atelier",
+    ready: ".detail-page",
+    action: async (page) => {
+      await page.getByRole("button", { name: "编辑资料" }).first().click();
+      await page.waitForSelector(".detail-edit-dialog");
+    },
+  },
+  { name: "03-stats", path: "/stats", ready: ".stats-page" },
+  { name: "04-settings", path: "/settings", ready: ".settings-page" },
+  { name: "05-bigscreen", path: "/big-screen", ready: ".bigscreen-root" },
 ];
 
 const viewports = [
@@ -29,7 +44,10 @@ const viewports = [
     width: 3840,
     height: 2160,
     deviceScaleFactor: 1,
-    routes: routes.filter((route) => route.name === "00-home" || route.name === "01-library"),
+    routes: routes.filter(
+      (route) =>
+        route.name === "00-home" || route.name === "01-library" || route.name.startsWith("02"),
+    ),
   },
 ];
 
@@ -50,10 +68,19 @@ for (const viewport of viewports.filter(
   for (const route of viewport.routes ?? routes) {
     await page.goto(`${baseUrl}/#${route.path}`, { waitUntil: "networkidle" });
     await page.waitForSelector(".app-window, .bigscreen-root");
+    await page.waitForSelector(route.ready);
     await page.evaluate(async () => {
       await document.fonts.ready;
       document.documentElement.dataset.capture = "true";
     });
+    if (route.scrollTo) {
+      await page.locator(route.scrollTo).evaluate((element) => {
+        element.scrollIntoView({ block: "start" });
+      });
+    }
+    if (route.action) {
+      await route.action(page);
+    }
     await page.waitForTimeout(250);
 
     const outputDir = path.join(outputRoot, viewport.name);

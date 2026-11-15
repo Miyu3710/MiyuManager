@@ -303,18 +303,16 @@ export function SettingsPage() {
             <div className="settings-row">
               <div>
                 <b>默认显示器</b>
-                <span>主显示器 · 全屏</span>
+                <span>按作品在详情页选择；全局默认值将在 C8 接入。</span>
               </div>
-              <Button variant="ghost" size="sm">
-                更改
-              </Button>
+              <Tag tone="muted">按作品</Tag>
             </div>
             <div className="settings-row">
               <div>
-                <b>Locale Emulator</b>
-                <span>未配置路径；C3 再接入包装器校验</span>
+                <b>Locale Emulator / NTLEA</b>
+                <span>在作品详情页选择包装器 exe 和参数；不捆绑、不自动下载。</span>
               </div>
-              <Tag tone="muted">待配置</Tag>
+              <Tag tone="status">按作品配置</Tag>
             </div>
           </section>
 

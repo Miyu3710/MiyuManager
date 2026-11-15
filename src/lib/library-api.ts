@@ -11,10 +11,18 @@ import type {
   LibraryPage,
   LibraryQuery,
   LibraryStatus,
+  LaunchConfigInput,
+  LaunchProfile,
+  LaunchSnapshot,
+  MonitorInfo,
   ScanCandidate,
   ScanExclusion,
   ScanRoot,
   ScanStart,
+  CoverAsset,
+  CoverCandidate,
+  ValidationReport,
+  WorkUpdateInput,
 } from "./library-types";
 import { formatBytes, formatPlaytime, formatRelativeDate } from "./format";
 
@@ -25,6 +33,8 @@ const previewRemoved = new Set<number>();
 const previewExclusions: ScanExclusion[] = [];
 const previewStatus = new Map<number, LibraryStatus>();
 const previewFavorite = new Map<number, boolean>();
+const previewWorkUpdates = new Map<number, WorkUpdateInput>();
+const previewLaunchProfiles = new Map<number, LaunchProfile>();
 const previewRoots: ScanRoot[] = [
   {
     id: 1,
@@ -49,6 +59,7 @@ function mockToItem(game: Game, index: number): PreviewLibraryItem {
   const workId = index + 1;
   return {
     id: game.id,
+    localCopyId: workId,
     workId,
     title: game.title,
     originalTitle: game.originalTitle,
@@ -73,13 +84,36 @@ function mockToItem(game: Game, index: number): PreviewLibraryItem {
     playtimeMinutes: game.playtimeMinutes,
     launchCount: game.launchCount,
     catalogNo: game.catalogNo,
+    coverThumbPath: null,
+    coverPath: null,
     previewGame: game,
   };
 }
 
 function previewItems(): PreviewLibraryItem[] {
   const base = mockGames.map(mockToItem);
-  return [...base, ...previewImported].filter((item) => !previewRemoved.has(item.workId));
+  return [...base, ...previewImported]
+    .filter((item) => !previewRemoved.has(item.workId))
+    .map((item) => {
+      const update = previewWorkUpdates.get(item.workId);
+      if (!update) {
+        return item;
+      }
+      return {
+        ...item,
+        title: update.title,
+        originalTitle: update.originalTitle,
+        developer: update.developer,
+        publisher: update.publisher,
+        year: update.year,
+        edition: update.edition,
+        status: update.status,
+        rating: update.rating,
+        favorite: update.favorite,
+        tags: update.tags,
+        description: update.description,
+      };
+    });
 }
 
 function countStatuses(items: LibraryItem[]): LibraryCounts {
@@ -138,6 +172,13 @@ export function libraryItemId(item: LibraryItem): string {
   return item.id ?? String(item.workId);
 }
 
+export function assetUrl(path: string | null | undefined): string | null {
+  if (!path || !isTauri()) {
+    return null;
+  }
+  return "http://miyu-asset.localhost/" + path.replace(/^\/+/, "");
+}
+
 export async function queryLibrary(query: LibraryQuery): Promise<LibraryPage> {
   if (!isTauri()) {
     return previewQuery(query);
@@ -154,12 +195,17 @@ export async function getLibraryItem(id: string | undefined): Promise<LibraryIte
     if (!item) {
       return null;
     }
+    const update = previewWorkUpdates.get(item.workId);
     return {
       ...item,
-      notes: item.previewGame?.notes ?? "",
-      releaseDate: null,
-      language: null,
+      notes: update?.notes ?? item.previewGame?.notes ?? "",
+      releaseDate: update?.releaseDate ?? null,
+      language: update?.language ?? null,
       platform: "Windows",
+      aliases: update?.aliases ?? [],
+      coverSource: null,
+      coverUpdatedAt: null,
+      launchProfile: previewLaunchProfiles.get(item.workId) ?? null,
     };
   }
 
@@ -340,6 +386,7 @@ export async function importLibraryCandidates(
       previewWorkId += 1;
       previewImported.push({
         id: "preview-" + workId,
+        localCopyId: workId,
         workId,
         title: candidate.displayName,
         originalTitle: "",
@@ -364,6 +411,8 @@ export async function importLibraryCandidates(
         playtimeMinutes: 0,
         launchCount: 0,
         catalogNo: "LOCAL-" + String(workId).padStart(4, "0"),
+        coverThumbPath: null,
+        coverPath: null,
       });
     }
     return { imported: candidates.length, updated: 0 };
@@ -385,19 +434,233 @@ export async function getAppInfo(): Promise<AppInfo> {
   return invoke<AppInfo>("app_info");
 }
 
+export async function updateWork(workId: number, input: WorkUpdateInput): Promise<void> {
+  if (!isTauri()) {
+    const item = previewItems().find((candidate) => candidate.workId === workId);
+    if (!item) {
+      throw new Error("作品不存在");
+    }
+    previewWorkUpdates.set(workId, input);
+    previewStatus.set(workId, input.status);
+    previewFavorite.set(workId, input.favorite);
+    return;
+  }
+  await invoke("work_update", { workId, input });
+}
+
+export async function validateWork(workId: number): Promise<ValidationReport> {
+  if (!isTauri()) {
+    const item = previewItems().find((candidate) => candidate.workId === workId);
+    if (!item) {
+      throw new Error("作品不存在");
+    }
+    return {
+      exe: { path: item.exePath, ok: true, message: "浏览器预览不检查本地路径" },
+      workingDir: { path: item.workingDir, ok: true, message: "浏览器预览不检查本地路径" },
+      wrapper: null,
+      valid: true,
+    };
+  }
+  return invoke<ValidationReport>("work_validate", { workId });
+}
+
+export async function saveLaunchProfile(
+  workId: number,
+  profile: LaunchProfile,
+): Promise<LaunchProfile> {
+  if (!isTauri()) {
+    previewLaunchProfiles.set(workId, profile);
+    return profile;
+  }
+  return invoke<LaunchProfile>("launch_profile_save", { workId, profile });
+}
+
+export async function saveLaunchConfig(
+  workId: number,
+  input: LaunchConfigInput,
+): Promise<LaunchProfile> {
+  if (!isTauri()) {
+    previewLaunchProfiles.set(workId, input.profile);
+    return input.profile;
+  }
+  return invoke<LaunchProfile>("launch_config_save", { workId, input });
+}
+
+export async function validateLaunchConfig(
+  workId: number,
+  input: LaunchConfigInput,
+): Promise<ValidationReport> {
+  if (!isTauri()) {
+    const item = previewItems().find((candidate) => candidate.workId === workId);
+    if (!item) {
+      throw new Error("作品不存在");
+    }
+    return {
+      exe: { path: input.exePath, ok: true, message: "浏览器预览不检查本地路径" },
+      workingDir: { path: input.workingDir, ok: true, message: "浏览器预览不检查本地路径" },
+      wrapper: input.profile.wrapperPath
+        ? { path: input.profile.wrapperPath, ok: true, message: "浏览器预览不检查包装器" }
+        : null,
+      valid: true,
+    };
+  }
+  return invoke<ValidationReport>("launch_config_validate", { workId, input });
+}
+
+export async function validateLaunch(
+  workId: number,
+  profile: LaunchProfile,
+): Promise<ValidationReport> {
+  if (!isTauri()) {
+    const item = previewItems().find((candidate) => candidate.workId === workId);
+    if (!item) {
+      throw new Error("作品不存在");
+    }
+    return {
+      exe: { path: item.exePath, ok: true, message: "浏览器预览不检查本地路径" },
+      workingDir: { path: item.workingDir, ok: true, message: "浏览器预览不检查本地路径" },
+      wrapper: profile.wrapperPath
+        ? { path: profile.wrapperPath, ok: true, message: "浏览器预览不检查包装器" }
+        : null,
+      valid: true,
+    };
+  }
+  return invoke<ValidationReport>("launch_validate", { workId, profile });
+}
+
+export async function setWorkCover(
+  workId: number,
+  sourcePath: string,
+  local = false,
+): Promise<CoverAsset> {
+  if (!isTauri()) {
+    throw new Error("浏览器预览不写入封面缓存；请在 Tauri 窗口中使用。");
+  }
+  return invoke<CoverAsset>(local ? "work_apply_local_cover" : "work_set_cover", {
+    workId,
+    sourcePath,
+  });
+}
+
+export async function clearWorkCover(workId: number): Promise<void> {
+  if (!isTauri()) {
+    throw new Error("浏览器预览不写入封面缓存；请在 Tauri 窗口中使用。");
+  }
+  await invoke("work_clear_cover", { workId });
+}
+
+export async function discoverWorkCovers(workId: number): Promise<CoverCandidate[]> {
+  if (!isTauri()) {
+    return [];
+  }
+  return invoke<CoverCandidate[]>("work_discover_covers", { workId });
+}
+
+export async function startWork(workId: number): Promise<LaunchSnapshot> {
+  if (!isTauri()) {
+    throw new Error("浏览器预览不启动本地程序；请在 Tauri 窗口中使用。");
+  }
+  return invoke<LaunchSnapshot>("launch_start", { workId });
+}
+
+export async function stopWork(workId: number): Promise<boolean> {
+  if (!isTauri()) {
+    return false;
+  }
+  return invoke<boolean>("launch_stop", { workId });
+}
+
+export async function getLaunchState(workId: number): Promise<LaunchSnapshot | null> {
+  if (!isTauri()) {
+    return null;
+  }
+  return invoke<LaunchSnapshot | null>("launch_state", { workId });
+}
+
+export async function listMonitors(): Promise<MonitorInfo[]> {
+  if (!isTauri()) {
+    return [{ index: 0, name: "主显示器", width: 1920, height: 1080, scaleFactor: 1 }];
+  }
+  return invoke<MonitorInfo[]>("monitors_list");
+}
+
+export async function pickImageFile(): Promise<string | null> {
+  if (!isTauri()) {
+    return null;
+  }
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const selected = await open({
+    directory: false,
+    multiple: false,
+    title: "选择作品封面",
+    filters: [{ name: "图片", extensions: ["png", "jpg", "jpeg", "webp", "bmp"] }],
+  });
+  return typeof selected === "string" ? selected : null;
+}
+
+export async function pickExecutable(defaultPath?: string): Promise<string | null> {
+  if (!isTauri()) {
+    return null;
+  }
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const selected = await open({
+    directory: false,
+    multiple: false,
+    defaultPath,
+    title: "选择可执行文件",
+    filters: [{ name: "Windows 程序", extensions: ["exe"] }],
+  });
+  return typeof selected === "string" ? selected : null;
+}
+
+export async function pickDirectory(defaultPath?: string): Promise<string | null> {
+  if (!isTauri()) {
+    return null;
+  }
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const selected = await open({
+    directory: true,
+    multiple: false,
+    defaultPath,
+    title: "选择工作目录",
+  });
+  return typeof selected === "string" ? selected : null;
+}
+
 export function libraryItemToGame(item: LibraryItem): Game {
   const previewGame = (item as PreviewLibraryItem).previewGame;
   if (previewGame) {
     return {
       ...previewGame,
+      id: libraryItemId(item),
+      workId: item.workId,
+      title: item.title,
+      originalTitle: item.originalTitle,
+      year: item.year,
+      developer: item.developer ?? previewGame.developer,
+      tags: item.tags,
       status: item.status,
       favorite: item.favorite,
+      rating: item.rating ?? previewGame.rating,
+      description: item.description || previewGame.description,
+      playtime: formatPlaytime(item.playtimeMinutes),
+      playtimeMinutes: item.playtimeMinutes,
+      lastPlayed: item.lastPlayedAt
+        ? formatRelativeDate(item.lastPlayedAt)
+        : previewGame.lastPlayed,
+      addedAt: formatRelativeDate(item.addedAt),
+      launchCount: item.launchCount,
+      installedSize: item.sizeBytes > 0 ? formatBytes(item.sizeBytes) : previewGame.installedSize,
+      installedPath: item.workingDir,
+      exePath: item.exePath,
+      coverUrl: assetUrl(item.coverThumbPath),
       notes: (item as LibraryItemDetail).notes ?? previewGame.notes,
     };
   }
 
   return {
     id: libraryItemId(item),
+    workId: item.workId,
     title: item.title,
     originalTitle: item.originalTitle,
     romaji: "",
@@ -411,9 +674,9 @@ export function libraryItemToGame(item: LibraryItem): Game {
     addedAt: formatRelativeDate(item.addedAt),
     rating: item.rating ?? 0,
     description:
-      item.description ||
-      "从本地目录扫描入库的作品。当前只记录安装与启动路径；封面、发行信息和更多资料将在 C3/C4 完善。",
+      item.description || "从本地目录扫描入库的作品。可以在详情页补全资料、封面和启动配置。",
     cover: null,
+    coverUrl: assetUrl(item.coverThumbPath),
     catalogNo: item.catalogNo,
     source: "本地安装",
     engine: "未识别",

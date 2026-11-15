@@ -11,6 +11,7 @@ import {
   queryLibrary,
   listLibraryRoots,
   listScanExclusions,
+  listMonitors,
 } from "../../lib/library-api";
 import type { LibraryQuery } from "../../lib/library-types";
 
@@ -89,6 +90,14 @@ export function useAppInfo() {
   });
 }
 
+export function useMonitors() {
+  return useQuery({
+    queryKey: ["monitors"],
+    queryFn: listMonitors,
+    staleTime: 60_000,
+  });
+}
+
 export function useScanExclusions() {
   return useQuery({
     queryKey: ["scan-exclusions"],
@@ -101,6 +110,7 @@ export function useInvalidateLibrary() {
   const queryClient = useQueryClient();
   return useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["library"] });
+    void queryClient.invalidateQueries({ queryKey: ["library-detail"] });
     void queryClient.invalidateQueries({ queryKey: ["home-library"] });
     void queryClient.invalidateQueries({ queryKey: ["library-summary"] });
     void queryClient.invalidateQueries({ queryKey: ["library-roots"] });

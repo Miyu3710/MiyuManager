@@ -1,6 +1,6 @@
 # 前端组件与依赖选型
 
-> 状态：C1 已完成；C2 已接入 TanStack Query、TanStack Virtual 和 Tauri dialog；Motion、cmdk 仍待页面需要时加入并锁定版本  
+> 状态：C3 已完成；C2 已接入 TanStack Query、TanStack Virtual 和 Tauri dialog；C3 详情/启动表单已接入 React Hook Form + Zod；Motion、cmdk 仍待页面需要时加入并锁定版本  
 > 日期：2026-11-15  
 > 目标：为 MiyuManager 的桌面与大屏界面建立一致的组件、图标、动画和交互规范
 

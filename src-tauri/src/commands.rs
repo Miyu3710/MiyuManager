@@ -7,10 +7,13 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::assets::{self, CoverAsset, CoverCandidate};
 use crate::db::{
-    self, AppInfo, ImportCandidateInput, ImportResult, LibraryItemDetail, LibraryPage,
-    LibraryQuery, ScanExclusionRecord, ScanRoot,
+    self, AppInfo, ImportCandidateInput, ImportResult, LaunchConfigInput, LaunchProfile,
+    LibraryItemDetail, LibraryPage, LibraryQuery, ScanExclusionRecord, ScanRoot, ValidationReport,
+    WorkUpdateInput,
 };
+use crate::launcher::{self, LaunchManager, LaunchSnapshot};
 use crate::scan::{self, ScanCandidate, ScanCoordinator};
 
 pub struct AppState {
@@ -18,6 +21,17 @@ pub struct AppState {
     pub data_dir: PathBuf,
     pub db_path: PathBuf,
     pub scan: Arc<ScanCoordinator>,
+    pub launches: Arc<LaunchManager>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MonitorInfo {
+    pub index: i64,
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+    pub scale_factor: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -68,6 +82,7 @@ pub async fn create_app_state(app: &AppHandle) -> anyhow::Result<AppState> {
         data_dir,
         db_path,
         scan: Arc::new(ScanCoordinator::default()),
+        launches: Arc::new(LaunchManager::default()),
     })
 }
 
@@ -89,6 +104,167 @@ pub async fn library_get(
     db::get_library_item(&state.pool, work_id)
         .await
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn work_update(
+    state: State<'_, AppState>,
+    work_id: i64,
+    input: WorkUpdateInput,
+) -> Result<(), String> {
+    db::update_work(&state.pool, work_id, input)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn work_validate(
+    state: State<'_, AppState>,
+    work_id: i64,
+) -> Result<ValidationReport, String> {
+    db::validate_launch(&state.pool, work_id, None)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn work_set_cover(
+    state: State<'_, AppState>,
+    work_id: i64,
+    source_path: String,
+) -> Result<CoverAsset, String> {
+    assets::set_cover(
+        &state.pool,
+        &state.data_dir,
+        work_id,
+        &source_path,
+        "manual",
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn work_apply_local_cover(
+    state: State<'_, AppState>,
+    work_id: i64,
+    source_path: String,
+) -> Result<CoverAsset, String> {
+    assets::set_cover(&state.pool, &state.data_dir, work_id, &source_path, "local")
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn work_clear_cover(state: State<'_, AppState>, work_id: i64) -> Result<(), String> {
+    assets::clear_cover(&state.pool, &state.data_dir, work_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn work_discover_covers(
+    state: State<'_, AppState>,
+    work_id: i64,
+) -> Result<Vec<CoverCandidate>, String> {
+    assets::discover_covers(&state.pool, work_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn launch_profile_save(
+    state: State<'_, AppState>,
+    work_id: i64,
+    profile: LaunchProfile,
+) -> Result<LaunchProfile, String> {
+    db::save_launch_profile(&state.pool, work_id, profile)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn launch_config_save(
+    state: State<'_, AppState>,
+    work_id: i64,
+    input: LaunchConfigInput,
+) -> Result<LaunchProfile, String> {
+    db::save_launch_config(&state.pool, work_id, input)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn launch_config_validate(
+    state: State<'_, AppState>,
+    work_id: i64,
+    input: LaunchConfigInput,
+) -> Result<ValidationReport, String> {
+    db::validate_launch_config_report(&state.pool, work_id, &input)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn launch_validate(
+    state: State<'_, AppState>,
+    work_id: i64,
+    profile: Option<LaunchProfile>,
+) -> Result<ValidationReport, String> {
+    db::validate_launch(&state.pool, work_id, profile)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn launch_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    work_id: i64,
+) -> Result<LaunchSnapshot, String> {
+    launcher::start(app, state.pool.clone(), state.launches.clone(), work_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn launch_stop(state: State<'_, AppState>, work_id: i64) -> Result<bool, String> {
+    launcher::stop(&state.launches, work_id).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn launch_state(
+    state: State<'_, AppState>,
+    work_id: i64,
+) -> Result<Option<LaunchSnapshot>, String> {
+    Ok(launcher::state(&state.launches, work_id))
+}
+
+#[tauri::command]
+pub async fn monitors_list(app: AppHandle) -> Result<Vec<MonitorInfo>, String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "主窗口尚未创建".to_string())?;
+    let monitors = window
+        .available_monitors()
+        .map_err(|error| error.to_string())?;
+    Ok(monitors
+        .into_iter()
+        .enumerate()
+        .map(|(index, monitor)| {
+            let size = monitor.size();
+            MonitorInfo {
+                index: index as i64,
+                name: monitor
+                    .name()
+                    .cloned()
+                    .unwrap_or_else(|| format!("显示器 {}", index + 1)),
+                width: size.width,
+                height: size.height,
+                scale_factor: monitor.scale_factor(),
+            }
+        })
+        .collect())
 }
 
 #[tauri::command]

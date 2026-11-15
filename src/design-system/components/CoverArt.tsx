@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ReactNode } from "react";
 
 export type CoverId =
@@ -18,6 +19,7 @@ export interface CoverWork {
   developer: string;
   year: number | null;
   cover: CoverId | null;
+  coverUrl?: string | null;
 }
 
 interface CoverArtProps {
@@ -418,6 +420,29 @@ function HeroineFigure({ kind }: { kind: CoverId }) {
 }
 
 export function CoverArt({ work, className = "", focus = "center" }: CoverArtProps) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const imageFailed = Boolean(work.coverUrl && failedUrl === work.coverUrl);
+
+  if (work.coverUrl && !imageFailed) {
+    return (
+      <div
+        className={`cover-art cover-art--image ${className}`.trim()}
+        role="img"
+        aria-label={`${work.title} 封面`}
+      >
+        <img
+          className="cover-art__image"
+          src={work.coverUrl}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          onError={() => setFailedUrl(work.coverUrl ?? null)}
+        />
+      </div>
+    );
+  }
+
   if (!work.cover) {
     return (
       <div

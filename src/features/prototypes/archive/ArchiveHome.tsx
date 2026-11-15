@@ -53,7 +53,7 @@ export function ArchiveHome() {
             <button
               type="button"
               className="archive-button archive-button--primary"
-              onClick={() => toast("原型预览：启动器将在 C3 接入。")}
+              onClick={() => toast("原型预览：启动功能在主应用作品详情页中提供。")}
             >
               启动游戏
               <ArrowRight size={14} strokeWidth={1.6} />
