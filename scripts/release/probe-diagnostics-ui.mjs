@@ -54,7 +54,7 @@ for (const viewport of viewports) {
   if (metrics.documentWidth > metrics.viewportWidth + 1) {
     errors.push(`horizontal overflow: ${metrics.documentWidth} > ${metrics.viewportWidth}`);
   }
-  for (const label of ["备份与恢复", "迁移与本地快照", "诊断日志"]) {
+  for (const label of ["自动检查更新", "备份与恢复", "迁移与本地快照", "诊断日志"]) {
     if (!metrics.dataText.includes(label)) {
       errors.push(`missing data section: ${label}`);
     }

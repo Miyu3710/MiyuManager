@@ -888,6 +888,7 @@ export function WorkDetailPage() {
                 defaultMonitor: null,
                 launchFullscreen: false,
                 wrappers: [],
+                autoUpdateCheck: true,
                 updateManifestUrl: "",
                 onboardingCompleted: true,
                 launchAtStartup: false,

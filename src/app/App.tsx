@@ -10,6 +10,7 @@ import { AppShell } from "./AppShell";
 import { HintProvider } from "../design-system/components/Hint";
 import { HomePage } from "../features/home/HomePage";
 import { useAppInfo } from "../features/library/useLibrary";
+import { useAutomaticUpdates } from "./useAutomaticUpdates";
 
 const LibraryPage = lazy(() =>
   import("../features/library/LibraryPage").then((module) => ({ default: module.LibraryPage })),
@@ -262,6 +263,7 @@ export default function App() {
   useRevealWindow();
   useMainWindowBridge();
   useLaunchWarnings();
+  useAutomaticUpdates();
 
   return (
     <QueryClientProvider client={queryClient}>

@@ -161,6 +161,7 @@ describe("main app pages", () => {
           { id: "locale-emulator", path: "C:\\Tools\\LEProc.exe", args: [] },
           { id: "magpie", path: "C:\\Tools\\Magpie.exe", args: ["-t"] },
         ],
+        autoUpdateCheck: true,
         updateManifestUrl: "",
         onboardingCompleted: true,
       }),

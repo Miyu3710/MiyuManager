@@ -86,3 +86,7 @@ if (!backup.path || backup.sizeBytes <= 0) throw new Error("database backup was 
 if (after.backupCount <= before.backupCount) throw new Error("backup count did not increase");
 if (metrics.documentWidth > metrics.viewportWidth + 1) throw new Error("settings page overflowed");
 if (!metrics.dataText.includes("完整性通过")) throw new Error("database health was not rendered");
+if (!metrics.dataText.includes("自动检查更新"))
+  throw new Error("automatic update setting was not rendered");
+if (!metrics.dataText.includes(appInfo.version))
+  throw new Error("release version was not rendered");

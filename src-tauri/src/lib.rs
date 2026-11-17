@@ -25,6 +25,8 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(security::navigation_guard())
         .register_uri_scheme_protocol("miyu-asset", |context, request| {
             let state = context.app_handle().state::<commands::AppState>();
@@ -60,6 +62,7 @@ pub fn run() {
             commands::library_get,
             commands::work_update,
             commands::work_source_links_update,
+            commands::work_source_rating,
             commands::work_validate,
             commands::work_set_cover,
             commands::work_apply_local_cover,

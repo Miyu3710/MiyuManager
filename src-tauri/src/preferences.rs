@@ -71,6 +71,8 @@ pub struct AppPreferences {
     pub wrapper_path: String,
     #[serde(default)]
     pub wrapper_args: Vec<String>,
+    #[serde(default = "default_true")]
+    pub auto_update_check: bool,
     #[serde(default)]
     pub update_manifest_url: String,
     #[serde(default)]
@@ -93,6 +95,10 @@ fn default_close_behavior() -> String {
     "tray".to_string()
 }
 
+fn default_true() -> bool {
+    true
+}
+
 impl Default for AppPreferences {
     fn default() -> Self {
         Self {
@@ -103,6 +109,7 @@ impl Default for AppPreferences {
             wrappers: default_wrappers(),
             wrapper_path: String::new(),
             wrapper_args: Vec::new(),
+            auto_update_check: true,
             update_manifest_url: String::new(),
             onboarding_completed: false,
             launch_at_startup: false,
@@ -443,6 +450,7 @@ mod tests {
         super::save(&pool, &preferences).await.expect("save");
 
         let loaded = super::load(&pool).await.expect("load");
+        assert!(loaded.auto_update_check);
         assert_eq!(loaded.proxy_mode, "custom");
         assert_eq!(loaded.default_monitor, Some(1));
         let locale = loaded

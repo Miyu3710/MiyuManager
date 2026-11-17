@@ -13,6 +13,7 @@ export interface AppPreferences {
   defaultMonitor: number | null;
   launchFullscreen: boolean;
   wrappers: WrapperConfig[];
+  autoUpdateCheck: boolean;
   updateManifestUrl: string;
   onboardingCompleted: boolean;
   launchAtStartup: boolean;

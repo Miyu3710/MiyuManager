@@ -1,6 +1,7 @@
 param(
   [switch]$SkipChecks,
-  [switch]$ExecutableOnly
+  [switch]$ExecutableOnly,
+  [switch]$SkipBuild
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,7 +32,9 @@ if (-not $SkipChecks) {
   }
 }
 
-if ($ExecutableOnly) {
+if ($SkipBuild) {
+  Write-Host "\n== Reuse existing Tauri build ==" -ForegroundColor Cyan
+} elseif ($ExecutableOnly) {
   Write-Host "\n== Tauri release executable ==" -ForegroundColor Cyan
   pnpm tauri build --no-bundle
   if ($LASTEXITCODE -ne 0) {
@@ -55,10 +58,11 @@ $BundleRoot = Join-Path $Root "src-tauri\target\release\bundle"
 $Artifacts = if ($ExecutableOnly) {
   @(Get-Item -LiteralPath (Join-Path $Root "src-tauri\target\release\miyumanager.exe"))
 } else {
+  $versionPattern = [regex]::Escape($Version)
   Get-ChildItem -LiteralPath $BundleRoot -Recurse -File |
     Where-Object {
-      $_.Extension -in @(".msi", ".exe") -and
-      $_.Name -match "(setup|MiyuManager.*\.msi|MiyuManager.*\.exe)$"
+      $_.Name -match "^MiyuManager_${versionPattern}_x64[-_]" -and
+      ($_.Extension -in @(".msi", ".exe", ".sig"))
     }
 }
 
@@ -83,12 +87,39 @@ $Manifest = [ordered]@{
   version = $Version
   packageMode = if ($ExecutableOnly) { "executable-only" } else { "installer" }
   generatedAt = (Get-Date).ToUniversalTime().ToString("o")
-  signing = "unsigned"
-  updatePolicy = "manual-check-only"
+  codeSigning = "unsigned"
+  updateSigning = if ($ExecutableOnly) { "not-applicable" } else { "tauri-updater" }
+  updatePolicy = if ($ExecutableOnly) { "manual" } else { "tauri-updater" }
   artifacts = $ManifestArtifacts
 }
 $Manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $OutDir "release-manifest.json") -Encoding utf8
 $ManifestArtifacts | ForEach-Object { "$($_.sha256)  $($_.name)" } |
   Set-Content -LiteralPath (Join-Path $OutDir "SHA256SUMS.txt") -Encoding ascii
+
+if (-not $ExecutableOnly) {
+  $nsisName = "MiyuManager_${Version}_x64-setup.exe"
+  $signaturePath = Join-Path $OutDir ($nsisName + ".sig")
+  if (-not (Test-Path -LiteralPath $signaturePath)) {
+    throw "Updater signature missing: $signaturePath. Set TAURI_SIGNING_PRIVATE_KEY before building."
+  }
+  $notesPath = Join-Path $Root "docs\RELEASE_NOTES.md"
+  $notes = if (Test-Path -LiteralPath $notesPath) {
+    [System.IO.File]::ReadAllText($notesPath, [System.Text.Encoding]::UTF8)
+  } else {
+    "MiyuManager v$Version"
+  }
+  $latest = [ordered]@{
+    version = $Version
+    notes = $notes
+    pub_date = (Get-Date).ToUniversalTime().ToString("o")
+    platforms = [ordered]@{
+      "windows-x86_64" = [ordered]@{
+        signature = (Get-Content -Raw -LiteralPath $signaturePath).Trim()
+        url = "https://github.com/Miyu3710/MiyuManager/releases/download/v$Version/$nsisName"
+      }
+    }
+  }
+  $latest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $OutDir "latest.json") -Encoding utf8
+}
 
 Write-Host "\nArtifacts copied to $OutDir" -ForegroundColor Green

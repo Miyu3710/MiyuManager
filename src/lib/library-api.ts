@@ -789,7 +789,7 @@ export async function getAppInfo(): Promise<AppInfo> {
       exclusionCount: previewExclusions.length,
       rootCount: previewRoots.length,
       onboardingCompleted: true,
-      version: "0.1.0-preview",
+      version: "0.2.0-preview",
     };
   }
   return invoke<AppInfo>("app_info");

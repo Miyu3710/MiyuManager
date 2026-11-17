@@ -1236,6 +1236,23 @@
   white-space: pre-wrap;
 }
 
+.settings-update-progress {
+  position: relative;
+  height: 3px;
+  overflow: hidden;
+  margin: -2px 0 14px;
+  border-radius: 99px;
+  background: var(--color-surface-soft);
+}
+
+.settings-update-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent);
+  transition: width 180ms ease-out;
+}
+
 @media (max-width: 900px) {
   .settings-stack-row {
     flex-direction: column;

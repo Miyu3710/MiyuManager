@@ -1,19 +1,19 @@
 # 公开仓库检查清单
 
-> 当前仓库仍为私有。以下清单用于决定是否公开，以及公开前需要处理的事项。
+> 仓库已公开为 `Miyu3710/MiyuManager`。以下清单保留公开后的维护事项。
 
 ## 已完成
 
-| 项目 | 状态 |
-| --- | --- |
-| AI 生成、个人自用、不收费、不保证维护声明 | 已加入 [NOTICE.md](../NOTICE.md) 和 README |
-| ReinaManager、Playnite 灵感来源 | 已加入 README 感谢名单和 [NOTICE.md](../NOTICE.md) |
-| MIT License | 已加入 [LICENSE](../LICENSE) |
-| 第三方组件、字体、图标、截图声明 | 已加入 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) |
-| 字体 OFL 许可证全文 | 已加入 [licenses/OFL-1.1.txt](../licenses/OFL-1.1.txt) |
-| 隐私说明 | 已加入 [PRIVACY.md](PRIVACY.md) |
-| 安全漏洞报告方式 | 已加入 [SECURITY.md](../SECURITY.md) |
-| 贡献政策 | 已加入 [CONTRIBUTING.md](../CONTRIBUTING.md) |
+| 项目                                      | 状态                                                       |
+| ----------------------------------------- | ---------------------------------------------------------- |
+| AI 生成、个人自用、不收费、不保证维护声明 | 已加入 [NOTICE.md](../NOTICE.md) 和 README                 |
+| ReinaManager、Playnite 灵感来源           | 已加入 README 感谢名单和 [NOTICE.md](../NOTICE.md)         |
+| MIT License                               | 已加入 [LICENSE](../LICENSE)                               |
+| 第三方组件、字体、图标、截图声明          | 已加入 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) |
+| 字体 OFL 许可证全文                       | 已加入 [licenses/OFL-1.1.txt](../licenses/OFL-1.1.txt)     |
+| 隐私说明                                  | 已加入 [PRIVACY.md](PRIVACY.md)                            |
+| 安全漏洞报告方式                          | 已加入 [SECURITY.md](../SECURITY.md)                       |
+| 贡献政策                                  | 已加入 [CONTRIBUTING.md](../CONTRIBUTING.md)               |
 
 > 注意：MIT License 允许他人将代码用于商业用途。“不收费”只表示作者不收费，不限制下游商业使用。如果“仅自用”意味着禁止他人商业使用，请改用 PolyForm Noncommercial 1.0.0 等非商业许可证。
 
@@ -26,7 +26,7 @@
    `src/lib/library-api.ts` 等预览/fixture 数据中有 `E:\h\Gal\...`、`E:\SteamLibrary\...` 等路径。公开前替换为 `C:\Games\...` 或通用示例路径。
 
 3. **Git 历史检查**
-   当前工作树未发现明显的 OAuth 令牌或私钥；公开前仍应使用 GitHub Secret Scanning、`gitleaks` 或 `git log -p` 检查全部历史，确认没有提交过 `providers.json`、令牌、账号信息或个人路径。
+   当前工作树未发现明显的 OAuth 令牌或私钥；公开前仍应使用 GitHub Secret Scanning、`gitleaks` 或 `git log -p` 检查全部历史，确认没有提交过 `providers.json`、令牌、账号信息或个人路径。仓库只保留 `providers.example.json` 模板，用户配置步骤见 [OAUTH.md](OAUTH.md)。
 
 4. **第三方图标**
    `public/bangumi-icon.png`、`kungal-icon.png`、`hikarinagi-icon.svg`、`tauri.svg`、`vite.svg` 是第三方商标或标识。保留时需要归属声明；如果不想处理商标问题，替换为自制图标或删除未使用文件。当前 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) 已做文字说明，但没有取得额外授权。
@@ -47,7 +47,7 @@
    当前使用 GitHub Security Advisory 作为私下联系入口。若仓库公开后可能收到商标、图标或截图权利人的请求，建议在仓库资料中增加一个专门的联系方式，或明确说明通过 Security Advisory 联系。
 
 10. **内容提示**
-    元数据可能包含成人向作品。若仓库面向公众，建议在 README 增加年龄/内容提示，并说明本项目不包含游戏本体或成人内容。
+    元数据可能包含成人向作品。README 应说明本项目不包含游戏本体或成人内容。
 
 ## 建议的仓库设置
 

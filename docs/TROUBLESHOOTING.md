@@ -12,7 +12,11 @@
 
 ## 更新检查失败
 
-更新清单只支持 HTTP(S) JSON，字段为 `version`、`notes`、`url`。代理设置只影响元数据和更新检查；如果清单需要认证，应用不会发送账号 token。
+应用从 `https://github.com/Miyu3710/MiyuManager/releases/latest/download/latest.json` 检查更新。确认网络可以访问 GitHub；代理设置目前主要作用于元数据和 OAuth，不会转发 Tauri Updater 下载。
+
+如果提示签名校验失败，不要绕过校验。删除已下载的临时更新并等待发布页重新上传 `latest.json` 与 `.sig` 文件；更新私钥丢失后不能继续向已安装用户发布更新。
+
+如果下载完成但安装器没有出现，检查 Windows SmartScreen、安全软件拦截和安装器日志。当前安装器没有 Authenticode 代码签名。
 
 ## 游戏启动失败
 

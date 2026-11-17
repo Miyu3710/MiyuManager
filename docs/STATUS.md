@@ -1,12 +1,23 @@
 # MiyuManager 项目状态
 
 > 最后更新：2026-11-17
-> 当前阶段：C9 进行中；备份/恢复、日志与崩溃记录、前端错误边界、CSP/权限、性能、发布脚本、MSI/NSIS 和发布清单已落地。干净 Windows 安装/卸载、签名、物理手柄和多显示器仍待验证。
+> 当前阶段：0.2.0 自动更新发布候选；Tauri Updater、GitHub Release 更新源、更新签名、设置页下载安装和自动检查已接入。干净 Windows 安装/卸载、Authenticode 签名、物理手柄和多显示器仍待验证。
 >
 > 计划文件：`docs/DEVELOPMENT_PLAN.md`  
 > 设计提案：`docs/DESIGN.md`
 
 > 2026-11-16：字段锁定机制已移除；旧锁定值在迁移中清零，导入和合并不再跳过锁定字段。下文涉及字段锁定的历史记录仅作归档。
+
+### 2026-11-17 0.2.0 自动更新（当前）
+
+- 仓库地址为 `https://github.com/Miyu3710/MiyuManager`，此前没有公开 Release。0.2.0 是首个带自动更新能力的公开版本。
+- 接入 `tauri-plugin-updater` 与 `tauri-plugin-process`，版本提升到 0.2.0；更新端点使用 `https://github.com/Miyu3710/MiyuManager/releases/latest/download/latest.json`，Windows 更新优先使用 NSIS 当前用户安装包，安装模式为 passive。
+- 更新签名使用独立 minisign 密钥，公钥写入 `tauri.conf.json`，私钥与本机密码保存在仓库外的用户目录，并写入 GitHub Actions Secrets。私钥丢失将无法继续向已安装用户发布更新。
+- 应用启动后每 24 小时自动检查一次更新；发现版本时显示通知。设置页提供开关、手动检查、版本说明、下载进度和“下载并安装”，下载完成后进入安装并重启。
+- 新增 `.github/workflows/release.yml`：推送 `v*` tag 后在 Windows Runner 执行发布检查、构建 MSI/NSIS、签名更新载荷、生成并上传 `latest.json` 和 Release 资产。
+- `scripts/release/build.ps1` 现在校验 `.sig`、只收集当前版本的 MSI/NSIS/签名文件，并生成本地 `latest.json`。发布产物不再混入旧版本。
+- 验证：`pnpm release:check` 通过，前端 11 个文件 / 53 项测试，Rust 89 passed / 15 ignored；0.2.0 签名构建已生成 MSI、NSIS、两个 `.sig`、`latest.json`、发布清单和 SHA-256。设置页在 1440×900、1920×1080、150% 缩放和 390×844 下无溢出，浏览器预览中的更新控件保持禁用。
+- 0.2.0 本地产物：MSI `17,391,616` bytes，SHA-256 `beb1f6f7b9fd176ee5ea4aec3065413414b95eb8024a28a4a55d1ba1093db489`；NSIS `15,785,027` bytes，SHA-256 `77ccf7fcc99ab7f51d47a5b432b9600d9300e5682de9850e9d7e45596e26d655`。`latest.json` 的 Windows 平台项指向 GitHub `v0.2.0` Release 的 NSIS 资产并嵌入对应签名。
 
 ### 2026-11-17 大屏电视构图与交互收口（当前）
 
@@ -54,6 +65,7 @@
 | C7 电视大屏与手柄导航                 | 待验收 | 正式 `bigscreen` 窗口、显示器选择、真实库、图标分类栏、竖版海报架、Y 菜单、Start 控制菜单、启动/详情和焦点管理已接入；待 G5 确认；详见下文 |
 | C8 首页、收藏集、设置与首次启动       | 已完成 | 真实首页、收藏集 CRUD/排序/作品增删、Ctrl+K 全局搜索、启动器/网络/数据设置、更新检查和首次启动向导已接入；详见下文                         |
 | C9 硬化、性能、打包与发布候选         | 进行中 | 备份/恢复、日志、错误边界、CSP、权限、基准、发布脚本和 MSI/NSIS 已完成；干净安装、签名和实体设备验证待完成                                 |
+| R1 0.2.0 自动更新                     | 发布中 | Tauri Updater、GitHub Release、更新签名、设置页下载安装和自动检查已接入；等待首个 GitHub Release 与该版本之后的真实升级验证                |
 
 ## 已锁定的决策
 

@@ -18,6 +18,7 @@ const previewDefaults: AppPreferences = {
     { id: "locale-emulator", path: "", args: [] },
     { id: "magpie", path: "", args: ["-t"] },
   ],
+  autoUpdateCheck: true,
   updateManifestUrl: "",
   onboardingCompleted: true,
   launchAtStartup: false,
@@ -92,13 +93,13 @@ export async function quitApp(): Promise<void> {
 export async function checkForUpdates(): Promise<UpdateCheck> {
   if (!isTauri()) {
     return {
-      currentVersion: "0.1.0-preview",
+      currentVersion: "0.2.0-preview",
       configured: false,
       latestVersion: null,
       updateAvailable: false,
       notes: null,
       url: null,
-      message: "浏览器预览不会检查更新。安装包与更新流程将在 C9 提供。",
+      message: "浏览器预览不会检查应用更新。",
     };
   }
   return invoke<UpdateCheck>("update_check");

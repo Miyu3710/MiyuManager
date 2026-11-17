@@ -1,5 +1,7 @@
 # Windows 代码签名说明
 
+> Tauri Updater 的 minisign 更新签名与 Windows Authenticode 代码签名是两套独立机制。前者保护自动更新包，本项目已配置；后者保护 EXE/MSI/NSIS 的发布者身份，当前仍待证书。
+
 MiyuManager 目前生成 MSI 和 NSIS 两种安装包，二者都未签名。公开分发前，建议至少给下面三个文件签名：
 
 - `miyumanager.exe`（应用主程序）
@@ -10,16 +12,16 @@ MiyuManager 目前生成 MSI 和 NSIS 两种安装包，二者都未签名。公
 
 ## 可选方式
 
-| 方式 | 适合场景 | 大致成本 | 备注 |
-| --- | --- | --- | --- |
-| OV 代码签名证书 | 个人或小团队公开分发 | 约几百美元/年 | 需要 CA 身份核验；私钥通常放在硬件令牌或云 HSM 中，SmartScreen 信誉需要积累 |
-| EV 代码签名证书 | 希望更强身份可信度 | 通常高于 OV | 核验更严格；对 SmartScreen 声誉可能有帮助，但不保证立即无警告 |
-| Azure Trusted Signing | 想在 CI 中自动签名 | 按 Azure 订阅计费 | 微软托管短时证书，SignTool/CI 集成方便；需要符合当前资格和地区要求 |
-| 云 HSM 签名服务 | 不想在 CI 里插 USB Token | 证书费 + 服务费 | DigiCert KeyLocker、SSL.com eSigner、Sectigo、GlobalSign 等；密钥不离开 HSM |
-| SignPath.io / SignPath Foundation | 公开开源项目 | Foundation 对符合条件的开源项目免费 | 适合 GitHub Actions；需要申请并被接受 |
-| Certum Open Source Code Signing | 低成本开源签名 | 相对低 | 面向开源项目，通常需要硬件令牌或云签名；以 Certum 当前政策为准 |
-| 自签名证书 | 本机测试、内部分发 | 免费 | Windows 和 SmartScreen 不信任，不能用于公开下载 |
-| Microsoft Store / MSIX | 通过商店分发 | 按商店政策 | 由商店签名，但不是当前的 MSI/NSIS 流程，需要改打包和发布方式 |
+| 方式                              | 适合场景                 | 大致成本                            | 备注                                                                        |
+| --------------------------------- | ------------------------ | ----------------------------------- | --------------------------------------------------------------------------- |
+| OV 代码签名证书                   | 个人或小团队公开分发     | 约几百美元/年                       | 需要 CA 身份核验；私钥通常放在硬件令牌或云 HSM 中，SmartScreen 信誉需要积累 |
+| EV 代码签名证书                   | 希望更强身份可信度       | 通常高于 OV                         | 核验更严格；对 SmartScreen 声誉可能有帮助，但不保证立即无警告               |
+| Azure Trusted Signing             | 想在 CI 中自动签名       | 按 Azure 订阅计费                   | 微软托管短时证书，SignTool/CI 集成方便；需要符合当前资格和地区要求          |
+| 云 HSM 签名服务                   | 不想在 CI 里插 USB Token | 证书费 + 服务费                     | DigiCert KeyLocker、SSL.com eSigner、Sectigo、GlobalSign 等；密钥不离开 HSM |
+| SignPath.io / SignPath Foundation | 公开开源项目             | Foundation 对符合条件的开源项目免费 | 适合 GitHub Actions；需要申请并被接受                                       |
+| Certum Open Source Code Signing   | 低成本开源签名           | 相对低                              | 面向开源项目，通常需要硬件令牌或云签名；以 Certum 当前政策为准              |
+| 自签名证书                        | 本机测试、内部分发       | 免费                                | Windows 和 SmartScreen 不信任，不能用于公开下载                             |
+| Microsoft Store / MSIX            | 通过商店分发             | 按商店政策                          | 由商店签名，但不是当前的 MSI/NSIS 流程，需要改打包和发布方式                |
 
 ## 推荐顺序
 

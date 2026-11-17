@@ -1,6 +1,7 @@
 import {
   Archive,
   DatabaseBackup,
+  Download,
   FolderOpen,
   Loader2,
   RefreshCw,
@@ -16,7 +17,6 @@ import { ConfirmDialog } from "../../design-system/components/ConfirmDialog";
 import { Hint } from "../../design-system/components/Hint";
 import { Tag } from "../../design-system/components/Tag";
 import {
-  checkForUpdates,
   createDatabaseBackup,
   getDatabaseHealth,
   openBackupDirectory,
@@ -25,12 +25,19 @@ import {
   restoreDatabase,
   updatePreferences,
 } from "../../lib/app-api";
-import type { AppPreferences, CloseBehavior, ProxyMode, UpdateCheck } from "../../lib/app-types";
+import type { AppPreferences, CloseBehavior, ProxyMode } from "../../lib/app-types";
 import { formatBytes } from "../../lib/format";
 import { listOAuthAccounts, pickExecutable } from "../../lib/library-api";
 import type { AppInfo, MonitorInfo } from "../../lib/library-types";
 import { cn } from "../../lib/cn";
 import { WRAPPER_DEFINITIONS, wrapperConfig } from "../../lib/launch-wrappers";
+import {
+  checkForAppUpdate,
+  installAppUpdate,
+  relaunchAfterUpdate,
+  type AppUpdateInfo,
+  type UpdateProgress,
+} from "../../lib/updater";
 import { SettingsSelect } from "./SettingsSelect";
 
 function parseLines(value: string): string[] {
@@ -493,39 +500,61 @@ export function DataAndUpdateSection({
   onSaved: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [manifestUrl, setManifestUrl] = useState(preferences.updateManifestUrl);
-  const [busy, setBusy] = useState(false);
+  const [autoUpdateBusy, setAutoUpdateBusy] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [checked, setChecked] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const [installing, setInstalling] = useState(false);
+  const [progress, setProgress] = useState<UpdateProgress | null>(null);
   const [dataBusy, setDataBusy] = useState<"backup" | "restore" | null>(null);
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
-  const [result, setResult] = useState<UpdateCheck | null>(null);
   const database = useQuery({
     queryKey: ["database-health"],
     queryFn: getDatabaseHealth,
     staleTime: 10_000,
   });
 
-  const saveManifest = async () => {
-    setBusy(true);
+  const toggleAutoUpdate = async () => {
+    setAutoUpdateBusy(true);
     try {
-      await updatePreferences({ ...preferences, updateManifestUrl: manifestUrl });
+      await updatePreferences({
+        ...preferences,
+        autoUpdateCheck: !preferences.autoUpdateCheck,
+      });
       onSaved();
-      toast.success("更新检查地址已保存");
+      toast.success(preferences.autoUpdateCheck ? "已关闭自动检查更新" : "已开启自动检查更新");
     } catch (error) {
       toast.error(String(error));
     } finally {
-      setBusy(false);
+      setAutoUpdateBusy(false);
     }
   };
 
   const check = async () => {
     setChecking(true);
     try {
-      setResult(await checkForUpdates());
+      const update = await checkForAppUpdate();
+      setUpdateInfo(update);
+      setChecked(true);
+      toast.success(update ? `发现 MiyuManager ${update.version}` : "当前已是最新版本");
     } catch (error) {
-      toast.error(String(error));
+      setChecked(false);
+      toast.error(`无法检查更新：${String(error)}`);
     } finally {
       setChecking(false);
+    }
+  };
+
+  const install = async () => {
+    setInstalling(true);
+    setProgress({ phase: "downloading", downloaded: 0, total: null });
+    try {
+      await installAppUpdate(setProgress);
+      toast.success("更新已安装，MiyuManager 将重新启动");
+      await relaunchAfterUpdate();
+    } catch (error) {
+      setInstalling(false);
+      toast.error(`更新安装失败：${String(error)}`);
     }
   };
 
@@ -699,43 +728,86 @@ export function DataAndUpdateSection({
         </div>
         <Tag tone="data">当前版本</Tag>
       </div>
-      <div className="settings-stack-row">
+      <div className="settings-row">
         <div>
-          <b>更新清单地址（可选）</b>
-          <span>支持 JSON 的 version、notes 和 url 字段；留空时只显示当前版本。</span>
+          <b>自动检查更新</b>
+          <span>启动后每 24 小时检查 GitHub Release；下载、安装和重启仍由你确认。</span>
         </div>
-        <div className="settings-path-input">
-          <input
-            className="settings-input"
-            aria-label="更新清单地址"
-            value={manifestUrl}
-            onChange={(event) => setManifestUrl(event.currentTarget.value)}
-            placeholder="https://example.com/miyumanager-update.json"
-            spellCheck={false}
-          />
-          <Button variant="secondary" size="sm" disabled={busy} onClick={() => void saveManifest()}>
-            保存
-          </Button>
-        </div>
+        <button
+          type="button"
+          className={cn("settings-switch", preferences.autoUpdateCheck && "is-on")}
+          aria-pressed={preferences.autoUpdateCheck}
+          aria-label="自动检查更新"
+          disabled={!isTauri() || autoUpdateBusy}
+          onClick={() => void toggleAutoUpdate()}
+        >
+          <span />
+        </button>
       </div>
       <div className="settings-row">
         <div>
           <b>检查更新</b>
-          <span>{result?.message ?? "只检查版本，不自动下载或安装。"}</span>
-          {result?.updateAvailable && result.latestVersion ? (
-            <Tag tone="status">最新 {result.latestVersion}</Tag>
+          <span>
+            {!isTauri()
+              ? "浏览器预览不会检查或安装应用更新。"
+              : installing
+                ? progress?.phase === "installing"
+                  ? "正在安装更新并准备重启…"
+                  : progress?.total
+                    ? `下载更新 ${Math.min(100, Math.round((progress.downloaded / progress.total) * 100))}%`
+                    : `已下载 ${formatBytes(progress?.downloaded ?? 0)}`
+                : updateInfo
+                  ? `发现 MiyuManager ${updateInfo.version}${updateInfo.date ? ` · ${new Date(updateInfo.date).toLocaleDateString("zh-CN")}` : ""}`
+                  : checked
+                    ? "当前已是最新版本。"
+                    : "从 GitHub Release 检查签名更新；下载和重启由你确认。"}
+          </span>
+          {updateInfo ? <Tag tone="status">可更新</Tag> : null}
+        </div>
+        <div className="settings-row__actions">
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!isTauri() || checking || installing}
+            onClick={() => void check()}
+          >
+            {checking ? (
+              <Loader2 size={13} className="settings-spin" />
+            ) : (
+              <RefreshCw size={13} strokeWidth={1.7} />
+            )}
+            {checking ? "检查中…" : "检查更新"}
+          </Button>
+          {updateInfo ? (
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={installing}
+              onClick={() => void install()}
+            >
+              {installing ? (
+                <Loader2 size={13} className="settings-spin" />
+              ) : (
+                <Download size={13} strokeWidth={1.7} />
+              )}
+              {installing ? "安装中…" : "下载并安装"}
+            </Button>
           ) : null}
         </div>
-        <Button variant="secondary" size="sm" disabled={checking} onClick={() => void check()}>
-          {checking ? (
-            <Loader2 size={13} className="settings-spin" />
-          ) : (
-            <RefreshCw size={13} strokeWidth={1.7} />
-          )}
-          {checking ? "检查中…" : "检查更新"}
-        </Button>
       </div>
-      {result?.notes ? <pre className="settings-update-notes">{result.notes}</pre> : null}
+      {installing && progress?.phase === "downloading" ? (
+        <div className="settings-update-progress" aria-live="polite">
+          <span
+            style={{
+              width:
+                progress.total && progress.total > 0
+                  ? `${Math.min(100, (progress.downloaded / progress.total) * 100)}%`
+                  : "12%",
+            }}
+          />
+        </div>
+      ) : null}
+      {updateInfo?.notes ? <pre className="settings-update-notes">{updateInfo.notes}</pre> : null}
       <ConfirmDialog
         open={restoreTarget !== null}
         onOpenChange={(open) => {

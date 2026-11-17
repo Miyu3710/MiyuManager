@@ -4,7 +4,7 @@
 
 <h1>MiyuManager</h1>
 
-![Status](https://img.shields.io/badge/status-in%20development-orange) ![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white) ![Version](https://img.shields.io/badge/version-0.1.0-blue) ![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)
+![Status](https://img.shields.io/badge/status-release%20candidate-orange) ![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white) ![Version](https://img.shields.io/badge/version-0.2.0-blue) ![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)
 
 <h5>一个本地优先的 Windows Galgame / AVG 游戏库管理器，正在开发中</h5>
 
@@ -25,6 +25,7 @@
 - ⏱️ **游玩记录** — 按实际启动会话统计时长，支持补录和修正；`Ctrl+K` 搜索作品、别名、标签和收藏集。
 - 📺 **电视大屏** — 全屏浏览和启动游戏，支持手柄操作，适合从远处使用。
 - 💾 **数据备份** — SQLite 在线备份与恢复，恢复前自动创建安全快照，并提供诊断日志。
+- 🔄 **自动更新** — 从 GitHub Release 检查、下载并安装经过 Tauri 签名校验的新版本。
 
 游玩记录来自实际启动会话，不读取存档、章节、路线、成就或游戏内进度。
 
@@ -38,7 +39,7 @@
 
 ![电视大屏](https://gist.githubusercontent.com/Miyu3710/22b021d9a97ae632b8a8d5530b6aa3a8/raw/bigscreen.svg)
 
-*界面截图来自实际游戏库。*
+_界面截图来自实际游戏库。_
 
 ## 快速开始
 
@@ -60,7 +61,7 @@ pnpm release:build   # MSI + NSIS
 pnpm release:exe     # 仅 release EXE
 ```
 
-产物和 SHA-256 清单写入 `outputs/release/<版本>/`。当前 0.1.0 安装包未签名。
+产物、更新签名、`latest.json` 和 SHA-256 清单写入 `outputs/release/<版本>/`。安装包未使用 Authenticode 代码签名，自动更新载荷使用独立的 Tauri 更新密钥签名。发布版本见 [GitHub Releases](https://github.com/Miyu3710/MiyuManager/releases)。
 
 ## 数据与配置
 
@@ -71,7 +72,7 @@ $env:MIYU_DATA_DIR = "$PWD\tmp\dev-data"
 pnpm tauri dev
 ```
 
-“设置 → 数据与关于”可以备份或恢复数据库，并查看完整性、迁移和日志状态。备份只保存数据库，不包含游戏文件和封面缓存。OAuth 凭据从 `MIYU_OAUTH_CONFIG` 或数据目录的 `oauth/providers.json` 读取，不进入 Git。
+“设置 → 数据与关于”可以备份或恢复数据库，并查看完整性、迁移和日志状态。备份只保存数据库，不包含游戏文件和封面缓存。OAuth 凭据从 `MIYU_OAUTH_CONFIG` 或数据目录的 `oauth/providers.json` 读取，不进入 Git。开源后请按 [OAuth 配置](docs/OAUTH.md) 创建自己的应用；仓库只提供 [providers.example.json](providers.example.json) 模板，不要把填好的 `providers.json` 提交到 Git。
 
 ## 开发与贡献
 
@@ -87,10 +88,12 @@ pnpm release:check
 
 - [用户指南](docs/USER_GUIDE.md)
 - [发布说明](docs/RELEASE_NOTES.md)
+- [自动更新与发布流程](docs/UPDATER.md)
 - [项目状态](docs/STATUS.md)
 - [故障排查](docs/TROUBLESHOOTING.md)
 - [开发计划](docs/DEVELOPMENT_PLAN.md)
 - [隐私说明](docs/PRIVACY.md)
+- [OAuth 配置](docs/OAUTH.md)
 - [公开仓库检查清单](docs/PUBLISHING.md)
 - [Windows 代码签名](docs/SIGNING.md)
 
@@ -125,4 +128,3 @@ pnpm release:check
 ## 许可证
 
 本项目采用 [MIT License](LICENSE)。第三方组件、字体、图标、商标和游戏素材不在此许可范围内，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
-
