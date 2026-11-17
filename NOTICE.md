@@ -8,7 +8,7 @@ MiyuManager 是一个个人项目。以下说明适用于本仓库、源代码�
 
 ## 使用目的与费用
 
-本项目主要供作者个人自用，不以任何形式收费，也不提供付费版本、订阅、赞助返利或商业支持。源代码公开可见不等于承诺提供产品或服务；他人仅可在 [LICENSE](LICENSE) 允许的个人、非商业范围内使用。
+本项目主要供作者个人自用，不以任何形式收费，也不提供付费版本、订阅、赞助返利或商业支持。代码按 [LICENSE](LICENSE) 的 MIT License 授权，允许他人使用、修改和分发；这不代表作者提供支持或背书。
 
 ## 维护与支持
 
@@ -27,7 +27,7 @@ MiyuManager 是一个个人项目。以下说明适用于本仓库、源代码�
 
 ## 许可
 
-本项目采用 [LICENSE](LICENSE) 中的个人非商业使用许可。第三方组件、字体、图标、商标和游戏素材不在此许可范围内，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+本项目采用 [MIT License](LICENSE)。第三方组件、字体、图标、商标和游戏素材不在此许可范围内，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 无担保
 

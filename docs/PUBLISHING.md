@@ -8,12 +8,14 @@
 | --- | --- |
 | AI 生成、个人自用、不收费、不保证维护声明 | 已加入 [NOTICE.md](../NOTICE.md) 和 README |
 | ReinaManager、Playnite 灵感来源 | 已加入 README 感谢名单和 [NOTICE.md](../NOTICE.md) |
-| 个人非商业使用许可 | 已加入 [LICENSE](../LICENSE)（保守方案） |
+| MIT License | 已加入 [LICENSE](../LICENSE) |
 | 第三方组件、字体、图标、截图声明 | 已加入 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) |
 | 字体 OFL 许可证全文 | 已加入 [licenses/OFL-1.1.txt](../licenses/OFL-1.1.txt) |
 | 隐私说明 | 已加入 [PRIVACY.md](PRIVACY.md) |
 | 安全漏洞报告方式 | 已加入 [SECURITY.md](../SECURITY.md) |
 | 贡献政策 | 已加入 [CONTRIBUTING.md](../CONTRIBUTING.md) |
+
+> 注意：MIT License 允许他人将代码用于商业用途。“不收费”只表示作者不收费，不限制下游商业使用。如果“仅自用”意味着禁止他人商业使用，请改用 PolyForm Noncommercial 1.0.0 等非商业许可证。
 
 ## 公开前必须确认
 
@@ -33,7 +35,7 @@
    项目打包了 Noto Sans SC、Noto Serif SC 和 Manrope，采用 SIL OFL 1.1。仓库中已有许可证全文，但还需要确认 MSI/NSIS/关于页或安装目录包含该文本。
 
 6. **安装包签名**
-   当前 MSI 和 NSIS 均未签名，公开下载会触发 SmartScreen 警告。建议使用代码签名证书；如果暂时不签名，发布页和 README 要明确说明。
+   当前 MSI 和 NSIS 均未签名，公开下载会触发 SmartScreen 警告。建议使用代码签名证书；可选方式、Tauri 配置和验证命令见 [SIGNING.md](SIGNING.md)。如果暂时不签名，发布页和 README 要明确说明。
 
 7. **第三方 API 条款**
    Bangumi 吐槽读取使用 `next.bgm.tv/p1/subjects/{id}/comments`，这是站点内部接口，可能变更或受限。VNDB、Bangumi、Kungal、Hikarinagi、Steam 也各有自己的 API 条款、速率限制和隐私政策。公开前确认调用方式符合条款，并准备接口失败时的降级。
@@ -51,7 +53,7 @@
 
 - 当前仓库为 Private；Description 已填写，Homepage 和 Topics 为空，Issues/Projects 开启，Wiki/Discussions 关闭。
 - 当前私有免费仓库上，Secret Scanning、Dependabot、Private vulnerability reporting 和分支保护不可用或未开启；公开后立即在 Settings → Code security and analysis 和 Branches 中启用。
-- LICENSE 推送后 GitHub 才会识别；自定义个人非商业许可可能显示为 Other，需在 README 中明确说明。
+- MIT License 推送后 GitHub 会自动识别。若希望禁止商业使用，应改用 PolyForm Noncommercial 等非商业许可证。
 - 填写仓库描述、主页和 topics，明确“个人自用、不收费、不保证维护”。
 - 启用 Secret Scanning、Dependabot alerts、Private vulnerability reporting。
 - 保护 `main` 分支，限制 GitHub Actions 权限。

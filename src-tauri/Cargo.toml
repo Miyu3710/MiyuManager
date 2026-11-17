@@ -1,6 +1,7 @@
 [package]
 name = "miyumanager"
 version = "0.1.0"
+license = "MIT"
 description = "A local-first visual novel library manager for Windows"
 authors = ["MiyuManager"]
 edition = "2024"
