@@ -32,3 +32,11 @@ tmp/
 # Installer extraction artifacts
 /$msiDir/
 /$nsisDir/
+
+# Local credentials and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+providers.json

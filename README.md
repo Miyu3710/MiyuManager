@@ -8,6 +8,8 @@
 
 <h5>一个本地优先的 Windows Galgame / AVG 游戏库管理器，正在开发中</h5>
 
+<p><sub>个人自用项目 · 代码与图标由 AI 生成 · 不收费 · 不保证持续维护</sub></p>
+
 </div>
 
 ## 技术栈
@@ -73,7 +75,7 @@ pnpm tauri dev
 
 ## 开发与贡献
 
-欢迎提交 Issue 和 Pull Request。提交前运行完整检查：
+本项目为个人项目，不保证回复、合并或持续维护。可以提交可复现的问题；安全漏洞请按 [SECURITY.md](SECURITY.md) 私下报告，贡献约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。提交前运行完整检查：
 
 ```powershell
 pnpm release:check
@@ -88,6 +90,18 @@ pnpm release:check
 - [项目状态](docs/STATUS.md)
 - [故障排查](docs/TROUBLESHOOTING.md)
 - [开发计划](docs/DEVELOPMENT_PLAN.md)
+- [隐私说明](docs/PRIVACY.md)
+- [公开仓库检查清单](docs/PUBLISHING.md)
+
+## 声明
+
+- 本项目的代码、界面文案和应用图标由 AI 生成，可能存在错误、遗漏或不完整之处。
+- 本项目仅供作者个人自用，不以任何形式收费，也不提供商业支持。
+- 不保证持续更新、维护、兼容性或可用性；使用风险由使用者自行承担。
+- 元数据可能包含成人向作品；本项目不包含游戏本体或成人内容。
+- 与 VNDB、Bangumi、Kungal、Hikarinagi、Steam、Playnite、ReinaManager 等第三方无隶属或背书关系；第三方名称、图标、游戏封面和商标归其各自权利人所有。
+
+完整说明见 [NOTICE.md](NOTICE.md)，第三方素材见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 感谢
 
@@ -99,5 +113,14 @@ pnpm release:check
 - **[Locale Emulator](https://github.com/xupefei/Locale-Emulator)** — 转区启动
 - **[Magpie](https://github.com/Blinue/Magpie)** — 窗口放大
 
+### 灵感来源
+
+- **[ReinaManager](https://github.com/huoshen80/ReinaManager)** — README 布局、设置工作台和界面组织灵感
+- **[Playnite](https://playnite.link/)** — 游戏库管理、启动会话和大屏体验灵感
+
 特别感谢这些平台提供的公共 API、数据和工具。
+
+## 许可证
+
+本项目采用 [LICENSE](LICENSE) 中的个人非商业使用许可。第三方组件、字体、图标、商标和游戏素材不在此许可范围内，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
