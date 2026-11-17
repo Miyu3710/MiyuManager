@@ -1,7 +1,7 @@
 # MiyuManager 项目状态
 
 > 最后更新：2026-11-17
-> 当前阶段：0.2.2 发布中；修复 0.2.1 因 CI 构建迁移文件 CRLF 导致的启动崩溃，同时保留启动器交接与短会话记录修复。Tauri Updater、GitHub Release 更新源、更新签名、设置页下载安装和自动检查已接入。干净 Windows 安装/卸载、Authenticode 签名、物理手柄和多显示器仍待验证。
+> 当前阶段：0.2.2 已发布；修复 0.2.1 因 CI 构建迁移文件 CRLF 导致的启动崩溃，同时保留启动器交接与短会话记录修复。Tauri Updater、GitHub Release 更新源、更新签名、设置页下载安装和自动检查已接入。干净 Windows 安装/卸载、Authenticode 签名、物理手柄和多显示器仍待验证。
 >
 > 计划文件：`docs/DEVELOPMENT_PLAN.md`  
 > 设计提案：`docs/DESIGN.md`
@@ -13,6 +13,9 @@
 - 0.2.1 启动失败：CI 在 Windows 检出时将 `src-tauri/migrations/*.sql` 从 LF 转为 CRLF，SQLx 对迁移文件字节计算校验值，已有数据库记录的是 LF 校验值，因此 `MIGRATOR.run` 返回迁移校验失败，应用在 Tauri setup 阶段退出（Windows 事件为 `0xc0000409`）。
 - 修复：新增 `.gitattributes` 强制迁移 SQL 使用 LF；新增迁移文件 CRLF 回归测试；启动错误日志改为输出完整错误链。
 - 兼容：数据库不需要重建；升级到 0.2.2 后继续使用原数据库。0.2.1 用户需手动覆盖安装 0.2.2，0.2.0 用户可自动更新。
+- 验证：前端 53 项测试通过；Rust 96 passed / 15 ignored；新检出工作树的迁移文件确认为 LF；0.2.2 本地构建使用真实数据库副本启动并保持运行。GitHub Actions `44112976670` 完整通过。
+- 产物：MSI `17,408,000` bytes / `558b74925da132e36e34bd1851675960e496b368401be30b05703571e7adb7c3`；NSIS `15,800,164` bytes / `c90b337b2584a01f4c63e472b94033c2b39b94dafb667187de5e7a54554afe3f`。`latest.json`、`release-manifest.json` 和 `SHA256SUMS.txt` 已上传，更新载荷 URL 指向 v0.2.2 的 NSIS 直链。
+- 发布地址：`https://github.com/Miyu3710/MiyuManager/releases/tag/v0.2.2`。0.2.1 Release 已标注为不可用版本。
 
 ### 2026-11-17 0.2.1 启动交接与短会话记录（不可用版本）
 

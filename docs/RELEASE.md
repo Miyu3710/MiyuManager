@@ -1,6 +1,6 @@
 # MiyuManager 发布手册
 
-> 当前版本：0.2.1  
+> 当前版本：0.2.2  
 > 发布形态：Windows x64，MSI + NSIS 当前用户安装  
 > 签名状态：安装器未做 Authenticode 签名；自动更新载荷已使用独立 Tauri 更新密钥签名
 
@@ -50,14 +50,23 @@ pnpm release:build
 - NSIS：当前用户安装，不要求管理员权限。
 - 未包含离线 WebView2；安装器会按 Tauri 配置引导或使用已安装的 WebView2。
 
-## 0.2.1 产物
+## 0.2.2 产物
+
+| 文件                              |             大小 | SHA-256                                                            |
+| --------------------------------- | ---------------: | ------------------------------------------------------------------ |
+| `MiyuManager_0.2.2_x64_en-US.msi` | 17,408,000 bytes | `558b74925da132e36e34bd1851675960e496b368401be30b05703571e7adb7c3` |
+| `MiyuManager_0.2.2_x64-setup.exe` | 15,800,164 bytes | `c90b337b2584a01f4c63e472b94033c2b39b94dafb667187de5e7a54554afe3f` |
+
+0.2.2 由 GitHub Actions `44112976670` 构建并发布，修复 0.2.1 的迁移 CRLF 启动崩溃。Release 同时包含两份 `.sig`、`latest.json`、`release-manifest.json` 和 `SHA256SUMS.txt`。
+
+## 0.2.1 产物（不可用）
 
 | 文件                              |             大小 | SHA-256                                                            |
 | --------------------------------- | ---------------: | ------------------------------------------------------------------ |
 | `MiyuManager_0.2.1_x64_en-US.msi` | 17,408,000 bytes | `d35817ccf5f4ceae17eaea49de0dbf3a6f6bc455ad23aef5586c93ffdfb07970` |
 | `MiyuManager_0.2.1_x64-setup.exe` | 15,797,701 bytes | `688e49456dc769beb029f5ad5a4085ee6cf259d76ffc8a2103f51bae33320813` |
 
-0.2.1 由 GitHub Actions `44106698368` 构建并发布，Release 同时包含两份 `.sig`、`latest.json`、`release-manifest.json` 和 `SHA256SUMS.txt`。MSI 与 NSIS 安装器仍未做 Authenticode 签名；`.sig` 是 Tauri Updater 更新签名。
+0.2.1 由 GitHub Actions `44106698368` 构建，但 CI 把迁移 SQL 转成 CRLF，已有数据库启动时校验失败。请使用 0.2.2。
 
 ## 0.2.0 产物
 
@@ -80,7 +89,7 @@ https://github.com/Miyu3710/MiyuManager/releases/latest/download/latest.json
 
 应用启动后每 24 小时检查一次更新；“设置 → 数据与关于”也提供手动检查和下载安装。更新安装使用 Windows passive 模式，下载完成后自动进入安装器并重启。
 
-推送形如 `v0.2.1` 的 tag 会触发 `.github/workflows/release.yml`。工作流使用 GitHub Actions Secrets 中的 `TAURI_SIGNING_PRIVATE_KEY` 与 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 构建、签名、上传安装器，并生成 Release 的 `latest.json`。发布说明从 `docs/RELEASE_NOTES.md` 读取。
+推送形如 `v0.2.2` 的 tag 会触发 `.github/workflows/release.yml`。工作流使用 GitHub Actions Secrets 中的 `TAURI_SIGNING_PRIVATE_KEY` 与 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 构建、签名、上传安装器，并生成 Release 的 `latest.json`。发布说明从 `docs/RELEASE_NOTES.md` 读取。
 
 自动更新签名不能替代 Windows Authenticode：前者保证更新载荷来自本项目，后者决定 SmartScreen 和发布者身份。
 
