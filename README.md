@@ -1,126 +1,79 @@
+<p align="center">
+  <img src="./public/miyu-manager.png" alt="MiyuManager 应用图标" width="128" height="128">
+</p>
+
 # MiyuManager
 
-本地优先的 Windows Galgame / AVG 游戏库管理器。目标是把作品、发行版本、本地安装副本、启动配置、元数据来源、游玩会话和用户状态组织成一套适合视觉小说的桌面与大屏体验。
+MiyuManager 是一个本地优先的 Windows Galgame / AVG 游戏库管理器。它把本地安装、启动配置、元数据、游玩记录和收藏集中在一个桌面应用里，并提供适合电视和手柄的大屏模式。
 
-**C9：发布硬化已接入**。C8 的主功能保持完整：本地目录与 Steam 导入、真实启动、多源元数据、游玩统计、收藏集、全局搜索、首次启动和电视大屏。C9 新增迁移前自动快照、SQLite 在线备份与重启后恢复、数据库完整性检查、本地 JSONL 日志、崩溃记录、前端错误边界、CSP、导航白名单和分窗口 capability。发布脚本可生成 MSI/NSIS；当前构建环境无法联网下载 WiX/NSIS，已先生成未签名的 release EXE 和 SHA-256 清单。
+## 功能
 
-## 环境
+- **游戏库**：扫描本地目录或导入 Steam 库，识别可执行文件并显示语言版本提示。
+- **启动管理**：保存工作目录、启动参数和环境变量，可选启用 Locale Emulator 与 Magpie。
+- **元数据**：从 VNDB、Bangumi、Kungal、Hikarinagi 和 Steam 搜索、比较并合并作品信息与封面。
+- **游玩记录**：按实际启动会话统计时长，支持补录、收藏集和 `Ctrl+K` 全局搜索。
+- **大屏与数据安全**：电视大屏支持手柄操作；SQLite 数据库支持在线备份与恢复，并提供诊断日志。
 
-- Node 24+
-- pnpm 11+
-- Rust 1.100+
-- WebView2 Runtime
+## 快速开始
 
-## 开发
+需要 Windows、WebView2 Runtime、Node.js 24+、pnpm 11+ 和 Rust 1.100+。
 
-```bash
+```powershell
 pnpm install
-pnpm dev          # 浏览器预览
-pnpm tauri dev    # Tauri 桌面窗口
+pnpm tauri dev
 ```
 
-## 检查
+`pnpm dev` 只启动浏览器预览，使用 mock 数据；需要真实数据库、扫描和启动游戏时请使用 `pnpm tauri dev`。
 
-```bash
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
+首次启动会进入向导：选择包含游戏主程序的目录、确认可执行文件，再按需启用元数据来源。
 
-cd src-tauri
-cargo fmt --check
-cargo clippy -- -D warnings
-cargo test
+## 数据与配置
+
+数据默认保存在 `%APPDATA%\MiyuManager`。开发或测试时可以用 `MIYU_DATA_DIR` 指向独立目录：
+
+```powershell
+$env:MIYU_DATA_DIR = "$PWD\tmp\dev-data"
+pnpm tauri dev
 ```
 
-## 原型
+“设置 → 数据与关于”可以备份或恢复数据库，并查看完整性、迁移和日志状态。OAuth 客户端配置从数据目录的 `oauth/providers.json` 或 `MIYU_OAUTH_CONFIG` 读取，访问令牌使用 Windows DPAPI 加密保存；不要把 `providers.json` 提交到仓库。
 
-- `#/`：首页。
-- `#/library`：游戏库。
-- `#/collections`：收藏集。
-- `#/collections/:id`：收藏集详情。
-- `#/work/:id`：作品详情。
-- `#/stats`：游玩统计。
-- `#/settings`：设置与技术探针。
-- `#/onboarding`：首次启动向导。
-- `#/big-screen`：电视大屏（独立窗口）。
-- `#/design-prototypes`：B/C 原型对照。
+## 开发与检查
 
-## 本地库
+前端使用 React、TypeScript 和 Vite，桌面端为 Tauri 2 + Rust，数据保存在 SQLite。
 
-- 数据库默认位于 %APPDATA%\MiyuManager\miyumanager.sqlite3，启用 SQLite WAL、迁移和 FTS5。
-- 在游戏库点击“添加目录”，选择包含游戏主程序的文件夹；扫描会列出 exe 候选、建议名称、工作目录和大小。
-- 汉化或语言版本 exe（如 game_zh.exe、game_CHS.exe、game_cht.exe、game_patch.exe）会和原版一起列为候选，并带语言版本提示。
-- 确认候选后写入 Work → Release → LocalCopy；重复扫描会按规范化后的 exe 路径去重，已入库候选会标记“已在库中”。
-- 游戏库支持搜索、状态筛选、排序、封面/列表切换和右键状态操作；关闭再打开应用后数据保留。
-- 首页优先展示最近启动的作品，没有会话时回退最近入库；最近启动、最近入库、收藏和想玩清单都来自 SQLite。
-- 收藏集支持新建、重命名、删除、上下排序和作品增删；封面来自作品封面缓存，没有封面时使用分组图标。
-- Ctrl+K 打开全局搜索，支持作品标题、原题、别名、标签、开发商/路径和收藏集名称；支持方向键、Enter、Escape 和最近搜索。
-- 从库中移除的作品会写入扫描排除表；普通扫描会跳过，设置页“管理排除项”可以搜索并恢复，恢复后会重新进入扫描。
-- 扫描器只读取目录、文件名和大小，不修改游戏目录；当前不读取游戏内进度、存档或成就。
-- 作品详情页支持编辑标题、原题、别名、简介、年份、开发商/发行商、版本、语言、标签、状态、评分和用户评价；资料写入 SQLite。
-- 支持手动选择封面或在游戏目录附近发现常见封面图片；原图与 WebP 缩略图缓存在数据目录，列表只加载缩略图，缓存文件被删除时回退到标题排印封面。
-- 启动配置以“游戏目录 + 可执行文件名”组合路径编辑，保存 exe、工作目录、参数数组、环境变量和 Locale Emulator / Magpie 的独立启用状态；文本改动自动保存，两类包装器的程序路径与参数在设置页统一维护，启动不经过 shell。启用 Magpie 后会在游戏窗口出现时写入该作品的 Magpie 自动缩放规则，并以 `-t` 托盘模式启动或重载 Magpie。
-- 作品详情在 Bangumi 或 Kungal 来源 ID 可用时显示带站点图标的文字入口，可直接打开该作品在站点上的页面；多源匹配和搜索导入会同步保存匹配到的来源编号。
-- 真实启动使用 Windows Job Object 跟踪进程树，详情页显示运行/退出状态和退出码。游戏主程序出现后创建 `play_sessions` 会话；包装器不计入时长，游戏失去前台超过 90 秒后暂停累计，回到前台后继续同一会话。
-- 每 30 秒写入会话心跳；正常退出、手动停止和关闭管理器都会结算当前会话。应用异常退出后，下次启动按最后心跳截断悬挂会话，不会永久显示“计时中”。
-- 统计页从 SQLite 读取真实累计时长、最近 7/30 天、本周启动、12 周每日热力图、作品排行和最近会话；作品详情支持补录、修改和删除会话。
-- 设置页“电视大屏”可选择显示器并打开独立全屏窗口。A 确认、B 返回、Y 打开游戏菜单、Start 打开控制菜单、LB/RB 切换区域，X 未分配；B/Escape 只逐层返回，退出入口在控制菜单的“返回主窗口”。
-- 设置页“启动器”保存默认显示器、默认全屏，并分别维护 Locale Emulator 与 Magpie 的路径和参数；“网络”支持跟随系统、直连和自定义 HTTP(S) 代理。代理对元数据请求立即生效，OAuth 授权在下次启动后使用新代理。
-- “数据与关于”可以打开数据、备份和日志目录，备份或恢复 SQLite 数据库，查看完整性、迁移数量和版本，并用可选 JSON 清单检查更新。恢复前自动保留当前数据库；恢复在应用重启后、打开数据库前完成。
-- 元数据来源支持 VNDB API v2、Bangumi OpenAPI、Kungal / NextMoe Catalog、Hikarinagi 和 Steam Store：可从详情页搜索、查看候选、预览字段差异并导入标题、别名、简介、年份、标签、开发商、发行商、发行日期、关联作品和封面。Steam 支持名称、AppID 或商店链接，并过滤原声带、画集等附加内容。
-- 来源优先级保存在 SQLite：可以调整全局来源顺序，也可以按字段单独排序；设置页提供“全部字段跟随全局来源顺序”开关。搜索结果、合并默认值和批量提案都遵循当前模式；导入候选默认只勾选空白字段，用户可以逐项勾选要覆盖的字段。每个字段保留来源、来源 ID 和抓取时间，详情响应缓存 24 小时。
-- 多源合并会按标题优先为每个来源匹配候选，展示每个字段的候选值、冲突状态和图片画廊；可以逐个字段改选或采用来源值。批量应用仍可只处理空字段，封面默认保留已有图片。字段锁定机制已移除。
-- 游戏库支持批量选择作品并进入两阶段刮削：先匹配并生成提案，再确认应用。队列支持来源选择、进度、暂停、取消、失败重试和局部成功；应用阶段再次检查空字段，并可选补全缺失封面。
-- 游戏库可以从 Windows 注册表自动定位 Steam，读取 `libraryfolders.vdf` 和 `appmanifest_*.acf`，扫描所有 Steam 库中的安装目录并列出可启动 exe。确认后写入本地库，并保存 Steam AppID；后续多源合并会直接按 AppID 匹配 Steam 条目。
-- Steam 库导入的作品会在封面和详情中标记 `Steam` 与 AppID。部分游戏会先启动短转交进程，再由 Steam 以新 PID 启动真正游戏；会话观察器会按完整 exe 路径重新附着，退出后正常结算，手动停止也会结束作业对象外的实际游戏进程。
-- 账号与同步已接入 OAuth：NextMoe/Kungal 使用 public client + PKCE，Bangumi 使用 OAuth 2.0；Hikarinagi 使用授权码 + PKCE 和 `catalog:read`，已连接账号会复用访问令牌，也可以在配置中提供 clientSecret 使用应用级凭据。账号卡显示真实头像、用户名、账号 ID、平台能力、资料同步时间和令牌状态，支持单平台或全部平台同步资料。
-- OAuth 凭证从 `MIYU_OAUTH_CONFIG`、数据目录 `oauth/providers.json` 或开发目录 `tmp/oauth/providers.json` 读取；设置页可以直接导入 JSON，保存后点“重新读取”即可生效，不需要重启。access/refresh token 使用 Windows DPAPI 加密后写入 SQLite，不写入日志或前端。
-- 清空数据目录或指定新的 `MIYU_DATA_DIR` 后启动，会进入首次启动向导：选择目录 → 扫描 → 确认 exe 与显示名 → 可选来源 → 完成。来源步骤可以跳过；已有作品库或已完成标记时不会重复进入。
+| 命令 | 用途 |
+| --- | --- |
+| `pnpm dev` | 浏览器预览（mock 数据） |
+| `pnpm tauri dev` | 桌面应用 |
+| `pnpm lint` | ESLint |
+| `pnpm typecheck` | TypeScript 类型检查 |
+| `pnpm test` | Vitest 测试 |
+| `pnpm build` | 类型检查与生产构建 |
 
-开发或测试时可以用 MIYU_DATA_DIR 指向独立的数据目录，避免写入日常数据：
+提交前运行完整检查：
 
-    $env:MIYU_DATA_DIR = "D:\Projects\MiyuManager\tmp\dev-data"
-    pnpm tauri dev
+```powershell
+pnpm release:check
+```
 
-## OAuth 配置
+该命令依次执行前端 lint、类型检查、测试、构建，以及 `cargo fmt --check`、`cargo clippy -- -D warnings` 和 `cargo test`。
 
-账号连接从 `MIYU_OAUTH_CONFIG` 指向的 JSON、数据目录 `oauth/providers.json`（默认 `%APPDATA%\MiyuManager\oauth\providers.json`）或开发目录 `tmp/oauth/providers.json` 读取。文件包含各来源的 `clientId`、可选 `clientSecret`、`redirectUri` 和 `scopes`，不要提交到 Git。
+## 构建安装包
 
-日常启动和安装版可以在“设置 → 账号与同步”点“导入配置”，选择 `providers.json`；应用会把它复制到当前数据目录的 `oauth/providers.json`。开发模式会额外查找仓库根目录的 `tmp/oauth/providers.json`，所以从仓库运行 `pnpm tauri dev` 时通常不需要再设置 `MIYU_OAUTH_CONFIG`。
+```powershell
+pnpm release:build   # MSI + NSIS
+pnpm release:exe     # 仅 release EXE
+```
 
-- NextMoe/Kungal：public client + PKCE，回调 `http://127.0.0.1/callback`，不需要 secret。
-- Bangumi：OAuth 2.0，需要 client secret 和已注册的 `http://127.0.0.1:39123/callback`。
-- Hikarinagi：授权码 + PKCE；控制台需要把应用设为 public client，并启用 `openid`、`profile`、`offline_access`、`catalog:read`，回调 `http://127.0.0.1:39124/callback`。如果保留机密客户端，可以在 `providers.json` 中补 `clientSecret`，数据源会用应用级凭据换取只读 `catalog:read` 令牌；否则需要先在设置中连接账号。
+产物和 SHA-256 清单写入 `outputs/release/<版本>/`。MSI/NSIS 构建需要 WiX/NSIS，或允许 Tauri 联网下载打包器；当前 0.1.0 安装包未签名。
 
-access token 和 refresh token 使用 Windows DPAPI 加密后写入 SQLite；应用不会把密码或 token 写进日志或前端。
+## 文档
 
-自己测试时，先完全关闭已有的 MiyuManager 窗口和旧的 `pnpm tauri dev` 终端，然后在仓库根目录运行：
+- [用户指南](docs/USER_GUIDE.md)
+- [发布说明](docs/RELEASE_NOTES.md)
+- [开发计划](docs/DEVELOPMENT_PLAN.md)
+- [项目状态](docs/STATUS.md)
+- [故障排查](docs/TROUBLESHOOTING.md)
 
-    pnpm tauri dev
-
-打开“设置 → 账号与同步”。配置区显示“OAuth 配置已读取”且按钮可点时，选择来源点“连接”，系统浏览器会打开授权页。授权成功后卡片显示“已连接”、真实头像和用户名；点“同步资料”可重新读取平台资料。关闭窗口，用同一条命令重启，再回到设置页确认账号仍然连接；这就是持久化验证。
-
-想使用独立数据库时，在启动前设置 `MIYU_DATA_DIR`。新目录没有游戏数据，游戏库为空是正常的：
-
-    $env:MIYU_DATA_DIR = "D:\Projects\MiyuManager\tmp\oauth-test-1"
-    pnpm tauri dev
-
-主应用截图保存在 `outputs/app/1440x900/`、`1920x1080/`、`150pct-1280x720/` 和 `4k/`；C2 扫描确认与导入证据在 `outputs/app/c2/`；C3 详情、封面、启动配置和真实启动证据在 `outputs/app/c3/`；C4 搜索、预览、导入和来源优先级证据在 `outputs/app/c4/`；C5 多源合并、冲突、封面画廊、字段优先级和批量刮削证据在 `outputs/app/c5/`；C6 真实会话、统计页、补录和手动停止证据在 `outputs/app/c6/`；C7 大屏布局、Y 菜单、控制侧栏、详情抽屉和真实 Tauri 启动证据在 `outputs/app/c7/`；C8 首页、搜索、收藏集、设置和首次启动证据在 `outputs/app/c8/`，全路由统一视觉截图在 `outputs/app/redesign/`，菜单/弹窗/表单状态截图在 `outputs/app/ui-states/`，字号与溢出门槛报告在 `outputs/ui-audit/`；焦点与 reduced-motion 证据在 `outputs/app/probes/` 和 `outputs/app/c8/probes/`。
-
-## 产品边界
-
-MiyuManager 管理的是可启动的 Galgame / AVG 电子游戏，不是电子书、视频或游戏商店。管理器不读取游戏内进度、章节、路线、存档或成就；界面只展示本地安装、启动配置、时长、最近启动、用户状态/评分/评价和可追溯元数据。
-
-浏览器预览（pnpm dev）使用本地 mock 数据演示空库之外的状态；Tauri 窗口使用真实 SQLite。规划与状态见 [docs/DEVELOPMENT_PLAN.md](docs/DEVELOPMENT_PLAN.md)、[docs/DESIGN.md](docs/DESIGN.md)、[docs/PAGE_VISIONS.md](docs/PAGE_VISIONS.md)、[docs/FRONTEND_STACK.md](docs/FRONTEND_STACK.md) 和 [docs/STATUS.md](docs/STATUS.md)。
-
-## 发布与诊断
-
-- 发布检查：`pnpm release:check`
-- 仅构建 release EXE：`pnpm release:exe`
-- 构建 MSI/NSIS：`pnpm release:build`（需要 WiX/NSIS 或可联网下载打包器）
-- 发布说明：[docs/RELEASE.md](docs/RELEASE.md)、[docs/RELEASE_NOTES.md](docs/RELEASE_NOTES.md)
-- 用户与排障：[docs/USER_GUIDE.md](docs/USER_GUIDE.md)、[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
-- QA 矩阵：[docs/QA_MATRIX.md](docs/QA_MATRIX.md)；隐私说明：[docs/PRIVACY.md](docs/PRIVACY.md)
-
-当前 release EXE 与清单位于 `outputs/release/0.1.0/`。包未签名；正式发布前仍需完成 G6 的证书、版本号、便携版和更新通道决策。
+MiyuManager 管理的是可启动的游戏，不读取存档、章节、路线、成就或游戏内进度。
