@@ -1,6 +1,8 @@
-<p align="center">
-  <img src="https://gist.githubusercontent.com/Miyu3710/7265e9ed4bd2945f025838756e5d26c6/raw/miyu-manager.svg" alt="MiyuManager 应用图标" width="128" height="128">
-</p>
+<div align="center">
+
+![MiyuManager 应用图标](https://gist.githubusercontent.com/Miyu3710/7265e9ed4bd2945f025838756e5d26c6/raw/miyu-manager-128.svg)
+
+</div>
 
 # MiyuManager
 
