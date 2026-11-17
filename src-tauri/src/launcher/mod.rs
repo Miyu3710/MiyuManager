@@ -296,7 +296,7 @@ pub async fn start(
         message: None,
     };
     let manual_stop = Arc::new(AtomicBool::new(false));
-    let external_pid = Arc::new(Mutex::new(None));
+    let external_pid = Arc::new(Mutex::new(job.is_none().then_some(pid)));
     if let Ok(mut active) = manager.active.lock() {
         active.insert(
             launch_id.clone(),
@@ -330,9 +330,9 @@ pub async fn start(
     let event_launch_id = launch_id.clone();
     let event_started_at = started_at.clone();
     let watch_pool = pool.clone();
-    let watch_job = job.clone();
     let watch_launch_id = launch_id.clone();
     let watch_target_exe = target.exe_path.clone();
+    let watch_working_dir = target.working_dir.clone();
     let watch_local_copy_id = target.local_copy_id;
     let uses_wrapper = uses_command_wrapper;
     let steam_mode = target.steam_app_id.is_some();
@@ -344,7 +344,8 @@ pub async fn start(
             local_copy_id: watch_local_copy_id,
             root_pid: pid,
             target_exe: watch_target_exe,
-            job: watch_job.clone(),
+            working_dir: watch_working_dir,
+            job: job.clone(),
             uses_wrapper,
             steam_mode,
             manual_stop,
@@ -355,12 +356,7 @@ pub async fn start(
         let (exit_code, message) = match outcome {
             WatchOutcome::Exited { exit_code, message } => (exit_code, message),
             WatchOutcome::ManualStop => (None, Some("已从 MiyuManager 停止游戏".to_string())),
-            WatchOutcome::LaunchFailed(message) => {
-                if let Some(job) = &watch_job {
-                    let _ = job.terminate();
-                }
-                (None, Some(message))
-            }
+            WatchOutcome::LaunchFailed(message) => (None, Some(message)),
         };
         let _ = event_app.emit(
             "launch-state",

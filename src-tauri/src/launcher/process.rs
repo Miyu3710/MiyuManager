@@ -164,6 +164,56 @@ mod platform {
         (pid != 0).then_some(pid)
     }
 
+    struct WindowAreaSearch {
+        pid: u32,
+        area: u64,
+    }
+
+    unsafe extern "system" fn collect_window_area(hwnd: HWND, lparam: LPARAM) -> i32 {
+        let search = unsafe { &mut *(lparam as *mut WindowAreaSearch) };
+        if unsafe { IsWindowVisible(hwnd) } == 0 {
+            return 1;
+        }
+        let style = unsafe { GetWindowLongW(hwnd, GWL_EXSTYLE) } as u32;
+        if style & WS_EX_TOOLWINDOW != 0 {
+            return 1;
+        }
+        let mut pid = 0u32;
+        unsafe {
+            GetWindowThreadProcessId(hwnd, &mut pid);
+        }
+        if pid != search.pid {
+            return 1;
+        }
+        let mut rect = RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
+        if unsafe { GetWindowRect(hwnd, &mut rect) } == 0 {
+            return 1;
+        }
+        let width = (rect.right - rect.left).max(0) as u64;
+        let height = (rect.bottom - rect.top).max(0) as u64;
+        search.area = search.area.max(width * height);
+        1
+    }
+
+    pub fn visible_window_area(pid: u32) -> u64 {
+        if pid == 0 {
+            return 0;
+        }
+        let mut search = WindowAreaSearch { pid, area: 0 };
+        unsafe {
+            EnumWindows(
+                Some(collect_window_area),
+                &mut search as *mut WindowAreaSearch as LPARAM,
+            );
+        }
+        search.area
+    }
+
     struct WindowSearch {
         target: String,
         class_prefix: Option<String>,
@@ -351,6 +401,30 @@ mod platform {
         process_ids
     }
 
+    pub fn process_ids() -> Vec<u32> {
+        let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+        if snapshot == INVALID_HANDLE_VALUE {
+            return Vec::new();
+        }
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        let mut process_ids = Vec::new();
+        let mut has_entry = unsafe { Process32FirstW(snapshot, &mut entry) } != FALSE;
+        while has_entry {
+            if entry.th32ProcessID != 0 {
+                process_ids.push(entry.th32ProcessID);
+            }
+            entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+            has_entry = unsafe { Process32NextW(snapshot, &mut entry) } != FALSE;
+        }
+        unsafe {
+            CloseHandle(snapshot);
+        }
+        process_ids
+    }
+
     pub fn terminate_process(pid: u32) -> Result<()> {
         let handle = unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid) };
         if handle.is_null() {
@@ -403,6 +477,14 @@ mod platform {
         None
     }
 
+    pub fn visible_window_area(_pid: u32) -> u64 {
+        0
+    }
+
+    pub fn process_ids() -> Vec<u32> {
+        Vec::new()
+    }
+
     pub fn wait_for_window_by_executable(
         _exe_path: &str,
         _timeout: std::time::Duration,
@@ -429,8 +511,8 @@ mod platform {
 }
 
 pub use platform::{
-    ProcessJob, foreground_process_id, process_ids_with_name, process_image_path,
-    terminate_process, wait_for_window_by_executable,
+    ProcessJob, foreground_process_id, process_ids, process_ids_with_name, process_image_path,
+    terminate_process, visible_window_area, wait_for_window_by_executable,
 };
 
 #[cfg(test)]

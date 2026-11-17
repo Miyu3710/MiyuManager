@@ -194,6 +194,27 @@ pub async fn heartbeat_session(
     Ok(())
 }
 
+pub async fn retarget_session(
+    pool: &SqlitePool,
+    session_id: i64,
+    process_id: u32,
+    exe_path: &str,
+) -> Result<()> {
+    let now = format_timestamp(Utc::now());
+    sqlx::query(
+        "UPDATE play_sessions
+         SET process_id = ?, exe_path = ?, updated_at = ?
+         WHERE id = ? AND ended_at IS NULL",
+    )
+    .bind(i64::from(process_id))
+    .bind(exe_path)
+    .bind(&now)
+    .bind(session_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn finish_session(
     pool: &SqlitePool,
     session_id: i64,
@@ -781,6 +802,34 @@ mod tests {
         assert_eq!(stats.all_time_seconds, 135);
         assert_eq!(stats.all_time_sessions, 1);
         assert_eq!(stats.top_games[0].work_id, work_id);
+    }
+
+    #[tokio::test]
+    async fn retargets_a_session_to_the_real_game_process() {
+        let temp = TempDir::new().expect("temp");
+        let (pool, _, local_copy_id) = test_pool(&temp).await;
+        let started = start_session(
+            &pool,
+            local_copy_id,
+            "launch-retarget",
+            100,
+            "C:\\Games\\launcher.exe",
+        )
+        .await
+        .expect("start");
+
+        retarget_session(&pool, started.session.id, 200, "C:\\Games\\game.exe")
+            .await
+            .expect("retarget");
+        let updated = get_session_payload(&pool, started.session.id)
+            .await
+            .expect("read")
+            .expect("session");
+        assert_eq!(updated.session.process_id, Some(200));
+        assert_eq!(
+            updated.session.exe_path.as_deref(),
+            Some("C:\\Games\\game.exe")
+        );
     }
 
     #[tokio::test]

@@ -43,18 +43,23 @@ jobs:
       - name: Release checks
         run: pnpm release:check
 
+      - name: Read release notes
+        id: release_notes
+        shell: pwsh
+        run: |
+          $notes = Get-Content -Raw -LiteralPath docs/RELEASE_NOTES.md
+          $delimiter = "RELEASE_NOTES_$([guid]::NewGuid().ToString('N'))"
+          "body<<$delimiter" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $notes | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $delimiter | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v__VERSION__
           releaseName: MiyuManager v__VERSION__
-          releaseBody: |
-            首个公开自动更新版本。
-
-            包含 Windows MSI 与 NSIS 当前用户安装包。安装程序未使用 Authenticode 代码签名，可能出现 SmartScreen 提示；自动更新载荷由 Tauri Updater 独立签名并在安装前校验。
-
-            已有 0.1.0 本地开发版不会自动升级；从本版本开始，后续版本会通过设置页检查和安装。
+          releaseBody: ${{ steps.release_notes.outputs.body }}
           releaseDraft: false
           prerelease: false
           args: --bundles nsis,msi
