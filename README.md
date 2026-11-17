@@ -28,15 +28,15 @@
 
 ## 界面
 
-![首页](https://gist.githubusercontent.com/Miyu3710/2ac040341419deff95fd173ba4c5a365/raw/home.svg)
+![首页](https://gist.githubusercontent.com/Miyu3710/22b021d9a97ae632b8a8d5530b6aa3a8/raw/home.svg)
 
-![游戏库](https://gist.githubusercontent.com/Miyu3710/2ac040341419deff95fd173ba4c5a365/raw/library.svg)
+![游戏库](https://gist.githubusercontent.com/Miyu3710/22b021d9a97ae632b8a8d5530b6aa3a8/raw/library.svg)
 
-![游戏详情](https://gist.githubusercontent.com/Miyu3710/2ac040341419deff95fd173ba4c5a365/raw/detail.svg)
+![游戏详情](https://gist.githubusercontent.com/Miyu3710/22b021d9a97ae632b8a8d5530b6aa3a8/raw/detail.svg)
 
-![电视大屏](https://gist.githubusercontent.com/Miyu3710/2ac040341419deff95fd173ba4c5a365/raw/bigscreen.svg)
+![电视大屏](https://gist.githubusercontent.com/Miyu3710/22b021d9a97ae632b8a8d5530b6aa3a8/raw/bigscreen.svg)
 
-*界面截图使用示例数据。*
+*界面截图来自实际游戏库。*
 
 ## 快速开始
 
