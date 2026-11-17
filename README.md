@@ -4,7 +4,7 @@
 
 <h1>MiyuManager</h1>
 
-![Status](https://img.shields.io/badge/status-in%20development-orange) ![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white) ![Version](https://img.shields.io/badge/version-0.1.0-blue) ![Stars](https://img.shields.io/github/stars/Miyu3710/MiyuManager?style=flat&label=stars)
+![Status](https://img.shields.io/badge/status-in%20development-orange) ![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white) ![Version](https://img.shields.io/badge/version-0.1.0-blue) ![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)
 
 <h5>一个本地优先的 Windows Galgame / AVG 游戏库管理器，正在开发中</h5>
 
