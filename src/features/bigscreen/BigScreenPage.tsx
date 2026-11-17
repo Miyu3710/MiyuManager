@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useAppearance } from "../../app/useAppearance";
 import { CoverArt } from "../../design-system/components/CoverArt";
 import { quitApp } from "../../lib/app-api";
+import { syncBangumiProgress } from "../../lib/bangumi-api";
 import { closeBigScreen, openBigScreenDetail } from "../../lib/bigscreen-api";
 import { cn } from "../../lib/cn";
 import { formatBytes, formatPlaytimeSeconds, formatRelativeDate } from "../../lib/format";
@@ -540,6 +541,14 @@ export function BigScreenPage() {
       toast.success("已标记为 " + bigScreenStatusLabel(status));
       invalidateAll();
       setOverlay(null);
+      try {
+        const outcome = await syncBangumiProgress(item.workId);
+        if (outcome.status === "synced") {
+          toast.success(outcome.message);
+        }
+      } catch (error) {
+        toast.error("Bangumi 同步失败：" + String(error));
+      }
     } catch (error) {
       setLaunchError(error instanceof Error ? error.message : String(error));
     } finally {

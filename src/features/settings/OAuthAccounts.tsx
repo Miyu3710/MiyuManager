@@ -34,6 +34,7 @@ const scopeLabels: Record<string, string> = {
   offline_access: "离线访问",
   "catalog:read": "目录读取",
   "user:read": "账号状态",
+  "write:collection": "收藏写入",
 };
 
 function capabilityLabels(scopes: string[]): string[] {

@@ -1,4 +1,5 @@
 export type ProxyMode = "system" | "direct" | "custom";
+export type CloseBehavior = "tray" | "quit";
 
 export interface WrapperConfig {
   id: string;
@@ -14,6 +15,10 @@ export interface AppPreferences {
   wrappers: WrapperConfig[];
   updateManifestUrl: string;
   onboardingCompleted: boolean;
+  launchAtStartup: boolean;
+  silentStartup: boolean;
+  closeBehavior: CloseBehavior;
+  bangumiProgressSync: boolean;
 }
 
 export interface UpdateCheck {

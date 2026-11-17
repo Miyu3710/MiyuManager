@@ -20,6 +20,10 @@ const previewDefaults: AppPreferences = {
   ],
   updateManifestUrl: "",
   onboardingCompleted: true,
+  launchAtStartup: false,
+  silentStartup: false,
+  closeBehavior: "tray",
+  bangumiProgressSync: false,
 };
 
 function previewPreferences(): AppPreferences {

@@ -1,12 +1,24 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ImagePlus, Images, Loader2, RotateCcw, X } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ImagePlus,
+  Images,
+  Loader2,
+  RefreshCw,
+  RotateCcw,
+  X,
+} from "lucide-react";
+import { DropdownMenu } from "radix-ui";
 import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "../../design-system/components/Button";
 import { CoverArt } from "../../design-system/components/CoverArt";
+import { Hint } from "../../design-system/components/Hint";
+import { syncBangumiProgress } from "../../lib/bangumi-api";
 import {
   assetUrl,
   discoverWorkCovers,
@@ -14,11 +26,86 @@ import {
   pickImageFile,
   setWorkCover,
   updateWork,
+  updateWorkSourceLinks,
 } from "../../lib/library-api";
-import type { CoverCandidate, LibraryItemDetail, LibraryStatus } from "../../lib/library-types";
+import type {
+  CoverCandidate,
+  LibraryItemDetail,
+  LibraryStatus,
+  MetadataProvider,
+  WorkSourceLink,
+} from "../../lib/library-types";
 import { formatPlaytimeSeconds } from "../../lib/format";
 
 const statuses = ["unclassified", "playing", "queued", "finished", "paused"] as const;
+
+const statusOptions: { value: (typeof statuses)[number]; label: string }[] = [
+  { value: "unclassified", label: "未分类" },
+  { value: "playing", label: "在玩" },
+  { value: "queued", label: "想玩" },
+  { value: "finished", label: "已通关" },
+  { value: "paused", label: "搁置" },
+];
+
+function StatusSelect({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: LibraryStatus;
+  disabled?: boolean;
+  onChange: (value: LibraryStatus) => void;
+}) {
+  const selected = statusOptions.find((option) => option.value === value) ?? statusOptions[0]!;
+
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button
+          type="button"
+          className="detail-select-trigger"
+          aria-label={"游玩状态：" + selected.label}
+          disabled={disabled}
+        >
+          <span className="detail-select-trigger__label">{selected.label}</span>
+          <ChevronDown
+            className="detail-select-trigger__chevron"
+            size={14}
+            strokeWidth={1.7}
+            aria-hidden="true"
+          />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          className="detail-select-menu"
+          align="start"
+          sideOffset={8}
+          collisionPadding={12}
+        >
+          <p className="detail-select-menu__head">游玩状态</p>
+          <DropdownMenu.RadioGroup
+            value={value}
+            onValueChange={(next) => onChange(next as LibraryStatus)}
+          >
+            {statusOptions.map((option) => (
+              <DropdownMenu.RadioItem
+                key={option.value}
+                value={option.value}
+                className="detail-select-menu__item"
+              >
+                <span>{option.label}</span>
+                <DropdownMenu.ItemIndicator className="detail-select-menu__check">
+                  <Check size={13} strokeWidth={2} />
+                </DropdownMenu.ItemIndicator>
+              </DropdownMenu.RadioItem>
+            ))}
+          </DropdownMenu.RadioGroup>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
 
 const schema = z.object({
   title: z.string().trim().min(1, "标题不能为空").max(200, "标题不能超过 200 个字符"),
@@ -84,22 +171,78 @@ function defaultValues(detail: LibraryItemDetail): FormValues {
   };
 }
 
+function buildSourceDrafts(providers: MetadataProvider[], links: WorkSourceLink[]) {
+  const drafts: Record<string, string> = {};
+  for (const link of links) {
+    drafts[link.provider] = link.sourceId;
+  }
+  for (const provider of providers) {
+    drafts[provider.id] ??= "";
+  }
+  return drafts;
+}
+
+function sourceSignature(providers: MetadataProvider[], links: WorkSourceLink[]) {
+  return (
+    providers.map((provider) => provider.id).join("|") +
+    "::" +
+    links.map((link) => link.provider + "=" + link.sourceId).join("|")
+  );
+}
+
+function sourcePlaceholder(providerId: string) {
+  switch (providerId) {
+    case "bangumi":
+      return "如 50756";
+    case "vndb":
+      return "如 v17";
+    case "steam":
+      return "AppID，如 324160";
+    default:
+      return "来源编号";
+  }
+}
+
 interface WorkEditPanelProps {
   detail: LibraryItemDetail;
+  sourceLinks: WorkSourceLink[];
+  providers: MetadataProvider[];
+  sourcesPending?: boolean;
   onChanged: () => void;
 }
 
-export function WorkEditPanel({ detail, onChanged }: WorkEditPanelProps) {
+export function WorkEditPanel({
+  detail,
+  sourceLinks,
+  providers,
+  sourcesPending = false,
+  onChanged,
+}: WorkEditPanelProps) {
   const {
     register,
     handleSubmit,
     reset,
+    setValue,
+    control,
     formState: { errors, isSubmitting, isDirty },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: defaultValues(detail),
   });
+  const signature = sourceSignature(providers, sourceLinks);
+  const [sourceState, setSourceState] = useState(() => ({
+    signature,
+    drafts: buildSourceDrafts(providers, sourceLinks),
+  }));
+  const activeSourceState =
+    sourceState.signature === signature
+      ? sourceState
+      : { signature, drafts: buildSourceDrafts(providers, sourceLinks) };
+  const sourceDraft = activeSourceState.drafts;
+  const [sourceBusy, setSourceBusy] = useState(false);
+  const [bangumiSyncBusy, setBangumiSyncBusy] = useState(false);
   const [coverBusy, setCoverBusy] = useState(false);
+  const statusValue = useWatch({ control, name: "status" });
   const [coverCandidates, setCoverCandidates] = useState<CoverCandidate[] | null>(null);
   const coverUrl = assetUrl(detail.coverPath) ?? assetUrl(detail.coverThumbPath);
   const game = libraryItemToGame(detail);
@@ -115,6 +258,8 @@ export function WorkEditPanel({ detail, onChanged }: WorkEditPanelProps) {
 
   const submit = handleSubmit(async (values) => {
     try {
+      const nextRating = values.rating ? Number(values.rating) : null;
+      const progressChanged = values.status !== detail.status || nextRating !== detail.rating;
       await updateWork(detail.workId, {
         title: values.title,
         originalTitle: values.originalTitle,
@@ -128,13 +273,23 @@ export function WorkEditPanel({ detail, onChanged }: WorkEditPanelProps) {
         releaseDate: values.releaseDate || null,
         tags: splitList(values.tags),
         notes: values.notes,
-        rating: values.rating ? Number(values.rating) : null,
+        rating: nextRating,
         status: values.status as LibraryStatus,
         favorite: values.favorite,
       });
       reset(values);
       toast.success("作品资料已保存");
       onChanged();
+      if (progressChanged) {
+        try {
+          const outcome = await syncBangumiProgress(detail.workId);
+          if (outcome.status === "synced") {
+            toast.success(outcome.message);
+          }
+        } catch (error) {
+          toast.error("本地已保存，但 Bangumi 同步失败：" + String(error));
+        }
+      }
     } catch (error) {
       toast.error(String(error));
     }
@@ -187,6 +342,59 @@ export function WorkEditPanel({ detail, onChanged }: WorkEditPanelProps) {
     }
   };
 
+  const saveSourceLinks = async () => {
+    setSourceBusy(true);
+    try {
+      const links = providers.map((provider) => {
+        const existing = sourceLinks.find((link) => link.provider === provider.id);
+        return {
+          provider: provider.id,
+          sourceId: (sourceDraft[provider.id] ?? "").trim(),
+          title: existing?.title.trim() || detail.title,
+        };
+      });
+      await updateWorkSourceLinks(detail.workId, links);
+      toast.success("来源编号已保存");
+      onChanged();
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setSourceBusy(false);
+    }
+  };
+
+  const sourceDirty = providers.some((provider) => {
+    const current = (sourceDraft[provider.id] ?? "").trim();
+    const saved = sourceLinks.find((link) => link.provider === provider.id)?.sourceId.trim() ?? "";
+    return current !== saved;
+  });
+  const bangumiLinked = sourceLinks.some(
+    (link) => link.provider === "bangumi" && link.sourceId.trim().length > 0,
+  );
+  const bangumiSyncHint = !bangumiLinked
+    ? "先在来源编号中填写 Bangumi 编号"
+    : sourceDirty
+      ? "先保存来源编号"
+      : isDirty
+        ? "先保存资料，再同步 Bangumi"
+        : "使用已保存的游玩状态与评分";
+
+  const syncBangumiNow = async () => {
+    setBangumiSyncBusy(true);
+    try {
+      const outcome = await syncBangumiProgress(detail.workId);
+      if (outcome.status === "synced") {
+        toast.success(outcome.message);
+      } else {
+        toast(outcome.message);
+      }
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setBangumiSyncBusy(false);
+    }
+  };
+
   return (
     <section className="work-edit-panel" id="work-edit-panel" tabIndex={-1}>
       <header className="work-edit-panel__head">
@@ -195,6 +403,59 @@ export function WorkEditPanel({ detail, onChanged }: WorkEditPanelProps) {
         </div>
         {isDirty ? <span className="work-edit-panel__state">未保存</span> : null}
       </header>
+
+      <section className="work-edit-source-links" aria-labelledby="work-edit-source-links-title">
+        <div className="work-edit-source-links__head">
+          <div>
+            <h3 id="work-edit-source-links-title">来源编号</h3>
+            <p>手动修正来源条目标识；留空即解除关联。这里只改编号，不自动重新抓取资料。</p>
+          </div>
+          <div className="work-edit-source-links__actions">
+            {sourceDirty ? <span className="work-edit-source-links__state">未保存</span> : null}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={sourceBusy || providers.length === 0 || !sourceDirty}
+              onClick={() => void saveSourceLinks()}
+            >
+              {sourceBusy ? "保存中…" : "保存来源编号"}
+            </Button>
+          </div>
+        </div>
+        {providers.length === 0 ? (
+          <p className="work-edit-source-links__empty">
+            {sourcesPending ? "正在读取元数据来源…" : "没有可编辑的元数据来源。"}
+          </p>
+        ) : (
+          <div className="work-edit-source-links__grid">
+            {providers.map((provider) => (
+              <label className="detail-field" key={provider.id}>
+                <span>{provider.name}</span>
+                <input
+                  value={sourceDraft[provider.id] ?? ""}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setSourceState((previous) => {
+                      const base =
+                        previous.signature === signature
+                          ? previous
+                          : { signature, drafts: buildSourceDrafts(providers, sourceLinks) };
+                      return {
+                        signature,
+                        drafts: { ...base.drafts, [provider.id]: value },
+                      };
+                    });
+                  }}
+                  placeholder={sourcePlaceholder(provider.id)}
+                  spellCheck={false}
+                  disabled={sourceBusy}
+                />
+              </label>
+            ))}
+          </div>
+        )}
+      </section>
 
       <form className="work-edit-form" onSubmit={submit}>
         <div className="work-edit-top">
@@ -300,16 +561,16 @@ export function WorkEditPanel({ detail, onChanged }: WorkEditPanelProps) {
             <section className="work-edit-group">
               <h3>我的记录</h3>
               <div className="work-edit-personal-grid">
-                <label className="detail-field">
+                <div className="detail-field">
                   <span>游玩状态</span>
-                  <select {...register("status")}>
-                    <option value="unclassified">未分类</option>
-                    <option value="playing">在玩</option>
-                    <option value="queued">想玩</option>
-                    <option value="finished">已通关</option>
-                    <option value="paused">搁置</option>
-                  </select>
-                </label>
+                  <StatusSelect
+                    value={statusValue}
+                    disabled={isSubmitting}
+                    onChange={(status) =>
+                      setValue("status", status, { shouldDirty: true, shouldValidate: true })
+                    }
+                  />
+                </div>
                 <label className="detail-field">
                   <span>个人评分（0–10）</span>
                   <input inputMode="decimal" placeholder="8.5" {...register("rating")} />
@@ -317,8 +578,26 @@ export function WorkEditPanel({ detail, onChanged }: WorkEditPanelProps) {
                 </label>
                 <label className="detail-field detail-field--check">
                   <input type="checkbox" {...register("favorite")} />
-                  <span>收藏这部作品</span>
+                  <span>本地收藏</span>
                 </label>
+              </div>
+              <div className="work-edit-personal-note">
+                <span>
+                  本地收藏只用于 MiyuManager 的筛选；Bangumi
+                  收藏由游玩状态与评分同步自动创建，两者分开计算。
+                </span>
+                <Hint label={bangumiSyncHint} side="top">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={!bangumiLinked || sourceDirty || isDirty || bangumiSyncBusy}
+                    onClick={() => void syncBangumiNow()}
+                  >
+                    <RefreshCw size={13} className={bangumiSyncBusy ? "detail-spin" : undefined} />
+                    {bangumiSyncBusy ? "同步中…" : "同步 Bangumi 收藏"}
+                  </Button>
+                </Hint>
               </div>
             </section>
           </div>

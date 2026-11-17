@@ -161,6 +161,7 @@ pub fn effective_scopes(id: &str, configured: &[String]) -> Vec<String> {
         .filter(|scope| !scope.is_empty())
         .collect::<Vec<_>>();
     let required: &[&str] = match id {
+        "bangumi" => &["write:collection"],
         "nextmoe" => &["openid", "profile", "catalog:read"],
         "hikarinagi" => &[
             "openid",

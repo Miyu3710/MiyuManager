@@ -41,6 +41,7 @@ import {
   getLaunchState,
   getMetadataWorkState,
   libraryItemToGame,
+  listOAuthAccounts,
   startWork,
   stopWork,
   validateWork,
@@ -54,7 +55,9 @@ import { useAppearance } from "../../app/useAppearance";
 import { workOriginFromState, workOrigins } from "../../lib/work-navigation";
 import { useDeepLinkFocus } from "../../lib/use-deep-link-focus";
 import { LaunchConfigPanel } from "./LaunchConfigPanel";
+import { BangumiComments } from "./BangumiComments";
 import { SourceWorkspace } from "./SourceWorkspace";
+import { UserReviewCard } from "./UserReviewCard";
 import { WorkEditPanel } from "./WorkEditPanel";
 import { SessionHistory } from "./SessionHistory";
 import "./work-detail.css";
@@ -136,6 +139,13 @@ export function WorkDetailPage() {
     staleTime: 0,
     refetchOnMount: "always",
   });
+  const oauth = useQuery({
+    queryKey: ["oauth-status"],
+    queryFn: listOAuthAccounts,
+    staleTime: 60_000,
+  });
+  const bangumiConnected =
+    oauth.data?.some((status) => status.id === "bangumi" && status.connected) ?? false;
   const launch = launchSnapshot?.workId === workId ? launchSnapshot : null;
 
   useEffect(() => {
@@ -849,21 +859,14 @@ export function WorkDetailPage() {
                   管理器只管理本地安装、启动路径、用户状态和可追溯元数据；不会读取游戏内章节、路线、存档或成就。
                 </p>
               </section>
-              <section className="detail-review-card" aria-labelledby="detail-review-title">
-                <header className="detail-review-head">
-                  <h2 id="detail-review-title">用户评价</h2>
-                  <span className="detail-review-source">本地</span>
-                </header>
-                {detail.data.notes ? (
-                  <p className="detail-review-copy">{detail.data.notes}</p>
-                ) : (
-                  <p className="detail-review-empty">还没有写下评价。</p>
-                )}
-                <Button variant="ghost" size="sm" onClick={openInlineEditor}>
-                  <Pencil size={13} strokeWidth={1.6} />
-                  {detail.data.notes ? "编辑评价" : "写评价"}
-                </Button>
-              </section>
+              <UserReviewCard
+                detail={detail.data}
+                bangumiLinked={Boolean(bangumiSourceId)}
+                bangumiConnected={bangumiConnected}
+                bangumiSubjectId={bangumiSourceId}
+                onSaved={invalidate}
+              />
+              <BangumiComments subjectId={bangumiSourceId} pending={metadataState.isPending} />
             </div>
           </div>
         ) : null}
@@ -887,6 +890,10 @@ export function WorkDetailPage() {
                 wrappers: [],
                 updateManifestUrl: "",
                 onboardingCompleted: true,
+                launchAtStartup: false,
+                silentStartup: false,
+                closeBehavior: "tray",
+                bangumiProgressSync: false,
               }
             }
             onSaved={invalidate}
@@ -907,7 +914,13 @@ export function WorkDetailPage() {
             <WorkEditPanel
               key={"work-edit-" + detail.data.workId}
               detail={detail.data}
-              onChanged={invalidate}
+              sourceLinks={metadataState.data?.sourceLinks ?? []}
+              providers={metadataState.data?.providers ?? []}
+              sourcesPending={metadataState.isPending}
+              onChanged={() => {
+                invalidate();
+                void metadataState.refetch();
+              }}
             />
             <SourceWorkspace
               key={"source-workspace-" + detail.data.workId}

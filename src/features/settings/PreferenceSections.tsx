@@ -25,9 +25,9 @@ import {
   restoreDatabase,
   updatePreferences,
 } from "../../lib/app-api";
-import type { AppPreferences, ProxyMode, UpdateCheck } from "../../lib/app-types";
+import type { AppPreferences, CloseBehavior, ProxyMode, UpdateCheck } from "../../lib/app-types";
 import { formatBytes } from "../../lib/format";
-import { pickExecutable } from "../../lib/library-api";
+import { listOAuthAccounts, pickExecutable } from "../../lib/library-api";
 import type { AppInfo, MonitorInfo } from "../../lib/library-types";
 import { cn } from "../../lib/cn";
 import { WRAPPER_DEFINITIONS, wrapperConfig } from "../../lib/launch-wrappers";
@@ -38,6 +38,206 @@ function parseLines(value: string): string[] {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+export function StartupAndWindowSection({
+  preferences,
+  onSaved,
+}: {
+  preferences: AppPreferences;
+  onSaved: () => void;
+}) {
+  const [launchAtStartup, setLaunchAtStartup] = useState(preferences.launchAtStartup);
+  const [silentStartup, setSilentStartup] = useState(preferences.silentStartup);
+  const [closeBehavior, setCloseBehavior] = useState<CloseBehavior>(preferences.closeBehavior);
+  const [busy, setBusy] = useState<"launch" | "silent" | "close" | null>(null);
+
+  const apply = async (
+    patch: Partial<Pick<AppPreferences, "launchAtStartup" | "silentStartup" | "closeBehavior">>,
+    scope: "launch" | "silent" | "close",
+    message: string,
+  ) => {
+    setBusy(scope);
+    try {
+      const saved = await updatePreferences({
+        ...preferences,
+        launchAtStartup,
+        silentStartup,
+        closeBehavior,
+        ...patch,
+      });
+      setLaunchAtStartup(saved.launchAtStartup);
+      setSilentStartup(saved.silentStartup);
+      setCloseBehavior(saved.closeBehavior);
+      onSaved();
+      toast.success(message);
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="settings-preference-form" aria-busy={busy !== null}>
+      <div className="settings-row">
+        <div>
+          <b>开机启动</b>
+          <span>登录 Windows 后自动运行 MiyuManager。</span>
+        </div>
+        <button
+          type="button"
+          className={cn("settings-switch", launchAtStartup && "is-on")}
+          aria-pressed={launchAtStartup}
+          aria-label="开机启动"
+          disabled={busy !== null}
+          onClick={() =>
+            void apply(
+              { launchAtStartup: !launchAtStartup },
+              "launch",
+              launchAtStartup ? "已关闭开机启动" : "已开启开机启动",
+            )
+          }
+        >
+          <span />
+        </button>
+      </div>
+      <div className={cn("settings-row", !launchAtStartup && "is-muted")}>
+        <div>
+          <b>静默启动</b>
+          <span>
+            {launchAtStartup
+              ? "开机启动时不打开主窗口，只保留托盘入口。"
+              : "开启开机启动后可设置。"}
+          </span>
+        </div>
+        <button
+          type="button"
+          className={cn("settings-switch", silentStartup && "is-on")}
+          aria-pressed={silentStartup}
+          aria-label="静默启动"
+          disabled={!launchAtStartup || busy !== null}
+          onClick={() =>
+            void apply(
+              { silentStartup: !silentStartup },
+              "silent",
+              silentStartup ? "开机启动会打开主窗口" : "开机启动将保持静默",
+            )
+          }
+        >
+          <span />
+        </button>
+      </div>
+      <div className="settings-row">
+        <div>
+          <b>关闭按钮</b>
+          <span>
+            {closeBehavior === "tray"
+              ? "关闭主窗口时隐藏到托盘；从托盘菜单可彻底退出。"
+              : "关闭主窗口时直接结束 MiyuManager。"}
+          </span>
+        </div>
+        <div className="settings-segmented" role="group" aria-label="关闭按钮行为">
+          <button
+            type="button"
+            aria-pressed={closeBehavior === "tray"}
+            disabled={busy !== null}
+            onClick={() => void apply({ closeBehavior: "tray" }, "close", "关闭按钮将隐藏到托盘")}
+          >
+            隐藏到托盘
+          </button>
+          <button
+            type="button"
+            aria-pressed={closeBehavior === "quit"}
+            disabled={busy !== null}
+            onClick={() => void apply({ closeBehavior: "quit" }, "close", "关闭按钮将退出应用")}
+          >
+            退出应用
+          </button>
+        </div>
+      </div>
+      <p className="settings-hint">
+        {isTauri()
+          ? "开机启动只写入当前 Windows 用户；静默启动只在开机启动时生效。"
+          : "浏览器预览只保存选项；开机启动与关闭行为在桌面版生效。"}
+      </p>
+    </div>
+  );
+}
+
+export function BangumiSyncSection({
+  preferences,
+  onSaved,
+}: {
+  preferences: AppPreferences;
+  onSaved: () => void;
+}) {
+  const [enabled, setEnabled] = useState(preferences.bangumiProgressSync);
+  const [busy, setBusy] = useState(false);
+  const oauth = useQuery({
+    queryKey: ["oauth-status"],
+    queryFn: listOAuthAccounts,
+    staleTime: 30_000,
+  });
+  const bangumi = oauth.data?.find((status) => status.id === "bangumi");
+  const needsReauth = bangumi?.connected === true && !bangumi.scopes.includes("write:collection");
+
+  const toggle = async () => {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const saved = await updatePreferences({
+        ...preferences,
+        bangumiProgressSync: !enabled,
+      });
+      setEnabled(saved.bangumiProgressSync);
+      onSaved();
+      toast.success(
+        saved.bangumiProgressSync ? "已开启 Bangumi 状态同步" : "已关闭 Bangumi 状态同步",
+      );
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="settings-preference-form bangumi-sync-form">
+      <div className="settings-row">
+        <div>
+          <b>同步游玩状态与评分</b>
+          <span>保存游玩状态或评分时，自动加入或更新 Bangumi 收藏；本地收藏不受影响。</span>
+        </div>
+        <button
+          type="button"
+          className={cn("settings-switch", enabled && "is-on")}
+          aria-pressed={enabled}
+          aria-label="同步游玩状态与评分到 Bangumi"
+          disabled={busy}
+          onClick={() => void toggle()}
+        >
+          <span />
+        </button>
+      </div>
+      <p className="settings-hint">
+        游戏条目没有章节进度接口；这里同步 Bangumi 收藏状态与评分。评价同步在作品详情里单独勾选。
+      </p>
+      {!isTauri() ? (
+        <p className="settings-hint">浏览器预览只保存开关；写入 Bangumi 在桌面版生效。</p>
+      ) : null}
+      {bangumi?.connected === false ? (
+        <p className="settings-hint">连接 Bangumi 账号后生效。</p>
+      ) : null}
+      {needsReauth ? (
+        <p className="settings-hint bangumi-sync-form__warning">
+          当前 Bangumi 登录缺少收藏写入权限；请在下方账号卡片断开后重新连接。
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 export function LauncherDefaultsSection({

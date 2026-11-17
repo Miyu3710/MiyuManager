@@ -30,6 +30,7 @@ import { workLinkState, workOriginForPath } from "../lib/work-navigation";
 import { GlobalContextMenu } from "./GlobalContextMenu";
 import { HOME_SEARCH_FOCUS_EVENT } from "./global-search-events";
 import { useAppearance } from "./useAppearance";
+import { usePreferences } from "./usePreferences";
 import "./app-shell.css";
 
 const navGroups = [
@@ -120,6 +121,7 @@ export function AppShell() {
   const summary = useLibrarySummary();
   const roots = useLibraryRoots();
   const recent = useRecentPlayed(1);
+  const preferences = usePreferences();
   const motionOff = reduceMotion || Boolean(prefersReducedMotion);
   const recentItem = recent.data?.items[0] ?? null;
 
@@ -222,7 +224,11 @@ export function AppShell() {
       <a className="app-skip-link" href="#main-content">
         跳到主要内容
       </a>
-      <WindowBar context={pageName} onOpenBigScreen={() => void openBigScreenMode()} />
+      <WindowBar
+        context={pageName}
+        closeBehavior={preferences.data?.closeBehavior ?? "tray"}
+        onOpenBigScreen={() => void openBigScreenMode()}
+      />
       <div className="app-shell">
         <aside className={railCollapsed ? "app-rail is-collapsed" : "app-rail"} id="app-rail">
           <div className="app-rail__brand-row">

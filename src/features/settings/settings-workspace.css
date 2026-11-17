@@ -474,9 +474,9 @@
   font-size: var(--text-caption);
 }
 
-.settings-page .settings-switch {
+html body .app-page .settings-page .settings-switch {
   width: 42px;
-  height: 24px;
+  height: 22px;
   padding: 2px;
   border-color: var(--color-line-strong);
   background: var(--color-bg-raised);
@@ -485,9 +485,9 @@
     border-color var(--motion-base) ease;
 }
 
-.settings-page .settings-switch span {
-  width: 18px;
-  height: 18px;
+html body .app-page .settings-page .settings-switch span {
+  width: 16px;
+  height: 16px;
   background: #fff;
   box-shadow: 0 2px 6px rgba(70, 25, 40, 0.14);
   transition:
@@ -495,14 +495,14 @@
     background-color var(--motion-base) ease;
 }
 
-.settings-page .settings-switch.is-on {
+html body .app-page .settings-page .settings-switch.is-on {
   border-color: var(--color-accent-bright);
   background: var(--color-accent-bright);
 }
 
-.settings-page .settings-switch.is-on span {
-  background: #3b1f2a;
-  transform: translateX(18px);
+html body .app-page .settings-page .settings-switch.is-on span {
+  background: #fff;
+  transform: translateX(20px);
 }
 
 .settings-page .settings-segmented {
@@ -2511,4 +2511,28 @@ html body .app-page .settings-page .settings-proxy-tabs button[aria-pressed="tru
 
 html[data-reduce-motion="true"] .settings-select-menu {
   animation: none;
+}
+
+.settings-page .settings-row.is-muted {
+  opacity: 0.58;
+}
+
+.settings-page .settings-switch:disabled,
+.settings-page .settings-segmented button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.settings-page .bangumi-sync-form {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.settings-page .bangumi-sync-form .settings-row:first-child {
+  padding-top: 0;
+}
+
+.settings-page .bangumi-sync-form__warning {
+  color: var(--color-danger);
 }

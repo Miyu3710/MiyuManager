@@ -14,6 +14,17 @@ pnpm release:check
 
 脚本依次执行前端 lint、类型检查、Vitest、生产构建，以及 Rustfmt、Clippy 和 Cargo 测试。任何一步失败都会停止。UI 变更仍需按 `docs/QA_MATRIX.md` 补齐截图和键盘走查。
 
+数据设置页截图：
+
+```powershell
+pnpm dev --host 127.0.0.1
+pnpm probe:diagnostics-ui
+```
+
+真实 Tauri WebView 检查需要在启动打包程序时设置 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`，然后运行 `pnpm probe:tauri:c9`。探针会验证生产 CSP、数据库健康、在线备份和 1440×900 下的页面溢出。
+
+数据库恢复端到端探针使用同一远程调试窗口运行 `pnpm probe:tauri:restore`。它会在隔离数据目录创建快照、修改设置、恢复并等待应用重启，再确认设置回退和数据库完整性。
+
 ## 构建安装包
 
 ```powershell
@@ -29,6 +40,15 @@ pnpm release:build
 - MSI：适合受管环境；安装范围由 WiX 默认值决定。
 - NSIS：当前用户安装，不要求管理员权限。
 - 未包含离线 WebView2；安装器会按 Tauri 配置引导或使用已安装的 WebView2。
+
+## 0.1.0 产物
+
+| 文件                              |             大小 | SHA-256                                                            |
+| --------------------------------- | ---------------: | ------------------------------------------------------------------ |
+| `MiyuManager_0.1.0_x64_en-US.msi` | 16,969,728 bytes | `a5607c20904b1fc734688d9221cdb090747ae988ad1e8a3d450a2129a434996e` |
+| `MiyuManager_0.1.0_x64-setup.exe` | 15,530,619 bytes | `03693a14efffe08fc2e2b58b4ebc5d1866124e2e17c88bf0fb8f1ee81b933d61` |
+
+MSI 使用 WiX 3.14 生成，`ALLUSERS=1`，安装到 Program Files；NSIS 使用当前用户安装模式。两份文件均未签名。当前已验证安装器结构、MSI 元数据、载荷提取和 NSIS 载荷启动；实际安装/卸载仍应在干净 Windows 10 22H2 与 Windows 11 环境完成。
 
 ## 版本与更新
 

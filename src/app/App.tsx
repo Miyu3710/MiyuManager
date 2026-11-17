@@ -3,7 +3,7 @@ import { lazy, Suspense, useEffect } from "react";
 import type { ReactNode } from "react";
 import { createHashRouter, Navigate, RouterProvider } from "react-router-dom";
 import { Toaster, toast } from "sonner";
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AppShell } from "./AppShell";
@@ -200,10 +200,27 @@ function useRevealWindow() {
     }
 
     const currentWindow = getCurrentWindow();
-    void currentWindow
-      .show()
-      .then(() => currentWindow.setFocus())
-      .catch(() => undefined);
+    let cancelled = false;
+    const reveal = () => {
+      if (cancelled) {
+        return;
+      }
+      void currentWindow
+        .show()
+        .then(() => currentWindow.setFocus())
+        .catch(() => undefined);
+    };
+    void invoke<boolean>("startup_silent")
+      .then((silent) => {
+        if (!silent) {
+          reveal();
+        }
+      })
+      .catch(reveal);
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 }
 

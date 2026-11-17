@@ -747,6 +747,32 @@ export interface OAuthStatus {
   hint: string | null;
 }
 
+export interface BangumiComment {
+  id: number;
+  userId: number;
+  username: string;
+  nickname: string;
+  avatarUrl: string;
+  collectionType: number;
+  rate: number;
+  comment: string;
+  updatedAt: number;
+  isOwn: boolean;
+}
+
+export interface BangumiCommentPage {
+  subjectId: string;
+  total: number;
+  comments: BangumiComment[];
+  collectionUrl: string;
+}
+
+export interface BangumiSyncOutcome {
+  status: "synced" | "skipped" | string;
+  message: string;
+  collectionUrl: string | null;
+}
+
 export interface OAuthConfigInfo {
   path: string | null;
   error: string | null;

@@ -32,6 +32,7 @@ pub struct AppState {
     pub pool: SqlitePool,
     pub data_dir: PathBuf,
     pub db_path: PathBuf,
+    pub close_to_tray: AtomicBool,
     pub scan: Arc<ScanCoordinator>,
     pub launches: Arc<LaunchManager>,
     pub metadata_http: RwLock<Arc<MetadataHttp>>,
@@ -247,6 +248,17 @@ pub async fn create_app_state(app: &AppHandle) -> anyhow::Result<AppState> {
         );
     }
     let preferences = preferences::load(&pool).await?;
+    if let Err(error) =
+        crate::startup::apply(preferences.launch_at_startup, preferences.silent_startup)
+    {
+        diagnostics::event(
+            "warn",
+            "startup_registration_failed",
+            "无法同步开机启动设置",
+            serde_json::json!({"error": error.to_string()}),
+        );
+    }
+    let close_to_tray = preferences.close_behavior != "quit";
     let proxy = preferences.effective_proxy();
     let metadata_http = Arc::new(MetadataHttp::with_proxy(proxy.clone())?);
     let oauth = Arc::new(OAuthService::new_with_proxy(&data_dir, proxy)?);
@@ -255,6 +267,7 @@ pub async fn create_app_state(app: &AppHandle) -> anyhow::Result<AppState> {
         pool,
         data_dir,
         db_path,
+        close_to_tray: AtomicBool::new(close_to_tray),
         scan: Arc::new(ScanCoordinator::default()),
         launches: Arc::new(LaunchManager::default()),
         metadata_http: RwLock::new(metadata_http),
@@ -291,6 +304,17 @@ pub async fn work_update(
     input: WorkUpdateInput,
 ) -> Result<(), String> {
     db::update_work(&state.pool, work_id, input)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn work_source_links_update(
+    state: State<'_, AppState>,
+    work_id: i64,
+    links: Vec<metadata::SourceLinkInput>,
+) -> Result<Vec<metadata::WorkSourceLink>, String> {
+    metadata::save_source_links(&state.pool, work_id, links)
         .await
         .map_err(|error| error.to_string())
 }
@@ -730,12 +754,24 @@ pub async fn preferences_update(
         .map_err(|error| error.to_string())?;
     let previous_proxy = previous.effective_proxy();
     let next_proxy = input.effective_proxy();
+    let startup_changed = previous.launch_at_startup != input.launch_at_startup
+        || previous.silent_startup != input.silent_startup;
+    if startup_changed {
+        crate::startup::apply(input.launch_at_startup, input.silent_startup)
+            .map_err(|error| format!("无法更新开机启动：{error}"))?;
+    }
     if previous_proxy != next_proxy {
         state.replace_http(next_proxy)?;
     }
-    preferences::save(&state.pool, &input)
-        .await
-        .map_err(|error| error.to_string())?;
+    if let Err(error) = preferences::save(&state.pool, &input).await {
+        if startup_changed {
+            let _ = crate::startup::apply(previous.launch_at_startup, previous.silent_startup);
+        }
+        return Err(error.to_string());
+    }
+    state
+        .close_to_tray
+        .store(input.close_behavior != "quit", Ordering::SeqCst);
     Ok(input)
 }
 

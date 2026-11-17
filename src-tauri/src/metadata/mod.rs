@@ -8,7 +8,7 @@ mod store;
 mod types;
 mod vndb;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
@@ -814,6 +814,75 @@ async fn apply_import(
     })
 }
 
+pub async fn bangumi_source_id(pool: &SqlitePool, work_id: i64) -> Result<Option<String>> {
+    let links = store::load_source_links(pool, work_id).await?;
+    if let Some(link) = links
+        .into_iter()
+        .find(|link| link.provider == "bangumi" && !link.source_id.trim().is_empty())
+    {
+        return Ok(Some(link.source_id));
+    }
+    let claims = store::load_claims(pool, work_id).await?;
+    Ok(claims
+        .into_iter()
+        .find(|claim| claim.source == "bangumi" && !claim.source_id.trim().is_empty())
+        .map(|claim| claim.source_id))
+}
+
+pub async fn save_source_links(
+    pool: &SqlitePool,
+    work_id: i64,
+    links: Vec<SourceLinkInput>,
+) -> Result<Vec<WorkSourceLink>> {
+    if !db::work_exists(pool, work_id).await? {
+        bail!("作品不存在");
+    }
+    store::ensure_providers(pool, &descriptors()).await?;
+    let known_providers: HashSet<String> = sqlx::query_scalar("SELECT id FROM metadata_providers")
+        .fetch_all(pool)
+        .await?
+        .into_iter()
+        .collect();
+    let mut seen = HashSet::new();
+    let mut normalized = Vec::new();
+    for link in links {
+        let provider = link.provider.trim().to_ascii_lowercase();
+        if !known_providers.contains(&provider) {
+            bail!("未知来源：{provider}");
+        }
+        if !seen.insert(provider.clone()) {
+            bail!("来源重复：{provider}");
+        }
+        let source_id = link.source_id.trim();
+        if source_id.chars().count() > 256 {
+            bail!("{provider} 来源编号过长");
+        }
+        if source_id.contains('\0') {
+            bail!("{provider} 来源编号包含无效字符");
+        }
+        let title = link.title.trim();
+        if title.chars().count() > 200 {
+            bail!("{provider} 来源标题过长");
+        }
+        normalized.push((provider, source_id.to_string(), title.to_string()));
+    }
+
+    let mut tx = pool.begin().await?;
+    for (provider, source_id, title) in normalized {
+        if source_id.is_empty() {
+            sqlx::query("DELETE FROM work_source_links WHERE work_id = ? AND provider = ?")
+                .bind(work_id)
+                .bind(provider)
+                .execute(&mut *tx)
+                .await?;
+        } else {
+            store::upsert_source_link(&mut tx, work_id, &provider, &source_id, &title).await?;
+        }
+    }
+    tx.commit().await?;
+    store::load_source_links(pool, work_id).await
+}
+
 pub async fn work_state(
     pool: &SqlitePool,
     oauth: &OAuthService,
@@ -1062,6 +1131,73 @@ mod tests {
         assert_eq!(providers[0].id, "bangumi");
         assert_eq!(providers[1].id, "vndb");
         assert!(!providers[1].enabled);
+    }
+
+    #[tokio::test]
+    async fn source_links_can_be_edited_and_cleared() {
+        let pool = open_memory_pool().await.expect("pool");
+        let work_id = seed_work(&pool).await;
+        let saved = save_source_links(
+            &pool,
+            work_id,
+            vec![
+                SourceLinkInput {
+                    provider: "bangumi".to_string(),
+                    source_id: "50756".to_string(),
+                    title: "测试作品".to_string(),
+                },
+                SourceLinkInput {
+                    provider: "steam".to_string(),
+                    source_id: "324160".to_string(),
+                    title: "测试作品".to_string(),
+                },
+            ],
+        )
+        .await
+        .expect("save links");
+        assert_eq!(saved.len(), 2);
+        assert_eq!(
+            bangumi_source_id(&pool, work_id).await.expect("bangumi id"),
+            Some("50756".to_string())
+        );
+
+        let cleared = save_source_links(
+            &pool,
+            work_id,
+            vec![
+                SourceLinkInput {
+                    provider: "bangumi".to_string(),
+                    source_id: String::new(),
+                    title: String::new(),
+                },
+                SourceLinkInput {
+                    provider: "steam".to_string(),
+                    source_id: "324160".to_string(),
+                    title: "Steam".to_string(),
+                },
+            ],
+        )
+        .await
+        .expect("clear bangumi link");
+        assert_eq!(cleared.len(), 1);
+        assert_eq!(cleared[0].provider, "steam");
+        assert_eq!(
+            bangumi_source_id(&pool, work_id).await.expect("bangumi id"),
+            None
+        );
+        assert!(
+            save_source_links(
+                &pool,
+                work_id,
+                vec![SourceLinkInput {
+                    provider: "unknown".to_string(),
+                    source_id: "1".to_string(),
+                    title: String::new(),
+                }],
+            )
+            .await
+            .is_err()
+        );
     }
 
     #[tokio::test]

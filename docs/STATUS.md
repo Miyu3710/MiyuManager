@@ -1,7 +1,7 @@
 # MiyuManager 项目状态
 
 > 最后更新：2026-11-17
-> 当前阶段：C9 进行中；备份/恢复、日志与崩溃记录、前端错误边界、CSP/权限、性能和发布脚本已落地，Release EXE 已生成。MSI/NSIS、干净安装、签名、物理手柄和多显示器仍待验证。
+> 当前阶段：C9 进行中；备份/恢复、日志与崩溃记录、前端错误边界、CSP/权限、性能、发布脚本、MSI/NSIS 和发布清单已落地。干净 Windows 安装/卸载、签名、物理手柄和多显示器仍待验证。
 >
 > 计划文件：`docs/DEVELOPMENT_PLAN.md`  
 > 设计提案：`docs/DESIGN.md`
@@ -34,9 +34,11 @@
 - 安全：生产 CSP 已启用，开发 CSP 单独放行 Vite；自定义 `miyu-navigation-guard` 阻止 WebView 导航到应用外部地址，外部链接继续交给系统浏览器。capability 拆为主窗口与大屏：主窗口仅增加 open/save 对话框和自定义窗口控制，大屏只保留本地数据事件与受控焦点。
 - 发布：Tauri 目标改为 MSI + NSIS，NSIS 当前用户安装，关闭降级并设置最低 WebView2 版本。新增 `scripts/release/check.ps1`、`build.ps1`、`pnpm release:check`、`release:build`、`release:exe`，生成 `outputs/release/<version>/release-manifest.json` 与 `SHA256SUMS.txt`。
 - 文档：新增 `docs/RELEASE.md`、`docs/QA_MATRIX.md`、`docs/USER_GUIDE.md`、`docs/TROUBLESHOOTING.md`、`docs/PRIVACY.md`、`docs/RELEASE_NOTES.md`。
-- 验证：`pnpm release:check` 完整通过，包含前端 11 个文件 / 53 项测试、生产构建、Rustfmt、Clippy 与 Cargo 测试（82 passed / 13 ignored）。新增错误边界、数据库备份/恢复与安全导航测试。10,000 部作品、5,000 条封面记录的手动基准：seed 1,583ms、首屏 87ms、搜索 63ms、末页 92ms。Release EXE 在隔离数据目录启动 8 秒存活，写入 `app_start` 日志且无崩溃文件。
-- 产物：`outputs/release/0.1.0/miyumanager.exe`（23,156,224 bytes，SHA-256 `d2b5989c3f503eb818c6bc220ba3acc9647e4383e20381a1c90108fda00edf72`）、`release-manifest.json`、`SHA256SUMS.txt`。当前为 `executable-only`、未签名构建。
-- 阻塞：MSI/NSIS 打包需要 Tauri 下载 WiX/NSIS；当前沙箱无法解析 GitHub，联网审批审查连续超时，尚未生成安装器。无头 Edge 和新 Tauri 窗口的目视截图同样被当前 UI/权限审查阻塞；保留为发布前待验证项，不能据此宣称干净安装或最终视觉验收已完成。
+- 验证：`pnpm release:check` 完整通过，包含前端 11 个文件 / 53 项测试、生产构建、Rustfmt、Clippy 与 Cargo 测试（87 passed / 14 ignored）。新增错误边界、数据库备份/恢复与安全导航测试。10,000 部作品、5,000 条封面记录的手动基准：seed 1,583ms、首屏 87ms、搜索 63ms、末页 92ms。Release EXE 与 NSIS 载荷在隔离数据目录启动存活，写入 `app_start` 日志且无崩溃文件。数据设置页在 1440×900、1920×1080、150% 缩放 1280×720 和 390×844 下无横向溢出，功能性文字和按钮状态正常；截图在 `outputs/app/c9/diagnostics-ui/`。
+- 真实 Tauri 验证：通过 WebView2 CDP 打开打包程序的设置页，生产 CSP 以响应头注入并包含 Tauri 生成的脚本哈希，未包含 `unsafe-eval`；`app_info`、`database_health` 与 `database_backup_default` 均可调用，备份后备份数增加且 UI 显示“完整性通过”和最近备份。截图与结构化结果在 `outputs/app/c9/tauri-database-health.png`、`tauri-c9-result.json`。
+- 恢复端到端验证：在隔离数据目录先创建备份，再修改更新清单地址，调用 `database_restore` 后应用自动重启；重启后设置回到快照值，数据库完整性为 `ok`，安全快照保留。结构化结果在 `outputs/app/c9/tauri-restore-result.json`。
+- 产物：`outputs/release/0.1.0/` 下生成 `MiyuManager_0.1.0_x64_en-US.msi`（16,969,728 bytes，SHA-256 `a5607c20904b1fc734688d9221cdb090747ae988ad1e8a3d450a2129a434996e`）和 `MiyuManager_0.1.0_x64-setup.exe`（15,530,619 bytes，SHA-256 `03693a14efffe08fc2e2b58b4ebc5d1866124e2e17c88bf0fb8f1ee81b933d61`），以及 `release-manifest.json`、`SHA256SUMS.txt`。MSI/NSIS 均为未签名包。
+- 安装器校验：MSI ProductName `MiyuManager`、ProductVersion `0.1.0`、Manufacturer `MiyuManager`，`ALLUSERS=1`；NSIS 为 NSIS 3 Unicode 当前用户安装包。MSI 载荷与 NSIS 载荷均通过 7-Zip 结构提取，NSIS 载荷启动冒烟正常。实际安装/卸载没有在本机执行，需在干净 Windows 10/11 环境完成；G6 的证书、正式版本号、便携版和更新通道仍待决策。
 
 ## 当前状态
 
@@ -51,7 +53,7 @@
 | C6 自动时长统计与统计页               | 已完成 | `play_sessions`、Job Object 会话观察、前台宽限、心跳恢复、真实统计页和会话补录/修正/删除已接入；详见下文                                   |
 | C7 电视大屏与手柄导航                 | 待验收 | 正式 `bigscreen` 窗口、显示器选择、真实库、图标分类栏、竖版海报架、Y 菜单、Start 控制菜单、启动/详情和焦点管理已接入；待 G5 确认；详见下文 |
 | C8 首页、收藏集、设置与首次启动       | 已完成 | 真实首页、收藏集 CRUD/排序/作品增删、Ctrl+K 全局搜索、启动器/网络/数据设置、更新检查和首次启动向导已接入；详见下文                         |
-| C9 硬化、性能、打包与发布候选         | 进行中 | 备份/恢复、日志、错误边界、CSP、权限、基准、发布脚本和 release EXE 已完成；MSI/NSIS、干净安装、签名和实体设备验证待完成                    |
+| C9 硬化、性能、打包与发布候选         | 进行中 | 备份/恢复、日志、错误边界、CSP、权限、基准、发布脚本和 MSI/NSIS 已完成；干净安装、签名和实体设备验证待完成                                 |
 
 ## 已锁定的决策
 

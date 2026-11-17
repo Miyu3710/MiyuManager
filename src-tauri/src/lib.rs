@@ -1,4 +1,5 @@
 mod assets;
+mod bangumi;
 mod bigscreen;
 mod commands;
 mod database_maintenance;
@@ -12,10 +13,12 @@ mod oauth;
 mod preferences;
 mod scan;
 mod security;
+mod startup;
 mod steam_library;
 mod tracking;
 mod tray;
 
+use std::sync::atomic::Ordering;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -35,6 +38,10 @@ pub fn run() {
             bigscreen::bigscreen_open_detail,
             commands::app_info,
             commands::app_quit,
+            startup::startup_silent,
+            bangumi::bangumi_comments,
+            bangumi::bangumi_sync_comment,
+            bangumi::bangumi_sync_progress,
             commands::database_health,
             commands::database_backup,
             commands::database_backup_default,
@@ -52,6 +59,7 @@ pub fn run() {
             commands::library_query,
             commands::library_get,
             commands::work_update,
+            commands::work_source_links_update,
             commands::work_validate,
             commands::work_set_cover,
             commands::work_apply_local_cover,
@@ -133,7 +141,16 @@ pub fn run() {
                 && let tauri::WindowEvent::CloseRequested { api, .. } = event
             {
                 api.prevent_close();
-                let _ = window.hide();
+                let close_to_tray = window
+                    .app_handle()
+                    .try_state::<commands::AppState>()
+                    .map(|state| state.close_to_tray.load(Ordering::SeqCst))
+                    .unwrap_or(true);
+                if close_to_tray {
+                    let _ = window.hide();
+                } else {
+                    window.app_handle().exit(0);
+                }
             }
             if window.label() == bigscreen::LABEL
                 && matches!(event, tauri::WindowEvent::CloseRequested { .. })

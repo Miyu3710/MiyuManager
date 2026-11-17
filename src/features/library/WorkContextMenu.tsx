@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "../../design-system/components/ConfirmDialog";
 import "../../design-system/menu.css";
 import { cn } from "../../lib/cn";
+import { syncBangumiProgress } from "../../lib/bangumi-api";
 import {
   addCollectionWorks,
   libraryItemId,
@@ -200,6 +201,14 @@ export function WorkContextMenu({
       await setLibraryStatus(target.workId, status);
       invalidate();
       toast.success("已标记为" + statusLabels[status]);
+      try {
+        const outcome = await syncBangumiProgress(target.workId);
+        if (outcome.status === "synced") {
+          toast.success(outcome.message);
+        }
+      } catch (error) {
+        toast.error("Bangumi 同步失败：" + String(error));
+      }
     } catch (error) {
       toast.error(String(error));
     }

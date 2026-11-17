@@ -5,8 +5,8 @@ import {
   ListFilter,
   Monitor,
   Palette,
+  Power,
   RefreshCw,
-  ShieldCheck,
   SlidersHorizontal,
   Tv,
   UsersRound,
@@ -16,7 +16,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { useQuery } from "@tanstack/react-query";
 import { isTauri } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "../../design-system/components/Button";
@@ -36,9 +35,11 @@ import { OAuthAccounts } from "./OAuthAccounts";
 import { ScanExclusionsDialog } from "./ScanExclusionsDialog";
 import { SettingsSelect } from "./SettingsSelect";
 import {
+  BangumiSyncSection,
   DataAndUpdateSection,
   LauncherDefaultsSection,
   NetworkSettingsSection,
+  StartupAndWindowSection,
 } from "./PreferenceSections";
 import {
   useAppInfo,
@@ -116,10 +117,10 @@ const settingsGroups = [
     label: "应用",
     items: [
       {
-        id: "probe-settings",
-        label: "技术探针",
-        icon: ShieldCheck,
-        description: "验证运行环境与窗口能力。",
+        id: "startup-settings",
+        label: "启动与窗口",
+        icon: Power,
+        description: "开机启动、静默启动与关闭行为。",
       },
       {
         id: "data-settings",
@@ -189,7 +190,6 @@ export function SettingsPage() {
   const setReduceMotion = useAppearance((state) => state.setReduceMotion);
   const bigScreenHints = useAppearance((state) => state.bigScreenHints);
   const setBigScreenHints = useAppearance((state) => state.setBigScreenHints);
-  const [gamepadSupported, setGamepadSupported] = useState(() => readGamepadState().supported);
   const [gamepadCount, setGamepadCount] = useState(() => readGamepadState().count);
   const [selectedDisplay, setSelectedDisplay] = useState<number | null>(null);
   const [confirmRoot, setConfirmRoot] = useState<{ id: number; path: string } | null>(null);
@@ -246,14 +246,12 @@ export function SettingsPage() {
 
   const refreshGamepads = () => {
     const state = readGamepadState();
-    setGamepadSupported(state.supported);
     setGamepadCount(state.count);
   };
 
   useEffect(() => {
     const update = () => {
       const state = readGamepadState();
-      setGamepadSupported(state.supported);
       setGamepadCount(state.count);
     };
     window.addEventListener("gamepadconnected", update);
@@ -321,19 +319,11 @@ export function SettingsPage() {
     }
   };
 
-  const enterFullscreen = async () => {
-    if (!isTauri()) {
-      toast("全屏模式只在 Tauri 桌面窗口中可用。");
-      return;
-    }
-    await getCurrentWindow().setFullscreen(true);
-  };
-
   return (
     <div className="settings-page">
       <PageHeader
         title="设置"
-        description="扫描、来源、账号与显示。所有设置保存在本机。"
+        description="扫描、来源、账号、显示与启动行为。所有设置保存在本机。"
         actions={
           <div className="settings-head__status">
             <i aria-hidden="true" />
@@ -499,8 +489,18 @@ export function SettingsPage() {
             <SettingsSectionHeader
               icon={UsersRound}
               title="账号与同步"
-              description="平台账号、头像与资料同步。"
+              description="平台账号、头像、收藏写入与资料同步。"
             />
+            {preferences.data ? (
+              <BangumiSyncSection preferences={preferences.data} onSaved={invalidatePreferences} />
+            ) : (
+              <div className="settings-row">
+                <div>
+                  <b>Bangumi 同步</b>
+                  <span>正在读取设置…</span>
+                </div>
+              </div>
+            )}
             <OAuthAccounts />
           </section>
 
@@ -719,38 +719,29 @@ export function SettingsPage() {
           </section>
 
           <div className="settings-group-label">应用</div>
-          <section id="probe-settings" className="settings-section settings-section--third">
+          <section id="startup-settings" className="settings-section settings-section--full">
             <SettingsSectionHeader
-              icon={ShieldCheck}
-              title="技术探针"
-              description="验证运行环境与窗口能力。"
-              action={<Tag tone="data">DEV</Tag>}
+              icon={Power}
+              title="启动与窗口"
+              description="开机启动、静默启动与关闭行为。"
+              action={!isTauri() ? <Tag tone="muted">桌面版生效</Tag> : null}
             />
-            <div className="settings-row">
-              <div>
-                <b>Gamepad API</b>
-                <span>
-                  {gamepadSupported
-                    ? `浏览器支持，已连接 ${gamepadCount} 个手柄`
-                    : "当前环境不提供 Gamepad API"}
-                </span>
+            {preferences.data ? (
+              <StartupAndWindowSection
+                preferences={preferences.data}
+                onSaved={invalidatePreferences}
+              />
+            ) : (
+              <div className="settings-row">
+                <div>
+                  <b>应用行为</b>
+                  <span>正在读取设置…</span>
+                </div>
               </div>
-              <Button variant="ghost" size="sm" onClick={refreshGamepads}>
-                <RefreshCw size={13} strokeWidth={1.6} /> 重新检测
-              </Button>
-            </div>
-            <div className="settings-row">
-              <div>
-                <b>全屏</b>
-                <span>验证 Tauri 窗口全屏 API；Escape 或关闭按钮返回。</span>
-              </div>
-              <Button variant="secondary" size="sm" onClick={() => void enterFullscreen()}>
-                进入全屏
-              </Button>
-            </div>
+            )}
           </section>
 
-          <section id="data-settings" className="settings-section settings-section--wide">
+          <section id="data-settings" className="settings-section settings-section--full">
             <SettingsSectionHeader
               icon={SlidersHorizontal}
               title="数据与关于"

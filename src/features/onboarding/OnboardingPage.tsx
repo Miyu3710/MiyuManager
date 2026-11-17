@@ -16,11 +16,14 @@ import { Button } from "../../design-system/components/Button";
 import { Hint } from "../../design-system/components/Hint";
 import { Tag } from "../../design-system/components/Tag";
 import { WindowBar } from "../../design-system/components/WindowBar";
+import { usePreferences } from "../../app/usePreferences";
 import { completeOnboarding } from "../../lib/app-api";
 import { listMetadataProviders, setMetadataProviderEnabled } from "../../lib/library-api";
-import type { ImportCandidateInput, MetadataProvider } from "../../lib/library-types";
+import type { MetadataProvider } from "../../lib/library-types";
 import { cn } from "../../lib/cn";
+import { ScanReview } from "../library/ScanReview";
 import { useLibraryScan } from "../library/useLibraryScan";
+import { useScanSelection } from "../library/useScanSelection";
 import "./onboarding.css";
 
 type Step = "welcome" | "directory" | "sources" | "done";
@@ -31,24 +34,6 @@ const steps: { id: Step; index: string; label: string; detail: string }[] = [
   { id: "sources", index: "03", label: "来源", detail: "可以跳过" },
   { id: "done", index: "04", label: "完成", detail: "进入游戏库" },
 ];
-
-interface CandidateChoice {
-  checked: boolean;
-  name: string;
-}
-
-function buildChoices(
-  candidates: { id: string; alreadyImported: boolean; suggestedTitle: string }[],
-) {
-  const value: Record<string, CandidateChoice> = {};
-  for (const candidate of candidates) {
-    value[candidate.id] = {
-      checked: !candidate.alreadyImported,
-      name: candidate.suggestedTitle,
-    };
-  }
-  return value;
-}
 
 function ProviderRow({
   provider,
@@ -83,24 +68,20 @@ export function OnboardingPage() {
   const queryClient = useQueryClient();
   const scan = useLibraryScan();
   const [step, setStep] = useState<Step>("welcome");
-  const [choiceOverrides, setChoiceOverrides] = useState<Record<string, CandidateChoice>>({});
   const [sourceToggles, setSourceToggles] = useState<Record<string, boolean>>({});
   const [finishing, setFinishing] = useState(false);
-  const [importingCount, setImportingCount] = useState(0);
   const providers = useQuery({
     queryKey: ["metadata-providers"],
     queryFn: listMetadataProviders,
     staleTime: 10_000,
   });
+  const preferences = usePreferences();
 
   const candidates = useMemo(
     () => (scan.state.status === "review" ? scan.state.candidates : []),
     [scan.state],
   );
-  const choices = useMemo(
-    () => ({ ...buildChoices(candidates), ...choiceOverrides }),
-    [candidates, choiceOverrides],
-  );
+  const selection = useScanSelection(candidates, "all");
   const sourceEnabled = useMemo(
     () =>
       Object.fromEntries(
@@ -112,24 +93,13 @@ export function OnboardingPage() {
     [providers.data, sourceToggles],
   );
 
-  const selectedCandidates = candidates.filter(
-    (candidate) => choices[candidate.id]?.checked && !candidate.alreadyImported,
-  );
-  const selectedNamesValid = selectedCandidates.every(
-    (candidate) => (choices[candidate.id]?.name ?? "").trim().length > 0,
-  );
-
   const stepIndex = steps.findIndex((entry) => entry.id === step);
 
   const importGames = async () => {
-    const inputs: ImportCandidateInput[] = selectedCandidates.map((candidate) => ({
-      exePath: candidate.exePath,
-      workingDir: candidate.workingDir,
-      displayName: (choices[candidate.id]?.name ?? candidate.suggestedTitle).trim(),
-      rootPath: candidate.rootPath,
-      sizeBytes: candidate.sizeBytes,
-    }));
-    setImportingCount(inputs.length);
+    const inputs = selection.buildCandidates();
+    if (inputs.length === 0) {
+      return;
+    }
     try {
       const result = await scan.importSelected(inputs);
       toast.success(
@@ -141,8 +111,6 @@ export function OnboardingPage() {
       setStep("sources");
     } catch (error) {
       toast.error(String(error));
-    } finally {
-      setImportingCount(0);
     }
   };
 
@@ -183,7 +151,7 @@ export function OnboardingPage() {
   };
 
   const beginScan = () => {
-    setChoiceOverrides({});
+    selection.reset();
     void scan.pickAndStart();
   };
 
@@ -206,7 +174,7 @@ export function OnboardingPage() {
 
   return (
     <div className="app-window onboarding-window">
-      <WindowBar context="首次启动" />
+      <WindowBar context="首次启动" closeBehavior={preferences.data?.closeBehavior ?? "tray"} />
       <main className="onboarding-main">
         <aside className="onboarding-rail" aria-label="首次启动步骤">
           <div className="onboarding-brand">
@@ -262,7 +230,9 @@ export function OnboardingPage() {
           ) : null}
 
           {step === "directory" ? (
-            <div className="onboarding-directory">
+            <div
+              className={cn("onboarding-directory", scan.state.status === "review" && "is-review")}
+            >
               <header className="onboarding-panel__head">
                 <div>
                   <h1>{directoryTitle}</h1>
@@ -328,129 +298,34 @@ export function OnboardingPage() {
 
               {scan.state.status === "review" ? (
                 <div className="onboarding-review">
-                  <div className="onboarding-review__summary">
-                    <span>
-                      <b>{candidates.length}</b> 个候选
-                    </span>
-                    <span>
-                      已选 <b>{selectedCandidates.length}</b> 部
-                    </span>
-                    {scan.state.cancelled ? <Tag tone="muted">扫描已取消</Tag> : null}
-                  </div>
-                  {candidates.length === 0 ? (
-                    <div className="onboarding-error">
-                      <XCircle size={22} strokeWidth={1.5} />
-                      <h2>没有找到可用的主程序</h2>
-                      <p>换一个包含 .exe 的目录；已排除的游戏可在设置中恢复。</p>
+                  <ScanReview
+                    state={scan.state}
+                    selection={selection}
+                    importing={scan.importing}
+                    emptyAction={
                       <Button variant="secondary" size="sm" onClick={beginScan}>
                         换一个目录
                       </Button>
-                    </div>
-                  ) : (
-                    <div className="onboarding-candidates">
-                      {candidates.map((candidate) => {
-                        const choice = choices[candidate.id] ?? {
-                          checked: false,
-                          name: candidate.suggestedTitle,
-                        };
-                        return (
-                          <div
-                            className={cn(
-                              "onboarding-candidate",
-                              choice.checked && "is-selected",
-                              candidate.alreadyImported && "is-imported",
-                            )}
-                            key={candidate.id}
-                          >
-                            <button
-                              type="button"
-                              className="onboarding-candidate__check"
-                              aria-label={
-                                (choice.checked ? "取消选择 " : "选择 ") + candidate.suggestedTitle
-                              }
-                              aria-pressed={choice.checked}
-                              disabled={candidate.alreadyImported}
-                              onClick={() =>
-                                setChoiceOverrides((current) => ({
-                                  ...current,
-                                  [candidate.id]: {
-                                    ...choice,
-                                    checked: !choice.checked,
-                                  },
-                                }))
-                              }
-                            >
-                              {choice.checked ? <Check size={13} /> : null}
-                            </button>
-                            <div className="onboarding-candidate__copy">
-                              <input
-                                aria-label="作品显示名称"
-                                value={choice.name}
-                                maxLength={160}
-                                disabled={candidate.alreadyImported || !choice.checked}
-                                onChange={(event) =>
-                                  setChoiceOverrides((current) => ({
-                                    ...current,
-                                    [candidate.id]: {
-                                      ...choice,
-                                      name: event.currentTarget.value,
-                                    },
-                                  }))
-                                }
-                              />
-                              <Hint label={candidate.exePath} side="bottom" align="start">
-                                <span>{candidate.exePath}</span>
-                              </Hint>
-                              <small>{candidate.reason}</small>
-                            </div>
-                            <div className="onboarding-candidate__tags">
-                              {candidate.alreadyImported ? (
-                                <Tag tone="muted">已在库中</Tag>
-                              ) : (
-                                <Tag
-                                  tone={
-                                    candidate.confidence === "high"
-                                      ? "status"
-                                      : candidate.confidence === "medium"
-                                        ? "data"
-                                        : "muted"
-                                  }
-                                >
-                                  {candidate.confidence === "high"
-                                    ? "高可信"
-                                    : candidate.confidence === "medium"
-                                      ? "可能"
-                                      : "低可信"}
-                                </Tag>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                    }
+                  />
                   <div className="onboarding-review__actions">
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => {
-                        setChoiceOverrides({});
-                        scan.close();
-                      }}
+                      disabled={scan.importing}
+                      onClick={() => scan.close()}
                     >
-                      重新选择
+                      重新选择目录
                     </Button>
                     <Button
                       variant="primary"
                       size="sm"
-                      disabled={
-                        selectedCandidates.length === 0 || !selectedNamesValid || importingCount > 0
-                      }
+                      disabled={!selection.canImport || scan.importing}
                       onClick={() => void importGames()}
                     >
-                      {importingCount > 0
+                      {scan.importing
                         ? "正在导入…"
-                        : "确认并导入 " + selectedCandidates.length + " 部"}
+                        : "导入选中 " + selection.selectedGroups.length + " 部"}
                     </Button>
                   </div>
                 </div>

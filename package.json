@@ -22,6 +22,9 @@
     "screenshots:c8": "node scripts/capture-c8.mjs",
     "probe:c8-a11y": "node scripts/probe-c8-a11y.mjs",
     "probe:c2": "node scripts/probe-c2.mjs",
+    "probe:diagnostics-ui": "node scripts/release/probe-diagnostics-ui.mjs",
+    "probe:tauri:c9": "node scripts/release/probe-tauri-c9.mjs",
+    "probe:tauri:restore": "node scripts/release/probe-tauri-restore.mjs",
     "release:check": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/check.ps1",
     "release:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/build.ps1",
     "release:exe": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release/build.ps1 -ExecutableOnly"

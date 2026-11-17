@@ -75,10 +75,22 @@ pub struct AppPreferences {
     pub update_manifest_url: String,
     #[serde(default)]
     pub onboarding_completed: bool,
+    #[serde(default)]
+    pub launch_at_startup: bool,
+    #[serde(default)]
+    pub silent_startup: bool,
+    #[serde(default = "default_close_behavior")]
+    pub close_behavior: String,
+    #[serde(default)]
+    pub bangumi_progress_sync: bool,
 }
 
 fn default_proxy_mode() -> String {
     "system".to_string()
+}
+
+fn default_close_behavior() -> String {
+    "tray".to_string()
 }
 
 impl Default for AppPreferences {
@@ -93,6 +105,10 @@ impl Default for AppPreferences {
             wrapper_args: Vec::new(),
             update_manifest_url: String::new(),
             onboarding_completed: false,
+            launch_at_startup: false,
+            silent_startup: false,
+            close_behavior: default_close_behavior(),
+            bangumi_progress_sync: false,
         }
     }
 }
@@ -114,6 +130,10 @@ impl AppPreferences {
         self.update_manifest_url = self.update_manifest_url.trim().to_string();
         if !self.update_manifest_url.is_empty() {
             validate_http_url(&self.update_manifest_url, "更新清单地址")?;
+        }
+        self.close_behavior = self.close_behavior.trim().to_ascii_lowercase();
+        if !matches!(self.close_behavior.as_str(), "tray" | "quit") {
+            bail!("关闭行为无效");
         }
         Ok(())
     }
@@ -217,6 +237,8 @@ pub async fn load(pool: &SqlitePool) -> Result<AppPreferences> {
             if preferences.validate().is_err() {
                 preferences.proxy_mode = "system".to_string();
                 preferences.proxy_url.clear();
+                preferences.close_behavior = default_close_behavior();
+                let _ = preferences.validate();
             }
             Ok(preferences)
         }
@@ -390,6 +412,17 @@ mod tests {
         assert!(version_is_newer("v1.0.0", "0.99.0"));
         assert!(!version_is_newer("0.1.0", "0.1.0"));
         assert!(!version_is_newer("0.0.9", "0.1.0"));
+    }
+
+    #[test]
+    fn validates_close_behavior_and_defaults_to_tray() {
+        let mut preferences = super::AppPreferences::default();
+        assert_eq!(preferences.close_behavior, "tray");
+        preferences.close_behavior = " QUIT ".to_string();
+        preferences.validate().expect("quit is valid");
+        assert_eq!(preferences.close_behavior, "quit");
+        preferences.close_behavior = "ask".to_string();
+        assert!(preferences.validate().is_err());
     }
 
     #[tokio::test]

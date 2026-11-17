@@ -89,13 +89,26 @@ impl MetadataHttp {
         body: &serde_json::Value,
         cancel: &CancellationToken,
     ) -> Result<RawResponse> {
+        self.post_json_with_token(provider, url, min_interval, body, None, cancel)
+            .await
+    }
+
+    pub async fn post_json_with_token(
+        &self,
+        provider: &str,
+        url: &str,
+        min_interval: Duration,
+        body: &serde_json::Value,
+        bearer: Option<&str>,
+        cancel: &CancellationToken,
+    ) -> Result<RawResponse> {
         let response = self
             .request(
                 provider,
                 url,
                 min_interval,
                 None,
-                None,
+                bearer,
                 cancel,
                 RequestBody::Json(body),
                 MAX_JSON_BYTES,

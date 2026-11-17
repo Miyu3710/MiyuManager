@@ -1465,7 +1465,18 @@ const previewMetadataProviderDefaults = previewMetadataProviders.map((provider) 
 }));
 
 const previewMetadataClaims = new Map<number, MetadataClaim[]>();
-const previewWorkSourceLinks = new Map<number, WorkSourceLink[]>();
+const previewWorkSourceLinks = new Map<number, WorkSourceLink[]>([
+  [
+    1,
+    [
+      {
+        provider: "bangumi",
+        sourceId: "50756",
+        title: "月影工房",
+      },
+    ],
+  ],
+]);
 let previewMetadataClaimId = 1;
 
 export function resetMetadataPreviewState() {
@@ -1498,6 +1509,22 @@ function previewUpsertSourceLink(workId: number, provider: string, sourceId: str
     links.push({ provider, sourceId, title });
   }
   previewWorkSourceLinks.set(workId, links);
+}
+
+export async function updateWorkSourceLinks(
+  workId: number,
+  links: WorkSourceLink[],
+): Promise<WorkSourceLink[]> {
+  const normalized = links.map((link) => ({
+    provider: link.provider.trim(),
+    sourceId: link.sourceId.trim(),
+    title: link.title.trim(),
+  }));
+  if (!isTauri()) {
+    previewWorkSourceLinks.set(workId, normalized);
+    return normalized;
+  }
+  return invoke<WorkSourceLink[]>("work_source_links_update", { workId, links: normalized });
 }
 
 type PreviewMetadataCandidate = MetadataPreview["candidate"];
@@ -2841,14 +2868,14 @@ const previewOAuthStatuses: OAuthStatus[] = [
     description: "Bangumi 账号、收藏与评分",
     authKind: "oauth2",
     configured: true,
-    connected: false,
-    accountName: null,
-    accountId: null,
-    avatarUrl: null,
-    profileSyncedAt: null,
-    connectedAt: null,
-    scopes: [],
-    expiresAt: null,
+    connected: true,
+    accountName: "Miyu",
+    accountId: "11",
+    avatarUrl: "/miyu-manager.png",
+    profileSyncedAt: "2026-11-15T08:00:00Z",
+    connectedAt: "2026-10-02T09:30:00Z",
+    scopes: ["write:collection"],
+    expiresAt: Math.floor(Date.now() / 1000) + 5_400,
     hint: "需要 Bangumi 应用凭证和 client_secret",
   },
   {

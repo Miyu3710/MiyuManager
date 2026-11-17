@@ -1365,3 +1365,12 @@
     font-size: 42px;
   }
 }
+
+/* Import review stays top-aligned once the list is longer than the panel. */
+.onboarding-directory.is-review {
+  justify-content: flex-start;
+}
+
+.onboarding-review .import-list-scroll {
+  max-height: min(48vh, 520px);
+}

@@ -123,11 +123,8 @@ describe("C8 product shell", () => {
     await user.click(await screen.findByRole("button", { name: /开始设置/ }));
     await user.click(screen.getByRole("button", { name: /选择目录并扫描/ }));
 
-    const importButton = await screen.findByRole(
-      "button",
-      { name: /确认并导入/ },
-      { timeout: 4000 },
-    );
+    const importButton = await screen.findByRole("button", { name: /导入选中/ }, { timeout: 4000 });
+    expect(screen.getAllByRole("combobox", { name: /主程序/ }).length).toBeGreaterThan(0);
     await user.click(importButton);
     expect(
       await screen.findByRole("heading", { name: "选择要启用的来源" }, { timeout: 3000 }),

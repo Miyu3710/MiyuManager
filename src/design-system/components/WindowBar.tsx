@@ -27,9 +27,18 @@ interface WindowBarProps {
   center?: ReactNode;
   className?: string;
   onOpenBigScreen?: () => void;
+  closeBehavior?: "tray" | "quit";
 }
 
-export function WindowBar({ context, center, className, onOpenBigScreen }: WindowBarProps) {
+export function WindowBar({
+  context,
+  center,
+  className,
+  onOpenBigScreen,
+  closeBehavior = "tray",
+}: WindowBarProps) {
+  const hidesToTray = closeBehavior !== "quit";
+
   return (
     <header className={cn("ds-window-bar", className)}>
       <div className="ds-window-bar__identity" data-tauri-drag-region>
@@ -84,11 +93,11 @@ export function WindowBar({ context, center, className, onOpenBigScreen }: Windo
             <Square size={11} strokeWidth={1.5} />
           </button>
         </Hint>
-        <Hint label="隐藏到托盘" side="bottom" align="end">
+        <Hint label={hidesToTray ? "隐藏到托盘" : "退出应用"} side="bottom" align="end">
           <button
             type="button"
             className="ds-window-bar__control ds-window-bar__control--close"
-            aria-label="隐藏窗口到系统托盘"
+            aria-label={hidesToTray ? "隐藏窗口到系统托盘" : "退出应用"}
             onClick={() => void performWindowAction("close")}
           >
             <X size={15} strokeWidth={1.5} />

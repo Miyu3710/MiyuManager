@@ -151,6 +151,15 @@ pub struct WorkSourceLink {
     pub title: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceLinkInput {
+    pub provider: String,
+    pub source_id: String,
+    #[serde(default)]
+    pub title: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MetadataWorkState {
