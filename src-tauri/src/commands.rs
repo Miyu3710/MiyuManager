@@ -41,6 +41,14 @@ pub struct AppState {
     pub oauth: Arc<OAuthService>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceRating {
+    pub provider: Option<String>,
+    pub label: Option<String>,
+    pub score: Option<f64>,
+}
+
 impl AppState {
     pub fn http(&self) -> Arc<MetadataHttp> {
         self.metadata_http
@@ -317,6 +325,32 @@ pub async fn work_source_links_update(
     metadata::save_source_links(&state.pool, work_id, links)
         .await
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn work_source_rating(
+    state: State<'_, AppState>,
+    work_id: i64,
+) -> Result<SourceRating, String> {
+    let subject_id = metadata::bangumi_source_id(&state.pool, work_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    let Some(subject_id) = subject_id else {
+        return Ok(SourceRating {
+            provider: None,
+            label: None,
+            score: None,
+        });
+    };
+    let http = state.http();
+    let score = metadata::bangumi_score(&http, &subject_id, &CancellationToken::new())
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(SourceRating {
+        provider: Some("bangumi".to_string()),
+        label: Some("Bangumi".to_string()),
+        score,
+    })
 }
 
 #[tauri::command]

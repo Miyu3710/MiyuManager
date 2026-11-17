@@ -98,7 +98,7 @@ impl OAuthConfig {
         OAuthConfig {
             providers: HashMap::new(),
             error: Some(format!(
-                "没有找到 OAuth 配置。已查找：{checked}。可以点“导入配置”选择 providers.json，或把文件放到 {}。",
+                "没有找到 OAuth 配置。已查找：{checked}。可以点“导入配置”选择 providers.json；仓库里的 providers.example.json 是模板。或把文件放到 {}。",
                 data_dir.join("oauth").join("providers.json").display()
             )),
             path: None,
@@ -276,5 +276,17 @@ mod tests {
         assert!(config.provider("nextmoe").is_some());
         assert_eq!(config.path.as_deref(), Some(path.as_path()));
         assert_eq!(validate_file(&path).expect("valid config"), 1);
+    }
+
+    #[test]
+    fn example_provider_template_covers_all_providers() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("providers.example.json");
+        let providers = parse_config(&path).expect("example config");
+        assert_eq!(providers.len(), 3);
+        for id in ["bangumi", "nextmoe", "hikarinagi"] {
+            assert!(providers.contains_key(id), "missing {id}");
+        }
     }
 }

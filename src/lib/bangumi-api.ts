@@ -1,6 +1,12 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { BangumiComment, BangumiCommentPage, BangumiSyncOutcome } from "./library-types";
 
+export interface WorkSourceRating {
+  provider: string | null;
+  label: string | null;
+  score: number | null;
+}
+
 const previewComments: BangumiComment[] = [
   {
     id: 1,
@@ -76,6 +82,13 @@ const previewComments: BangumiComment[] = [
   },
 ];
 
+const previewSourceRatings: Record<number, number> = {
+  1: 7.1,
+  2: 6.7,
+  3: 8.1,
+  4: 7.4,
+};
+
 function previewPage(subjectId: string, limit: number, offset: number): BangumiCommentPage {
   return {
     subjectId,
@@ -94,6 +107,17 @@ export async function getBangumiComments(
     return previewPage(subjectId, limit, offset);
   }
   return invoke<BangumiCommentPage>("bangumi_comments", { subjectId, limit, offset });
+}
+
+export async function getWorkSourceRating(workId: number): Promise<WorkSourceRating> {
+  if (!isTauri()) {
+    return {
+      provider: "bangumi",
+      label: "Bangumi",
+      score: previewSourceRatings[workId] ?? null,
+    };
+  }
+  return invoke<WorkSourceRating>("work_source_rating", { workId });
 }
 
 export async function syncBangumiComment(workId: number): Promise<BangumiSyncOutcome> {

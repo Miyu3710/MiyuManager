@@ -1,4 +1,5 @@
 import { ArrowRight, ArrowUpRight, Clock3, FolderPlus, HardDrive, Play, Star } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { animate, motion, useMotionValue, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -22,6 +23,7 @@ import {
   useStats,
 } from "../library/useLibrary";
 import { formatBytes, formatPlaytimeSeconds, formatRelativeDate } from "../../lib/format";
+import { getWorkSourceRating } from "../../lib/bangumi-api";
 import { statusLabels } from "../../lib/game-data";
 import { libraryItemToGame, startWork } from "../../lib/library-api";
 import type { LibraryItem } from "../../lib/library-types";
@@ -200,6 +202,14 @@ export function HomePage() {
     () => (activeItem ? libraryItemToGame(activeItem) : undefined),
     [activeItem],
   );
+  const sourceRating = useQuery({
+    queryKey: ["work-source-rating", activeItem?.workId],
+    queryFn: () => getWorkSourceRating(activeItem!.workId),
+    enabled: Boolean(activeItem),
+    staleTime: 10 * 60_000,
+    retry: 1,
+  });
+  const sourceScore = sourceRating.data?.score ?? null;
   const total = summary.data?.total ?? recentAdded.data?.total ?? 0;
   const activePlaytimeSeconds = activeItem ? playtimeOf(activeItem) : 0;
   const lastSession = stats.data?.recentSessions.find(
@@ -434,7 +444,33 @@ export function HomePage() {
             <div className="home-hero__meta">
               <span>{activeGame.developer || "开发商未记录"}</span>
               <i aria-hidden="true" />
-              <span>{activeGame.edition || "Windows 本地版"}</span>
+              <Hint
+                label={sourceRating.isError ? String(sourceRating.error) : ""}
+                side="top"
+                disabled={!sourceRating.isError}
+              >
+                <span
+                  className={
+                    "home-hero__source-score" +
+                    (sourceScore === null ? " is-empty" : "") +
+                    (sourceRating.isPending ? " is-loading" : "")
+                  }
+                >
+                  {sourceRating.isPending ? (
+                    "来源评分读取中"
+                  ) : sourceScore !== null ? (
+                    <>
+                      <Star size={11} fill="currentColor" strokeWidth={0} />
+                      {sourceScore.toFixed(1)}
+                      <em>{sourceRating.data?.label ?? "来源"}</em>
+                    </>
+                  ) : sourceRating.isError ? (
+                    "来源评分不可用"
+                  ) : (
+                    "暂无来源评分"
+                  )}
+                </span>
+              </Hint>
               {activeItem.steamAppId ? (
                 <>
                   <i aria-hidden="true" />

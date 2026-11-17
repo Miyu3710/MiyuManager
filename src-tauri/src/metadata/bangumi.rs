@@ -129,6 +129,26 @@ pub async fn detail(
     parse_detail(&response.body)
 }
 
+pub async fn score(
+    http: &MetadataHttp,
+    source_id: &str,
+    cancel: &CancellationToken,
+) -> Result<Option<f64>> {
+    let url = format!("{DETAIL_URL}{source_id}");
+    let response = http
+        .get_json(PROVIDER_ID, &url, Duration::from_millis(700), None, cancel)
+        .await?;
+    parse_score(&response.body)
+}
+
+pub fn parse_score(raw: &str) -> Result<Option<f64>> {
+    let subject: BgmSubject = serde_json::from_str(raw).context("Bangumi 详情响应格式无法识别")?;
+    Ok(subject
+        .rating
+        .map(|rating| rating.score)
+        .filter(|score| *score > 0.0))
+}
+
 pub fn parse_detail(raw: &str) -> Result<CandidateDetail> {
     let subject: BgmSubject = serde_json::from_str(raw).context("Bangumi 详情响应格式无法识别")?;
     Ok(map_detail(subject, raw.to_string()))
@@ -288,5 +308,28 @@ mod tests {
             info_text(&subject.infobox, &["开发"]).as_deref(),
             Some("TAKUYO")
         );
+    }
+
+    #[test]
+    fn parses_source_score_and_ignores_zero() {
+        assert_eq!(
+            parse_score(r#"{"id":402654,"rating":{"score":7.1}}"#).expect("score"),
+            Some(7.1)
+        );
+        assert_eq!(
+            parse_score(r#"{"id":402654,"rating":{"score":0}}"#).expect("zero"),
+            None
+        );
+        assert_eq!(parse_score(r#"{"id":402654}"#).expect("missing"), None);
+    }
+
+    #[tokio::test]
+    #[ignore = "live Bangumi score API"]
+    async fn live_fetches_source_score() {
+        let http = MetadataHttp::new().expect("http client");
+        let score = score(&http, "402654", &CancellationToken::new())
+            .await
+            .expect("source score");
+        assert!(score.is_some_and(|value| value > 0.0));
     }
 }

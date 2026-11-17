@@ -167,6 +167,36 @@ html body .app-page:has(> .app-page__view > .home-page) {
   opacity: 0.6;
 }
 
+.home-hero__source-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-data);
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.home-hero__source-score svg {
+  flex: none;
+  color: var(--color-accent-text);
+}
+
+.home-hero__source-score em {
+  color: var(--color-text-faint);
+  font-family: var(--font-ui);
+  font-size: var(--text-micro);
+  font-style: normal;
+  font-weight: 500;
+}
+
+.home-hero__source-score.is-empty,
+.home-hero__source-score.is-loading {
+  color: var(--color-text-faint);
+  font-family: var(--font-ui);
+  font-weight: 500;
+}
+
 .home-hero__actions {
   display: flex;
   align-items: center;

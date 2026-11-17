@@ -829,6 +829,14 @@ pub async fn bangumi_source_id(pool: &SqlitePool, work_id: i64) -> Result<Option
         .map(|claim| claim.source_id))
 }
 
+pub async fn bangumi_score(
+    http: &MetadataHttp,
+    source_id: &str,
+    cancel: &CancellationToken,
+) -> Result<Option<f64>> {
+    bangumi::score(http, source_id, cancel).await
+}
+
 pub async fn save_source_links(
     pool: &SqlitePool,
     work_id: i64,

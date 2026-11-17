@@ -29,10 +29,6 @@ tmp/
 *.sln
 *.sw?
 
-# Installer extraction artifacts
-/$msiDir/
-/$nsisDir/
-
 # Local credentials and secrets
 .env
 .env.*
@@ -40,3 +36,5 @@ tmp/
 *.pem
 *.key
 providers.json
+providers*.json
+!providers.example.json
