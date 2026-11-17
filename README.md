@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./public/miyu-manager.png" alt="MiyuManager 应用图标" width="128" height="128">
+  <img src="./public/miyu-manager-256.png" alt="MiyuManager 应用图标" width="128" height="128">
 </p>
 
 # MiyuManager
