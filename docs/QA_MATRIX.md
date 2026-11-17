@@ -16,7 +16,7 @@
 | 安全   | 无 shell 插件、无远程页面导航、http/https 外链交给系统浏览器 | 通过                 | capability 与 `security.rs` 测试                                           |
 | 更新   | Tauri Updater、自动检查与设置页下载入口                      | 通过                 | `useAutomaticUpdates`、设置页探针、Tauri capability                        |
 | 更新   | MSI/NSIS `.sig` 与本地 `latest.json`                         | 通过                 | `outputs/release/0.2.0/`                                                   |
-| 更新   | GitHub Release 发布与远端 `latest.json`                      | 待验证               | 推送 `v0.2.0` tag 后由 Release workflow 生成                               |
+| 更新   | GitHub Release 发布与远端 `latest.json`                      | 通过                 | `v0.2.0` Release 匿名读取；签名与 NSIS URL 匹配                            |
 | 更新   | 0.2.0 升级到后续版本                                         | 待验证               | 首个更新基线发布后才能执行                                                 |
 | 性能   | 10,000 作品首屏、末页、搜索                                  | 通过                 | seed 1,583ms；首屏 87ms；搜索 63ms；末页 92ms                              |
 | 性能   | 5,000 封面缩略图记录                                         | 通过                 | 同一次 ignored benchmark                                                   |
@@ -32,6 +32,7 @@
 | 发布   | 安装器结构与载荷                                             | 通过                 | MSI 元数据/载荷提取、NSIS 载荷提取与启动冒烟                               |
 | 发布   | 签名状态                                                     | 已知限制             | 安装器为 NotSigned；更新载荷已有 Tauri minisign 签名                       |
 | 发布   | 干净 Windows 安装/卸载                                       | 待验证               | 需干净 Win10/Win11 环境                                                    |
+| 发布   | Release workflow                                             | 部分                 | 检查步骤通过；为先行发布而取消 tauri-action，后续 tag 继续使用             |
 
 ## 必跑命令
 
