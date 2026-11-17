@@ -28,13 +28,13 @@
 
 ## 界面
 
-![首页](docs/images/home.webp)
+![首页](https://gist.githubusercontent.com/Miyu3710/2ac040341419deff95fd173ba4c5a365/raw/home.svg)
 
-![游戏库](docs/images/library.webp)
+![游戏库](https://gist.githubusercontent.com/Miyu3710/2ac040341419deff95fd173ba4c5a365/raw/library.svg)
 
-![游戏详情](docs/images/detail.webp)
+![游戏详情](https://gist.githubusercontent.com/Miyu3710/2ac040341419deff95fd173ba4c5a365/raw/detail.svg)
 
-![电视大屏](docs/images/bigscreen.webp)
+![电视大屏](https://gist.githubusercontent.com/Miyu3710/2ac040341419deff95fd173ba4c5a365/raw/bigscreen.svg)
 
 *界面截图使用示例数据。*
 
