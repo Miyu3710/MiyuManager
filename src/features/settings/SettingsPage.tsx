@@ -125,7 +125,7 @@ const settingsGroups = [
         id: "data-settings",
         label: "数据与关于",
         icon: SlidersHorizontal,
-        description: "路径、版本与更新检查。",
+        description: "备份、迁移、日志与更新检查。",
       },
     ],
   },
@@ -754,7 +754,7 @@ export function SettingsPage() {
             <SettingsSectionHeader
               icon={SlidersHorizontal}
               title="数据与关于"
-              description="路径、版本与更新检查。"
+              description="备份、迁移、日志与更新检查。"
             />
             {preferences.data ? (
               <DataAndUpdateSection
