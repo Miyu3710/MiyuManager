@@ -5,6 +5,7 @@ import type { PrototypePage, Work } from "../types";
 import { ArchiveDetail } from "./ArchiveDetail";
 import { ArchiveHome } from "./ArchiveHome";
 import { ArchiveLibrary } from "./ArchiveLibrary";
+import "../archive.css";
 
 interface ArchiveAppProps {
   page: PrototypePage;

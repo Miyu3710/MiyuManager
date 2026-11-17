@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -29,6 +29,43 @@ function renderWithProviders(children: ReactNode, initialEntries: string[] = ["/
 }
 
 describe("C8 product shell", () => {
+  it("opens the app context menu and navigates from it", async () => {
+    const user = userEvent.setup();
+    renderWithProviders(
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route index element={<div>home content</div>} />
+          <Route path="library" element={<div>library content</div>} />
+        </Route>
+      </Routes>,
+      ["/"],
+    );
+
+    const home = await screen.findByText("home content");
+    fireEvent.contextMenu(home);
+    await screen.findByRole("menu", { name: "应用菜单" });
+    expect(screen.getByRole("menuitem", { name: "返回" })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "刷新" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("menuitem", { name: "游戏库" }));
+    expect(await screen.findByText("library content")).toBeInTheDocument();
+    expect(screen.queryByRole("menu", { name: "应用菜单" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the native context menu inside text fields", async () => {
+    renderWithProviders(
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route index element={<input aria-label="测试输入" />} />
+        </Route>
+      </Routes>,
+      ["/"],
+    );
+
+    fireEvent.contextMenu(await screen.findByLabelText("测试输入"));
+    expect(screen.queryByRole("menu", { name: "应用菜单" })).not.toBeInTheDocument();
+  });
+
   it("creates a collection and opens it", async () => {
     const user = userEvent.setup();
     renderWithProviders(
@@ -53,15 +90,17 @@ describe("C8 product shell", () => {
     expect(screen.getAllByRole("button", { name: /添加作品/ }).length).toBeGreaterThan(0);
   });
 
-  it("opens global search with Ctrl+K and navigates to a work", async () => {
+  it("opens global search outside the home page and navigates to a work", async () => {
     const user = userEvent.setup();
     renderWithProviders(
       <Routes>
         <Route element={<AppShell />}>
           <Route index element={<div>home content</div>} />
+          <Route path="library" element={<div>library content</div>} />
           <Route path="work/:id" element={<div>work detail content</div>} />
         </Route>
       </Routes>,
+      ["/library"],
     );
 
     await user.keyboard("{Control>}k{/Control}");

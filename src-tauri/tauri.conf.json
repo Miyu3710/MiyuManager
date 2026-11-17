@@ -24,16 +24,30 @@
         "resizable": true,
         "shadow": true,
         "focus": true,
-        "backgroundColor": "#F5EFEC"
+        "backgroundColor": "#FFF3F6"
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://tauri.localhost miyu-asset: http://miyu-asset.localhost; img-src 'self' asset: http://asset.localhost miyu-asset: http://miyu-asset.localhost data: blob: https:; media-src 'self' https: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none';",
+      "devCsp": "default-src 'self' http://localhost:1420; connect-src 'self' ipc: http://ipc.localhost http://localhost:1420 ws://localhost:1420; img-src 'self' asset: http://asset.localhost miyu-asset: http://miyu-asset.localhost data: blob: https:; media-src 'self' https: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none';"
     }
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["msi", "nsis"],
+    "publisher": "MiyuManager",
+    "category": "Utility",
+    "copyright": "Copyright © 2026 MiyuManager contributors",
+    "shortDescription": "Local-first visual novel and adventure game library manager.",
+    "longDescription": "MiyuManager keeps local visual novel and adventure game installations, launch profiles, play sessions, covers and source-backed metadata on the user's Windows computer.",
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "allowDowngrades": false,
+      "minimumWebview2Version": "109.0.0.0",
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

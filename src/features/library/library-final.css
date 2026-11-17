@@ -1,0 +1,449 @@
+/* Final cascade for the library controls. Keep this file imported after
+   library.css so the toolbar and clip-safe selection edges share one source. */
+.library-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 16px;
+}
+
+.library-filters {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 4px;
+  overflow: visible;
+  padding: 2px 0;
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+.library-filters button.library-filter {
+  width: auto;
+  flex: 0 0 auto;
+  justify-content: center;
+  padding-inline: 11px;
+}
+
+.library-view-tools {
+  margin-left: 0;
+  justify-self: end;
+  flex-wrap: nowrap;
+}
+
+.library-search {
+  width: clamp(190px, 17vw, 240px);
+}
+
+@media (max-width: 1600px) {
+  html body .library-page .library-toolbar.library-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 9px;
+  }
+
+  html body .library-page .library-toolbar.library-toolbar .library-view-tools {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  html body .library-page .library-toolbar.library-toolbar .library-search {
+    width: auto;
+    max-width: none;
+    flex: 1 1 260px;
+  }
+}
+
+@media (max-width: 760px) {
+  .library-filters {
+    flex-wrap: wrap;
+    gap: 3px;
+    padding-right: 0;
+  }
+
+  .library-filters button.library-filter {
+    width: auto;
+    flex: 0 0 auto;
+    padding-inline: 8px;
+  }
+}
+
+@media (max-width: 560px) {
+  .library-filters button.library-filter {
+    gap: 5px;
+    font-size: var(--text-caption);
+  }
+
+  .library-filters button.library-filter .library-filter__count {
+    display: none;
+  }
+
+  .library-view-tools {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .library-search {
+    min-width: 0;
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .library-view-tools > .ds-button {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .library-sort-trigger {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: start;
+  }
+
+  .library-view-toggle {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: end;
+  }
+}
+
+.library-row.is-selected .cover-art {
+  box-shadow:
+    inset 0 0 0 2px var(--color-focus),
+    0 18px 34px rgba(120, 40, 65, 0.18);
+}
+
+/* Keep the cover shadow local enough to fade inside the scroll clip box. */
+html body .library-page .library-scroll {
+  margin-inline: -20px;
+  padding-inline: 20px;
+  padding-top: 6px;
+}
+
+html body .library-page {
+  overflow: visible;
+}
+
+html body .library-page .library-card__cover {
+  border: 1px solid rgba(166, 59, 93, 0.14);
+  box-shadow: 0 10px 14px rgba(120, 40, 65, 0.14);
+}
+
+html body .library-page .library-card:hover .library-card__cover {
+  border-color: rgba(166, 59, 93, 0.24);
+  box-shadow: 0 12px 18px rgba(120, 40, 65, 0.18);
+}
+
+html body .library-page .library-card-wrap.is-selected .library-card__cover {
+  overflow: visible;
+  box-shadow: 0 12px 20px rgba(120, 40, 65, 0.2);
+}
+
+html body .library-page .library-card-wrap.is-selected .library-card__cover .cover-art {
+  transform: none;
+  box-shadow:
+    0 0 0 2px var(--color-focus),
+    0 10px 14px rgba(120, 40, 65, 0.14);
+  animation: library-select-ring 240ms var(--ease-out);
+}
+
+@keyframes library-select-ring {
+  0% {
+    box-shadow:
+      0 0 0 0 rgba(212, 56, 104, 0),
+      0 10px 14px rgba(120, 40, 65, 0.14);
+  }
+
+  55% {
+    box-shadow:
+      0 0 0 3px var(--color-focus),
+      0 12px 18px rgba(120, 40, 65, 0.18);
+  }
+
+  100% {
+    box-shadow:
+      0 0 0 2px var(--color-focus),
+      0 10px 14px rgba(120, 40, 65, 0.14);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html body .library-page .library-card-wrap.is-selected .library-card__cover .cover-art {
+    animation: none;
+  }
+}
+
+html[data-reduce-motion="true"]
+  body
+  .library-page
+  .library-card-wrap.is-selected
+  .library-card__cover
+  .cover-art {
+  animation: none;
+}
+
+html body .library-scrollbar {
+  right: 0;
+  width: 8px;
+  background: transparent;
+}
+
+html body .library-scrollbar:hover,
+html body .library-scrollbar.is-dragging {
+  background: transparent;
+}
+
+html body .library-scrollbar__thumb {
+  right: 2px;
+  width: 6px;
+  border-radius: 99px;
+  background: var(--scroll-thumb, rgba(201, 50, 97, 0.22));
+  box-shadow: none;
+}
+
+html body .library-scrollbar:hover .library-scrollbar__thumb,
+html body .library-scrollbar.is-dragging .library-scrollbar__thumb {
+  right: 2px;
+  width: 6px;
+  background: var(--scroll-thumb, rgba(201, 50, 97, 0.22));
+}
+
+/* The shelf owns the window edge; no fixed strip is left underneath it. */
+html body .app-page:has(.library-page) {
+  padding-bottom: 0;
+}
+
+/* Flat controls: the surface and the state carry the shape. */
+html body .library-page :is(.library-search, .library-sort-trigger, .library-view-toggle) {
+  border-color: transparent;
+}
+
+html
+  body
+  .library-page
+  :is(.library-search, .library-sort-trigger, .library-view-toggle):is(
+    :hover,
+    :focus-within,
+    :focus-visible,
+    [data-state="open"]
+  ) {
+  border-color: transparent;
+}
+
+html body .library-page .library-search:focus-within {
+  border-color: var(--color-accent);
+  background: var(--color-surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+html body .library-page .library-search input:focus,
+html body .library-page .library-search input:focus-visible {
+  outline: 0;
+  box-shadow: none;
+}
+
+html body .library-page .library-view-tools > .ds-button {
+  border-color: transparent;
+}
+
+html
+  body
+  .library-page
+  .library-view-tools
+  > .ds-button:is(:hover, :focus-visible, [aria-pressed="true"]) {
+  border-color: transparent;
+}
+
+html body .library-page .library-view-tools > .ds-button[aria-pressed="true"],
+html body .library-page .library-view-tools > .ds-button[aria-pressed="true"]:hover,
+html body .library-page .library-view-tools > .ds-button[aria-pressed="true"]:focus-visible {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  box-shadow: 0 6px 16px rgba(212, 56, 104, 0.18);
+}
+
+html body .library-page .library-view-tools > .ds-button[aria-pressed="true"] svg {
+  color: currentColor;
+}
+
+html body .library-page .library-view-tools > .ds-button:not([aria-pressed="true"]):hover {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-text);
+  transform: translateY(-1px);
+}
+
+html body .library-page .library-view-toggle__active {
+  border: 0;
+}
+
+html body .library-page .library-card__menu {
+  border: 0;
+}
+
+html body .library-page .library-card__cover {
+  border: 0;
+}
+
+html body .library-page .library-card:hover .library-card__cover {
+  border-color: transparent;
+}
+
+/* Root picker: a compact list of scan locations, not a floating form. */
+html body .library-page .library-root-menu {
+  top: calc(100% + 8px);
+  width: min(380px, calc(100vw - 32px));
+  max-height: min(320px, calc(100vh - 120px));
+  overflow-y: auto;
+  padding: 6px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--color-surface-raised);
+  box-shadow:
+    0 18px 48px rgba(71, 24, 39, 0.18),
+    0 2px 8px rgba(71, 24, 39, 0.06);
+  scrollbar-width: thin;
+}
+
+html body .library-page .library-root-menu__title {
+  margin: 0;
+  padding: 8px 10px 6px;
+  color: var(--color-text-faint);
+  font-family: var(--font-ui);
+  font-size: var(--text-micro);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+html body .library-page .library-root-menu button {
+  display: flex;
+  min-height: 50px;
+  align-items: center;
+  flex-direction: row;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  text-align: left;
+}
+
+html body .library-page .library-root-menu__icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--color-surface-soft);
+  color: var(--color-accent-text);
+  transition: background-color var(--motion-fast) ease;
+}
+
+html body .library-page .library-root-menu button:hover .library-root-menu__icon,
+html body .library-page .library-root-menu button:focus-visible .library-root-menu__icon {
+  background: var(--color-surface);
+}
+
+html body .library-page .library-root-menu button:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+html body .library-page .library-root-menu__copy {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 1px;
+}
+
+html body .library-page .library-root-menu__path {
+  overflow: hidden;
+  color: var(--color-text);
+  font-family: var(--font-ui);
+  font-size: var(--text-meta);
+  font-weight: 600;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html body .library-page .library-root-menu button em {
+  color: var(--color-text-faint);
+  font-family: var(--font-data);
+  font-size: var(--text-micro);
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.library-batch-exit {
+  margin-left: 6px;
+  color: var(--color-text-soft);
+}
+
+.library-batch-exit:hover {
+  color: var(--color-accent-text);
+}
+
+@media (max-width: 760px) {
+  .library-batch-bar > div:first-child {
+    width: 100%;
+  }
+
+  .library-batch-exit {
+    margin-left: auto;
+  }
+}
+
+/* Sort menu: use the same type scale as the scan-root menu. */
+html body .library-sort-menu .library-sort-menu__head {
+  padding: 8px 10px 6px;
+  color: var(--color-text-faint);
+  font-family: var(--font-ui);
+  font-size: var(--text-micro);
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.45;
+}
+
+html body .library-sort-menu .library-sort-menu__item {
+  height: 38px;
+  gap: 10px;
+  color: var(--color-text);
+  font-family: var(--font-ui);
+  font-size: var(--text-meta);
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+html body .library-sort-menu .library-sort-menu__item[data-highlighted],
+html body .library-sort-menu .library-sort-menu__item[data-state="checked"] {
+  color: var(--color-accent-text);
+}
+
+html body .library-page .library-sort-trigger {
+  font-weight: 600;
+}
+
+/* Only the row under the pointer or keyboard focus gets the filled highlight. */
+html
+  body
+  .library-sort-menu:has(.library-sort-menu__item[data-highlighted])
+  .library-sort-menu__item[data-state="checked"]:not([data-highlighted]) {
+  background: transparent;
+}
+
+html body .library-sort-menu .library-sort-menu__item:focus,
+html body .library-sort-menu .library-sort-menu__item:focus-visible {
+  outline: 0;
+  outline-offset: 0;
+}
+
+html body .library-page .library-card__meta.is-detailed {
+  min-height: 96px;
+}
+
+html body .library-page .library-card__meta.is-balanced {
+  min-height: 58px;
+}
+
+html body .library-page .library-card__meta.is-concise {
+  min-height: 32px;
+  padding-top: 10px;
+  gap: 0;
+}

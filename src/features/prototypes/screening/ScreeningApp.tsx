@@ -5,6 +5,7 @@ import type { PrototypePage, Work } from "../types";
 import { ScreeningDetail } from "./ScreeningDetail";
 import { ScreeningHome } from "./ScreeningHome";
 import { ScreeningLibrary } from "./ScreeningLibrary";
+import "../screening.css";
 
 interface ScreeningAppProps {
   page: PrototypePage;
@@ -26,7 +27,12 @@ export function ScreeningApp({ page, work }: ScreeningAppProps) {
       <div className="screening-shell">
         <aside className="screening-rail">
           <Link to={base} className="screening-brand" aria-label="MiyuManager 首页">
-            <span className="screening-brand__mark">M</span>
+            <img
+              className="screening-brand__mark"
+              src="/miyu-manager.png"
+              alt=""
+              aria-hidden="true"
+            />
             <span className="screening-brand__copy">
               <b>MIYU</b>
               <small>游戏启动器</small>

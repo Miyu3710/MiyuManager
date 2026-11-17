@@ -23,7 +23,7 @@
 .collections-head > div > p:last-child {
   margin: 0;
   color: var(--color-text-soft);
-  font-size: 12.5px;
+  font-size: var(--text-caption);
 }
 
 .collections-head__actions {
@@ -40,7 +40,7 @@
   gap: 6px;
   margin-bottom: 16px;
   color: var(--color-text-soft);
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
 .collections-back:hover {
@@ -125,7 +125,7 @@
   right: 4px;
   color: var(--color-data);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 
 .collection-card__copy h2 {
@@ -144,12 +144,12 @@
   margin: 0;
   color: var(--color-status);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .collection-card__copy small {
   color: var(--color-text-faint);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
 }
 
 .collection-card__actions {
@@ -224,7 +224,7 @@
   margin-top: 5px;
   color: var(--color-text);
   font-family: var(--font-game);
-  font-size: 14px;
+  font-size: var(--text-ui);
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -235,7 +235,7 @@
   max-width: 100%;
   margin: 2px 0 0;
   color: var(--color-text-faint);
-  font-size: 11px;
+  font-size: var(--text-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -245,7 +245,7 @@
   padding-top: 9px;
   color: var(--color-text-soft);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 
 .collection-work__remove {
@@ -273,14 +273,14 @@
   align-items: center;
   justify-content: space-between;
   color: var(--color-text-faint);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .collections-toolbar button {
   border: 0;
   background: transparent;
   color: var(--color-text-soft);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   cursor: pointer;
 }
 
@@ -329,7 +329,7 @@
 .collection-dialog__description {
   margin: 8px 0 16px;
   color: var(--color-text-soft);
-  font-size: 12px;
+  font-size: var(--text-caption);
   line-height: 1.6;
 }
 
@@ -345,7 +345,7 @@
   flex-direction: column;
   gap: 7px;
   color: var(--color-text-soft);
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
 .collection-dialog input {
@@ -356,7 +356,7 @@
   outline: none;
   background: var(--color-surface-soft);
   color: var(--color-text);
-  font-size: 13px;
+  font-size: var(--text-meta);
 }
 
 .collection-dialog input:focus {
@@ -391,7 +391,7 @@
   border: 0;
   background: transparent;
   box-shadow: none;
-  font-size: 12.5px;
+  font-size: var(--text-caption);
 }
 
 .collection-add__search button {
@@ -468,7 +468,7 @@
 
 .collection-add__copy b {
   overflow: hidden;
-  font-size: 12.5px;
+  font-size: var(--text-caption);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -477,7 +477,7 @@
 .collection-add__copy small {
   overflow: hidden;
   color: var(--color-text-faint);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -485,7 +485,7 @@
 .collection-add__hint {
   margin: auto;
   color: var(--color-text-faint);
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
 .collection-add__hint.is-error {
@@ -547,12 +547,12 @@
 }
 
 .collections-head > div > p:last-child {
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
 .collections-back {
   margin-bottom: 12px;
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .collections-back:hover {
@@ -634,7 +634,7 @@
   margin: 0;
   padding-right: 0;
   font-family: var(--font-game);
-  font-size: 15px;
+  font-size: var(--text-body);
   font-weight: 600;
 }
 
@@ -645,11 +645,11 @@
 .collection-card__copy p {
   color: var(--color-text-soft);
   font-family: var(--font-ui);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
 }
 
 .collection-card__copy small {
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 
 .collection-card__actions {
@@ -696,13 +696,13 @@
 
 .collection-work__title {
   margin-top: 3px;
-  font-size: 13.5px;
+  font-size: var(--text-meta);
   font-weight: 600;
 }
 
 .collection-work__body small {
   font-family: var(--font-ui);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
 }
 
 .collection-work__remove {
@@ -714,7 +714,7 @@
 }
 
 .collections-toolbar {
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .collection-dialog__overlay {
@@ -734,7 +734,7 @@
 }
 
 .collection-dialog__description {
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .collection-dialog input {
@@ -767,7 +767,7 @@
 }
 
 .collection-add__copy small {
-  font-size: 10.5px;
+  font-size: var(--text-caption);
 }
 
 .collections-skeleton {
@@ -807,7 +807,7 @@
 
 .collections-head > div > p:last-child {
   color: var(--color-text-soft);
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
 .collections-grid {
@@ -880,7 +880,7 @@
 .collection-card__copy::before {
   color: var(--color-accent-text);
   font-family: var(--font-data);
-  font-size: 10px;
+  font-size: var(--text-caption);
   letter-spacing: 0.12em;
   content: counter(collection, decimal-leading-zero);
   counter-increment: collection;
@@ -898,12 +898,12 @@
 .collection-card__copy p {
   color: var(--color-text-soft);
   font-family: var(--font-ui);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .collection-card__copy small {
   color: var(--color-text-faint);
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 
 .collection-card__actions {
@@ -975,19 +975,19 @@
 .collection-card__new-copy b {
   color: inherit;
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: var(--text-meta);
   font-weight: 650;
 }
 
 .collection-card__new-copy small {
   color: var(--color-text-faint);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
 }
 
 .collections-back {
   margin-bottom: 14px;
   color: var(--color-text-soft);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .collections-back:hover {
@@ -1011,13 +1011,13 @@
 
 .collection-work__title {
   font-family: var(--font-ui);
-  font-size: 13.5px;
+  font-size: var(--text-meta);
   font-weight: 650;
 }
 
 .collections-toolbar {
   color: var(--color-text-faint);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
 }
 
 .collection-dialog__overlay {
@@ -1040,7 +1040,7 @@
 
 .collection-dialog__description {
   color: var(--color-text-soft);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .collection-dialog input {
@@ -1048,7 +1048,7 @@
   border-color: var(--color-line);
   background: var(--color-surface);
   color: var(--color-text);
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
 .collection-dialog input:focus {

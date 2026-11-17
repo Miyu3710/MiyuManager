@@ -37,9 +37,7 @@ export function WindowBar({ context }: WindowBarProps) {
   return (
     <header className="window-bar">
       <div className="window-bar__identity" data-tauri-drag-region>
-        <span className="window-mark" aria-hidden="true">
-          M
-        </span>
+        <img className="window-mark" src="/miyu-manager.png" alt="" aria-hidden="true" />
         <span className="window-bar__product">MiyuManager</span>
         <span className="window-bar__divider" aria-hidden="true" />
         <span className="window-bar__context">{context}</span>
@@ -99,8 +97,8 @@ export function WindowBar({ context }: WindowBarProps) {
         <button
           className="window-bar__control window-bar__control--close"
           type="button"
-          title="关闭"
-          aria-label="关闭窗口"
+          title="隐藏到托盘"
+          aria-label="隐藏窗口到系统托盘"
           onClick={() => void performWindowAction("close")}
         >
           <X size={15} strokeWidth={1.5} />

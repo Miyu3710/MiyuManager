@@ -1,10 +1,12 @@
-import { listen } from "@tauri-apps/api/event";
 import { isTauri } from "@tauri-apps/api/core";
-import { AlertTriangle, Check, ChevronDown, Gamepad2, Loader2, RotateCcw, X } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
+import { AlertTriangle, Check, ChevronDown, Gamepad2, Loader2, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../design-system/components/Button";
+import { Hint } from "../../design-system/components/Hint";
 import { Tag } from "../../design-system/components/Tag";
+import { useDialogFocus } from "../../design-system/useDialogFocus";
 import {
   cancelSteamScan,
   importLibraryCandidates,
@@ -19,7 +21,16 @@ import type {
 } from "../../lib/library-types";
 import { formatBytes, formatRelativeDate } from "../../lib/format";
 import { cn } from "../../lib/cn";
-import "./steam-library.css";
+import {
+  ImportCount,
+  ImportDialogFrame,
+  ImportEmpty,
+  ImportMetric,
+  ImportNotice,
+  ImportProgress,
+  ImportSourceBar,
+  ImportSummary,
+} from "./ImportDialogShell";
 
 type SteamStep = "scanning" | "review" | "importing" | "done";
 
@@ -32,6 +43,12 @@ interface SteamLibraryDialogProps {
 function gameKey(game: SteamGameScan): string {
   return String(game.appId);
 }
+
+const confidenceLabels = {
+  high: "高置信",
+  medium: "中置信",
+  low: "低置信",
+} as const;
 
 function updateTime(value: number | null): string {
   if (!value) {
@@ -50,13 +67,38 @@ export function SteamLibraryDialog({ open, onClose, onImported }: SteamLibraryDi
   const [progress, setProgress] = useState<SteamScanProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const requestClose = useCallback(() => {
+    if (step === "importing") {
+      return;
+    }
+    if (step === "scanning") {
+      void cancelSteamScan().catch(() => false);
+    }
+    onClose();
+  }, [onClose, step]);
+  const dialogRef = useDialogFocus<HTMLDivElement>({
+    open,
+    onEscape: requestClose,
+  });
   const [chosenExe, setChosenExe] = useState<Record<string, number>>({});
   const [names, setNames] = useState<Record<string, string>>({});
   const [importResult, setImportResult] = useState<{ imported: number; updated: number } | null>(
     null,
   );
 
-  const games = report?.games ?? [];
+  const games = useMemo(() => {
+    const ranked = (report?.games ?? []).map((game) => ({
+      ...game,
+      candidates: [...game.candidates].sort(
+        (a, b) => Number(a.alreadyImported) - Number(b.alreadyImported),
+      ),
+    }));
+    return ranked.sort((a, b) => {
+      const rank = (game: SteamGameScan) =>
+        game.alreadyImported ? 2 : game.candidates.length === 0 ? 1 : 0;
+      return rank(a) - rank(b);
+    });
+  }, [report]);
   const availableGames = games.filter((game) => game.candidates.length > 0);
   const importableGames = availableGames.filter((game) => !game.alreadyImported);
   const selectedGames = useMemo(
@@ -70,7 +112,7 @@ export function SteamLibraryDialog({ open, onClose, onImported }: SteamLibraryDi
     const nextNames: Record<string, string> = {};
     for (const game of nextReport.games) {
       const key = gameKey(game);
-      nextSelected[key] = game.candidates.length > 0 && !game.alreadyImported;
+      nextSelected[key] = false;
       nextChosen[key] = 0;
       nextNames[key] = game.name;
     }
@@ -175,19 +217,6 @@ export function SteamLibraryDialog({ open, onClose, onImported }: SteamLibraryDi
     };
   }, [applyReport, open]);
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && step !== "importing") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [onClose, open, step]);
-
   if (!open) {
     return null;
   }
@@ -221,14 +250,15 @@ export function SteamLibraryDialog({ open, onClose, onImported }: SteamLibraryDi
     }
     setStep("importing");
     setError(null);
+
     try {
       const result = await importLibraryCandidates(candidates);
       setImportResult(result);
       setStep("done");
       onImported();
       const parts = [];
-      if (result.imported > 0) parts.push(`新增 ${result.imported} 部`);
-      if (result.updated > 0) parts.push(`更新 ${result.updated} 部`);
+      if (result.imported > 0) parts.push("新增 " + result.imported + " 部");
+      if (result.updated > 0) parts.push("更新 " + result.updated + " 部");
       toast.success(parts.join("，") || "Steam 游戏已更新");
     } catch (nextError) {
       setError(String(nextError));
@@ -240,135 +270,151 @@ export function SteamLibraryDialog({ open, onClose, onImported }: SteamLibraryDi
     ? Math.round((progress.completed / Math.max(1, progress.total)) * 100)
     : 0;
 
+  const title =
+    step === "scanning"
+      ? "正在扫描 Steam 库"
+      : step === "done"
+        ? "导入完成"
+        : "选择要入库的 Steam 游戏";
+  const description =
+    step === "done"
+      ? "扫描和导入都在本机完成。"
+      : "从注册表和 libraryfolders.vdf 定位 Steam 库，只读取目录与 exe，不改动游戏文件。";
+
+  const footerNote =
+    step === "scanning"
+      ? "扫描在后台进行，可取消。"
+      : step === "done"
+        ? "扫描和导入都在本机完成。"
+        : "默认不勾选；可全选可导入项，或逐项选择主程序。";
+
+  const footerActions =
+    step === "scanning" ? (
+      <Button variant="secondary" size="sm" onClick={() => void cancel()}>
+        取消扫描
+      </Button>
+    ) : step === "review" || step === "importing" ? (
+      <>
+        <Button variant="ghost" size="sm" disabled={step === "importing"} onClick={onClose}>
+          稍后处理
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={step === "importing" || selectedGames.length === 0}
+          onClick={() => void importSelected()}
+        >
+          {step === "importing" ? (
+            <Loader2 size={14} className="import-spin" />
+          ) : (
+            <Check size={14} />
+          )}
+          {step === "importing" ? "导入中" : "导入 " + selectedGames.length + " 部"}
+        </Button>
+      </>
+    ) : (
+      <Button variant="primary" size="sm" onClick={onClose}>
+        完成
+      </Button>
+    );
+
   return (
-    <div
-      className="steam-overlay"
-      role="presentation"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget && step !== "importing") {
-          onClose();
-        }
-      }}
+    <ImportDialogFrame
+      title={title}
+      titleId="steam-title"
+      description={description}
+      closeLabel="关闭 Steam 扫描"
+      onClose={requestClose}
+      busy={step === "importing"}
+      dialogRef={dialogRef}
+      footerNote={footerNote}
+      footerActions={footerActions}
     >
-      <div className="steam-dialog" role="dialog" aria-modal="true" aria-labelledby="steam-title">
-        <header className="steam-head">
-          <div>
-            <p className="app-kicker">Steam 库</p>
-            <h2 id="steam-title">
-              {step === "scanning"
-                ? "正在扫描 Steam 库"
-                : step === "done"
-                  ? "导入完成"
-                  : "选择要入库的 Steam 游戏"}
-            </h2>
-            <p>
-              从注册表和 `libraryfolders.vdf` 定位 Steam 库，读取 appmanifest
-              后扫描安装目录；只读取目录与 exe，不修改游戏文件。
-            </p>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label="关闭 Steam 扫描"
-            disabled={step === "importing"}
-            onClick={onClose}
-          >
-            <X size={15} />
-          </Button>
-        </header>
+      {error && step !== "done" ? (
+        <ImportNotice tone="error">
+          <AlertTriangle size={14} />
+          <span>{error}</span>
+          {step === "scanning" ? (
+            <Button variant="ghost" size="sm" onClick={() => void runScan()}>
+              <RotateCcw size={12} />
+              重试
+            </Button>
+          ) : null}
+        </ImportNotice>
+      ) : null}
 
-        {error ? (
-          <div className="steam-notice steam-notice--error">
-            <AlertTriangle size={14} />
-            <span>{error}</span>
-            {step === "scanning" ? (
-              <Button variant="ghost" size="sm" onClick={() => void runScan()}>
-                <RotateCcw size={12} /> 重试
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
+      {step === "scanning" ? (
+        <ImportProgress
+          icon={<Gamepad2 size={20} strokeWidth={1.5} />}
+          label={progress?.currentGame || "正在定位 Steam 库…"}
+          detail={progress?.currentLibrary || "读取注册表与 libraryfolders.vdf"}
+          percent={progress ? percent : undefined}
+          metrics={
+            <>
+              <ImportMetric
+                value={progress ? progress.completed + " / " + progress.total : "—"}
+                label="已扫描游戏"
+              />
+              <ImportMetric value={progress?.foundCandidates ?? 0} label="候选程序" />
+              <ImportMetric value={progress?.scannedDirs ?? 0} label="已浏览目录" />
+            </>
+          }
+        />
+      ) : null}
 
-        {step === "scanning" ? (
-          <div className="steam-scanning">
-            <div className="steam-scanning__mark">
-              <Gamepad2 size={24} strokeWidth={1.3} />
-              <Loader2 size={16} className="steam-spin" />
-            </div>
-            <div className="steam-scanning__body">
-              <b>{progress?.currentGame || "正在定位 Steam 库…"}</b>
-              <span>{progress?.currentLibrary || "读取注册表与 libraryfolders.vdf"}</span>
-            </div>
-            {progress ? (
-              <>
-                <div className="steam-progress__track">
-                  <i style={{ width: percent + "%" }} />
-                </div>
-                <div className="steam-progress__stats">
-                  <span>
-                    {progress.completed} / {progress.total} 部
-                  </span>
-                  <span>{progress.foundCandidates} 个候选</span>
-                  <span>{progress.scannedDirs} 个目录</span>
-                </div>
-              </>
-            ) : null}
-            <footer className="steam-actions">
-              <span>扫描在后台进行，可取消。</span>
-              <Button variant="ghost" size="sm" onClick={() => void cancel()}>
-                取消扫描
-              </Button>
-            </footer>
-          </div>
-        ) : null}
-
-        {step === "review" || step === "importing" ? (
-          <div className="steam-review">
-            <div className="steam-libraries">
-              <div>
-                <b>Steam 根目录</b>
-                <span title={report?.steamRoot}>{report?.steamRoot}</span>
-              </div>
-              {report?.libraries.map((library) => (
-                <Tag tone="data" key={library.path} title={library.path}>
+      {step === "review" || step === "importing" ? (
+        <div className="import-review">
+          <ImportSourceBar
+            label="Steam 根目录"
+            value={report?.steamRoot || "—"}
+            badges={report?.libraries.map((library) => (
+              <Hint key={library.path} label={library.path} side="bottom" align="start">
+                <Tag tone="data">
                   {library.path.split("\\").filter(Boolean).slice(-1)[0] || library.path} ·{" "}
                   {library.appCount}
                 </Tag>
-              ))}
-            </div>
-            {report?.errors.length ? (
-              <div className="steam-notice steam-notice--warning">
-                <AlertTriangle size={14} />
-                <span>{report.errors.join("；")}</span>
-              </div>
-            ) : null}
-            <div className="steam-review__summary">
-              <span>
-                <b>{games.length}</b> 部游戏
-              </span>
-              <span>
-                <b>{availableGames.length}</b> 部有 exe 候选
-              </span>
-              <span>
-                <b>{selectedGames.length}</b> 部已选
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  const next: Record<string, boolean> = {};
-                  for (const game of games)
-                    next[gameKey(game)] = game.candidates.length > 0 && !game.alreadyImported;
-                  setSelected(next);
-                }}
-              >
-                全选可导入
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setSelected({})}>
-                清空
-              </Button>
-            </div>
-            <div className="steam-game-list">
+              </Hint>
+            ))}
+          />
+          {report?.errors.length ? (
+            <ImportNotice tone="warning">
+              <AlertTriangle size={14} />
+              <span>{report.errors.join("；")}</span>
+            </ImportNotice>
+          ) : null}
+          <ImportSummary
+            actions={
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const next: Record<string, boolean> = {};
+                    for (const game of games)
+                      next[gameKey(game)] = game.candidates.length > 0 && !game.alreadyImported;
+                    setSelected(next);
+                  }}
+                >
+                  全选可导入
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={selectedGames.length === 0}
+                  onClick={() => setSelected({})}
+                >
+                  清空
+                </Button>
+              </>
+            }
+          >
+            <ImportCount value={games.length} label="部游戏" />
+            <ImportCount value={availableGames.length} label="部有 exe 候选" />
+            <ImportCount value={selectedGames.length} label="部已选" />
+          </ImportSummary>
+
+          <div className="import-list-scroll">
+            <div className="import-list">
               {games.map((game) => {
                 const key = gameKey(game);
                 const candidate = game.candidates[chosenExe[key] ?? 0];
@@ -377,16 +423,17 @@ export function SteamLibraryDialog({ open, onClose, onImported }: SteamLibraryDi
                   <div
                     key={key}
                     className={cn(
-                      "steam-game",
+                      "import-row",
+                      "import-row--controls",
                       selected[key] && canImport && "is-selected",
-                      game.alreadyImported && "is-existing",
+                      game.alreadyImported && "is-imported",
                       !candidate && "is-empty",
                     )}
                   >
-                    <label className="steam-game__check">
+                    <label className="import-row__check">
                       <input
                         type="checkbox"
-                        aria-label={`选择 ${game.name}`}
+                        aria-label={"选择 " + game.name}
                         checked={Boolean(selected[key] && canImport)}
                         disabled={!canImport}
                         onChange={() =>
@@ -394,36 +441,45 @@ export function SteamLibraryDialog({ open, onClose, onImported }: SteamLibraryDi
                         }
                       />
                     </label>
-                    <div className="steam-game__body">
-                      <div className="steam-game__title">
+                    <div className="import-row__main">
+                      <div className="import-row__title">
                         <b>{game.name}</b>
                         <Tag tone="data">Steam #{game.appId}</Tag>
                         {game.alreadyImported ? <Tag tone="status">已在库中</Tag> : null}
                       </div>
-                      <span className="steam-game__path" title={game.installDir}>
-                        {game.installDir}
-                      </span>
-                      <div className="steam-game__meta">
+                      <Hint label={game.installDir} side="bottom" align="start">
+                        <code className="import-row__path">{game.installDir}</code>
+                      </Hint>
+                      <div className="import-row__submeta">
                         <span>
                           {game.sizeOnDisk > 0 ? formatBytes(game.sizeOnDisk) : "大小未知"}
                         </span>
                         <span>{updateTime(game.lastUpdated)}</span>
                       </div>
-                      {candidate ? (
-                        <div className="steam-game__controls">
-                          <label>
-                            <span>显示名称</span>
-                            <input
-                              value={names[key] ?? game.name}
-                              onChange={(event) =>
-                                setNames((current) => ({ ...current, [key]: event.target.value }))
-                              }
-                            />
-                          </label>
-                          <label>
-                            <span>主程序</span>
+                      {!candidate ? (
+                        <p className="import-row__error">{game.error ?? "没有找到可启动的 exe"}</p>
+                      ) : null}
+                    </div>
+                    {candidate ? (
+                      <div className="import-row__controls">
+                        <label className="import-field">
+                          <span>显示名称</span>
+                          <input
+                            value={names[key] ?? game.name}
+                            disabled={!canImport}
+                            onChange={(event) =>
+                              setNames((current) => ({ ...current, [key]: event.target.value }))
+                            }
+                            aria-label={"显示名称 " + game.name}
+                          />
+                        </label>
+                        <label className="import-field">
+                          <span>主程序</span>
+                          <span className="import-field__select">
                             <select
                               value={chosenExe[key] ?? 0}
+                              disabled={!canImport}
+                              aria-label={"主程序 " + game.name}
                               onChange={(event) =>
                                 setChosenExe((current) => ({
                                   ...current,
@@ -433,61 +489,38 @@ export function SteamLibraryDialog({ open, onClose, onImported }: SteamLibraryDi
                             >
                               {game.candidates.map((item, index) => (
                                 <option value={index} key={item.exeKey}>
-                                  {item.exePath.split("\\").slice(-1)[0]}，{item.confidence}
+                                  {item.exePath.split("\\").slice(-1)[0]}，
+                                  {confidenceLabels[item.confidence]}
                                 </option>
                               ))}
                             </select>
                             <ChevronDown size={12} />
-                          </label>
-                        </div>
-                      ) : (
-                        <p className="steam-game__error">{game.error ?? "没有找到可启动的 exe"}</p>
-                      )}
-                    </div>
+                          </span>
+                        </label>
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}
             </div>
-            <footer className="steam-actions">
-              <span>{error ?? "默认选择未被移除且找到主程序的作品；可逐项改选。"}</span>
-              <div>
-                <Button variant="ghost" size="sm" onClick={onClose} disabled={step === "importing"}>
-                  稍后处理
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  disabled={step === "importing" || selectedGames.length === 0}
-                  onClick={() => void importSelected()}
-                >
-                  {step === "importing" ? (
-                    <Loader2 size={14} className="steam-spin" />
-                  ) : (
-                    <Check size={14} />
-                  )}
-                  {step === "importing" ? "导入中" : `导入 ${selectedGames.length} 部`}
-                </Button>
-              </div>
-            </footer>
           </div>
-        ) : null}
+        </div>
+      ) : null}
 
-        {step === "done" && importResult ? (
-          <div className="steam-done">
-            <div className="steam-done__mark">
-              <Check size={22} />
-            </div>
-            <b>Steam 游戏已入库</b>
-            <p>
-              新增 {importResult.imported} 部，更新 {importResult.updated} 部。
-              {report?.cancelled ? "扫描被取消，已完成部分仍可导入。" : ""}
-            </p>
-            <Button variant="primary" size="sm" onClick={onClose}>
-              完成
-            </Button>
-          </div>
-        ) : null}
-      </div>
-    </div>
+      {step === "done" && importResult ? (
+        <ImportEmpty
+          icon={<Check size={22} strokeWidth={1.8} />}
+          title="Steam 游戏已入库"
+          description={
+            "新增 " +
+            importResult.imported +
+            " 部，更新 " +
+            importResult.updated +
+            " 部。" +
+            (report?.cancelled ? "扫描被取消，已完成部分仍可导入。" : "")
+          }
+        />
+      ) : null}
+    </ImportDialogFrame>
   );
 }

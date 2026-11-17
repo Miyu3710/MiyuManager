@@ -2,27 +2,30 @@
 @import "../design-system/tokens.css";
 @import "../design-system/covers.css";
 @import "../design-system/components.css";
-@import "../features/prototypes/shared.css";
-@import "../features/prototypes/gallery.css";
-@import "../features/prototypes/screening.css";
-@import "../features/prototypes/archive.css";
-@import "../features/prototypes/channel.css";
 
 :root {
   --font-ui:
-    "Segoe UI Variable Text", "Microsoft YaHei UI", "Noto Sans SC", "Microsoft YaHei", sans-serif;
-  --font-display: "Noto Serif SC", "Source Han Serif SC", "Yu Mincho", "SimSun", serif;
-  --font-jp: "Yu Mincho", "YuMincho", "Noto Serif SC", "SimSun", serif;
+    "Noto Sans SC Variable", "Noto Sans SC", "Segoe UI Variable Text", "Microsoft YaHei UI",
+    "Microsoft YaHei", sans-serif;
+  --font-display:
+    "Noto Serif SC Variable", "Noto Serif SC", "Source Han Serif SC", "Yu Mincho", "SimSun", serif;
+  --font-jp: "Noto Serif SC Variable", "Yu Mincho", "YuMincho", "Noto Serif SC", "SimSun", serif;
   --font-mono: "Cascadia Mono", "Consolas", monospace;
-  --font-data: "Bahnschrift", "Segoe UI Variable Display", "Microsoft YaHei UI", sans-serif;
+  --font-data:
+    "Manrope Variable", "Bahnschrift", "Noto Sans SC Variable", "Segoe UI Variable Display",
+    "Microsoft YaHei UI", sans-serif;
   --font-game: var(--font-display);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-swift: cubic-bezier(0.3, 0.7, 0.2, 1);
   font-family: var(--font-ui);
   color-scheme: light;
   font-synthesis: none;
+  font-kerning: normal;
+  font-optical-sizing: auto;
+  font-variant-numeric: proportional-nums;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 * {
@@ -40,12 +43,36 @@ body {
   overflow: hidden;
   background: var(--color-bg);
   color: var(--color-text);
-  font-size: 14px;
+  font-size: var(--text-body);
+  line-height: var(--leading-copy);
+  text-wrap: pretty;
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  text-wrap: balance;
+}
+
+time,
+code,
+kbd,
+[data-numeric] {
+  font-variant-numeric: tabular-nums;
+}
+
+svg.lucide {
+  stroke-width: var(--icon-stroke, 1.85);
 }
 
 button {
@@ -55,6 +82,7 @@ button {
 a {
   color: inherit;
   text-decoration: none;
+  text-underline-offset: 0.18em;
 }
 
 button,
@@ -126,12 +154,13 @@ html[data-ready="true"] .app-window {
 }
 
 .miyu-toast {
+  width: min(390px, calc(100vw - 32px)) !important;
   border: 1px solid var(--color-line-strong) !important;
   border-radius: var(--radius-control) !important;
   background: var(--color-surface-raised) !important;
   color: var(--color-text) !important;
   font-family: var(--font-ui) !important;
-  font-size: 12.5px !important;
+  font-size: var(--text-caption) !important;
   box-shadow: var(--shadow-raised) !important;
 }
 
@@ -148,7 +177,10 @@ html[data-ready="true"] .app-window {
 
 html[data-reduced-motion="true"] *,
 html[data-reduced-motion="true"] *::before,
-html[data-reduced-motion="true"] *::after {
+html[data-reduced-motion="true"] *::after,
+html[data-reduce-motion="true"] *,
+html[data-reduce-motion="true"] *::before,
+html[data-reduce-motion="true"] *::after {
   scroll-behavior: auto !important;
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
@@ -182,20 +214,13 @@ html[data-reduced-motion="true"] *::after {
   gap: 14px;
   background: var(--color-bg);
   color: var(--color-text-faint);
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
-.app-boot > span {
-  display: grid;
+.app-boot > img {
   width: 40px;
   height: 40px;
-  place-items: center;
-  border-radius: 2px;
-  background: var(--color-accent);
-  color: var(--color-accent-contrast);
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 600;
+  object-fit: contain;
 }
 
 .app-boot > p {
@@ -237,7 +262,7 @@ html[data-reduced-motion="true"] *::after {
 .batch-head p:not(.app-kicker),
 .steam-head p:not(.app-kicker) {
   font-family: var(--font-ui);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .scan-dialog__mark,
@@ -254,7 +279,7 @@ html[data-reduced-motion="true"] *::after {
 .scan-dialog__foot p,
 .scan-hint,
 .scan-progress__metrics span {
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .scan-progress__metrics > div {
@@ -281,7 +306,7 @@ html[data-reduced-motion="true"] *::after {
 .batch-notice,
 .steam-notice {
   border-radius: var(--radius-control);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .batch-provider {
@@ -298,13 +323,13 @@ html[data-reduced-motion="true"] *::after {
 .batch-options b,
 .batch-section-head b {
   font-family: var(--font-ui);
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-weight: 600;
 }
 
 .batch-provider em,
 .batch-options em {
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .steam-libraries {
@@ -315,11 +340,20 @@ html[data-reduced-motion="true"] *::after {
 .steam-scanning__body span,
 .steam-progress__stats {
   font-family: var(--font-ui);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
 }
 
 .global-search__foot-brand {
   font-family: var(--font-ui);
-  font-size: 10px;
+  font-size: var(--text-caption);
   letter-spacing: 0;
+}
+
+#library-toolbar,
+#library-grid,
+#collections-grid,
+#collections-new,
+#detail-tabs,
+.settings-section {
+  scroll-margin-block-start: 16px;
 }

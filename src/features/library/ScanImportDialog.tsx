@@ -1,13 +1,23 @@
-import { AlertTriangle, Check, FolderSearch, Loader2, ScanSearch, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, ChevronDown, FolderSearch, Loader2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Button } from "../../design-system/components/Button";
-import { CoverArt } from "../../design-system/components/CoverArt";
+import { Hint } from "../../design-system/components/Hint";
 import { Tag } from "../../design-system/components/Tag";
+import { useDialogFocus } from "../../design-system/useDialogFocus";
 import { cn } from "../../lib/cn";
 import { formatBytes } from "../../lib/format";
 import type { ImportCandidateInput, ScanCandidate } from "../../lib/library-types";
 import type { ScanView } from "./useLibraryScan";
-import "./scan-dialog.css";
+import {
+  ImportCount,
+  ImportDialogFrame,
+  ImportEmpty,
+  ImportMetric,
+  ImportNotice,
+  ImportProgress,
+  ImportSourceBar,
+  ImportSummary,
+} from "./ImportDialogShell";
 
 interface ScanImportDialogProps {
   state: ScanView;
@@ -27,20 +37,68 @@ const confidenceLabels = {
 
 const EMPTY_CANDIDATES: ScanCandidate[] = [];
 
+interface CandidateGroup {
+  key: string;
+  workingDir: string;
+  rootPath: string;
+  candidates: ScanCandidate[];
+  defaultIndex: number;
+  alreadyImported: boolean;
+}
+
 interface SelectionState {
   key: string;
   selected: Record<string, boolean>;
   names: Record<string, string>;
+  chosen: Record<string, number>;
 }
 
-function buildSelection(candidates: ScanCandidate[]): SelectionState {
+function groupCandidates(candidates: ScanCandidate[]): CandidateGroup[] {
+  const grouped = new Map<string, ScanCandidate[]>();
+  for (const candidate of candidates) {
+    const key = candidate.workingDir.toLocaleLowerCase();
+    const group = grouped.get(key);
+    if (group) {
+      group.push(candidate);
+    } else {
+      grouped.set(key, [candidate]);
+    }
+  }
+
+  return [...grouped.entries()]
+    .map(([key, groupCandidates]) => {
+      const ordered = [...groupCandidates].sort(
+        (a, b) => Number(a.alreadyImported) - Number(b.alreadyImported),
+      );
+      const firstImportable = ordered.findIndex((candidate) => !candidate.alreadyImported);
+      return {
+        key,
+        workingDir: ordered[0]?.workingDir ?? "",
+        rootPath: ordered[0]?.rootPath ?? "",
+        candidates: ordered,
+        defaultIndex: Math.max(0, firstImportable),
+        alreadyImported: ordered.every((candidate) => candidate.alreadyImported),
+      };
+    })
+    .sort((a, b) => Number(a.alreadyImported) - Number(b.alreadyImported));
+}
+
+function buildSelection(groups: CandidateGroup[]): SelectionState {
   const selected: Record<string, boolean> = {};
   const names: Record<string, string> = {};
-  for (const candidate of candidates) {
-    selected[candidate.id] = !candidate.alreadyImported;
-    names[candidate.id] = candidate.suggestedTitle;
+  const chosen: Record<string, number> = {};
+  for (const group of groups) {
+    const candidate = group.candidates[group.defaultIndex] ?? group.candidates[0];
+    selected[group.key] = false;
+    names[group.key] = candidate?.suggestedTitle ?? "";
+    chosen[group.key] = group.defaultIndex;
   }
-  return { key: candidates.map((candidate) => candidate.id).join("|"), selected, names };
+  return {
+    key: groups.map((group) => group.key).join("|"),
+    selected,
+    names,
+    chosen,
+  };
 }
 
 function confidenceTone(confidence: ScanCandidate["confidence"]): "status" | "data" | "muted" {
@@ -63,23 +121,10 @@ export function ScanImportDialog({
   onImport,
 }: ScanImportDialogProps) {
   const [selectionState, setSelectionState] = useState<SelectionState>(() => buildSelection([]));
-
-  const candidates = state.status === "review" ? state.candidates : EMPTY_CANDIDATES;
-  const candidateKey = useMemo(
-    () => candidates.map((candidate) => candidate.id).join("|"),
-    [candidates],
-  );
-  const defaults = useMemo(() => buildSelection(candidates), [candidates]);
-  const activeSelection = selectionState.key === candidateKey ? selectionState : defaults;
-  const selected = activeSelection.selected;
-  const names = activeSelection.names;
-
-  useEffect(() => {
-    if (state.status === "idle") {
-      return;
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || importing) {
+  const dialogRef = useDialogFocus<HTMLDivElement>({
+    open: state.status !== "idle",
+    onEscape: () => {
+      if (importing) {
         return;
       }
       if (state.status === "scanning") {
@@ -87,344 +132,358 @@ export function ScanImportDialog({
       } else {
         onClose();
       }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [importing, onCancel, onClose, state.status]);
+    },
+  });
+
+  const candidates = state.status === "review" ? state.candidates : EMPTY_CANDIDATES;
+  const groups = useMemo(() => groupCandidates(candidates), [candidates]);
+  const groupKey = useMemo(() => groups.map((group) => group.key).join("|"), [groups]);
+  const defaults = useMemo(() => buildSelection(groups), [groups]);
+  const activeSelection = selectionState.key === groupKey ? selectionState : defaults;
+  const selected = activeSelection.selected;
+  const names = activeSelection.names;
+  const chosen = activeSelection.chosen;
 
   if (state.status === "idle") {
     return null;
   }
 
-  const selectedCandidates = candidates.filter(
-    (candidate) => selected[candidate.id] && !candidate.alreadyImported,
-  );
+  const selectedGroups = groups.filter((group) => selected[group.key] && !group.alreadyImported);
   const canImport =
-    selectedCandidates.length > 0 &&
-    selectedCandidates.every((candidate) => (names[candidate.id] ?? "").trim().length > 0) &&
+    selectedGroups.length > 0 &&
+    selectedGroups.every((group) => {
+      const candidate = group.candidates[chosen[group.key] ?? group.defaultIndex];
+      return Boolean(candidate) && (names[group.key] ?? "").trim().length > 0;
+    }) &&
     !importing;
 
   const toggleAll = () => {
-    const importable = candidates.filter((candidate) => !candidate.alreadyImported);
-    const allSelected = importable.every((candidate) => selected[candidate.id]);
+    const importable = groups.filter((group) => !group.alreadyImported);
+    const allSelected = importable.every((group) => selected[group.key]);
     const next: Record<string, boolean> = {};
-    for (const candidate of candidates) {
-      next[candidate.id] = candidate.alreadyImported ? false : !allSelected;
+    for (const group of groups) {
+      next[group.key] = group.alreadyImported ? false : !allSelected;
     }
     setSelectionState({
-      key: candidateKey,
+      key: groupKey,
       selected: next,
       names: activeSelection.names,
+      chosen: activeSelection.chosen,
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectionState({
+      key: groupKey,
+      selected: {},
+      names: activeSelection.names,
+      chosen: activeSelection.chosen,
+    });
+  };
+
+  const chooseExecutable = (group: CandidateGroup, nextIndex: number) => {
+    setSelectionState((previous) => {
+      const base = previous.key === groupKey ? previous : defaults;
+      const previousIndex = base.chosen[group.key] ?? group.defaultIndex;
+      const previousCandidate = (group.candidates[previousIndex] ?? group.candidates[0])!;
+      const nextCandidate = (group.candidates[nextIndex] ?? group.candidates[0])!;
+      const currentName = base.names[group.key] ?? previousCandidate.suggestedTitle;
+      const followsSuggestion = currentName.trim() === previousCandidate.suggestedTitle.trim();
+      return {
+        key: groupKey,
+        selected: base.selected,
+        names: {
+          ...base.names,
+          [group.key]: followsSuggestion ? nextCandidate.suggestedTitle : currentName,
+        },
+        chosen: {
+          ...base.chosen,
+          [group.key]: nextIndex,
+        },
+      };
     });
   };
 
   const handleImport = () => {
-    onImport(
-      selectedCandidates.map((candidate) => ({
+    const nextCandidates: ImportCandidateInput[] = [];
+    for (const group of selectedGroups) {
+      const candidate = (group.candidates[chosen[group.key] ?? group.defaultIndex] ??
+        group.candidates[0])!;
+      const displayName = (names[group.key] ?? candidate.suggestedTitle).trim();
+      if (!candidate || !displayName) {
+        continue;
+      }
+      nextCandidates.push({
         exePath: candidate.exePath,
         workingDir: candidate.workingDir,
-        displayName: (names[candidate.id] ?? candidate.suggestedTitle).trim(),
+        displayName,
         rootPath: candidate.rootPath,
         sizeBytes: candidate.sizeBytes,
-      })),
-    );
+      });
+    }
+    onImport(nextCandidates);
   };
 
   const title =
     state.status === "scanning"
-      ? state.manual
-        ? "正在扫描目录（手动导入）"
-        : "正在扫描目录"
+      ? "正在扫描目录"
       : state.status === "error"
         ? "扫描没有完成"
         : state.cancelled
-          ? "已取消扫描"
-          : "确认要入库的游戏";
+          ? "扫描已取消"
+          : "选择要入库的游戏";
+  const description =
+    state.status === "scanning"
+      ? "读取目录、可执行文件名和大小；不会移动、修改或启动游戏文件。"
+      : state.status === "error"
+        ? "已选目录保留，可以重试或重新选择。"
+        : state.cancelled
+          ? "已保留扫描到的部分结果，导入前仍可逐项确认。"
+          : "从扫描目录中读取可执行文件与安装大小，只读取，不改动游戏文件。";
+
+  const footerNote =
+    state.status === "scanning"
+      ? "可以取消扫描，已发现的候选不会自动入库。"
+      : state.status === "error"
+        ? "扫描和导入都在本机完成。"
+        : state.cancelled
+          ? "扫描被取消，仍可导入已发现的候选。"
+          : "导入只写入本地数据库和扫描路径，不改动游戏目录。";
+
+  const footerActions =
+    state.status === "scanning" ? (
+      <Button variant="secondary" size="sm" disabled={state.cancelling} onClick={onCancel}>
+        {state.cancelling ? "正在取消…" : "取消扫描"}
+      </Button>
+    ) : state.status === "review" ? (
+      <>
+        <Button variant="ghost" size="sm" disabled={importing} onClick={onPickAnother}>
+          重新选择目录
+        </Button>
+        <Button variant="primary" size="sm" disabled={!canImport} onClick={handleImport}>
+          {importing ? <Loader2 size={13} className="import-spin" /> : null}
+          {importing ? "正在导入…" : "导入选中 " + selectedGroups.length + " 部"}
+        </Button>
+      </>
+    ) : (
+      <Button variant="ghost" size="sm" onClick={onClose}>
+        关闭
+      </Button>
+    );
 
   return (
-    <div
-      className="scan-overlay"
-      role="presentation"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget && state.status !== "scanning" && !importing) {
-          onClose();
-        }
-      }}
+    <ImportDialogFrame
+      title={title}
+      titleId="scan-dialog-title"
+      description={description}
+      closeLabel={state.status === "scanning" ? "取消扫描" : "关闭扫描窗口"}
+      onClose={() => (state.status === "scanning" ? onCancel() : onClose())}
+      busy={importing}
+      dialogRef={dialogRef}
+      footerNote={footerNote}
+      footerActions={footerActions}
     >
-      <section
-        className="scan-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="scan-dialog-title"
-      >
-        <header className="scan-dialog__head">
-          <div className="scan-dialog__mark" aria-hidden="true">
-            {state.status === "error" ? (
-              <AlertTriangle size={20} strokeWidth={1.5} />
-            ) : state.status === "scanning" ? (
-              <ScanSearch size={20} strokeWidth={1.5} />
-            ) : (
-              <FolderSearch size={20} strokeWidth={1.5} />
-            )}
-          </div>
-          <div className="scan-dialog__head-copy">
-            <p className="app-kicker">本地扫描</p>
-            <h2 id="scan-dialog-title">{title}</h2>
-            <p title={state.rootPath}>{state.rootPath || "尚未选择目录"}</p>
-          </div>
-          <button
-            type="button"
-            className="scan-dialog__close"
-            aria-label="关闭扫描窗口"
-            disabled={importing}
-            onClick={() => (state.status === "scanning" ? onCancel() : onClose())}
-          >
-            <X size={16} strokeWidth={1.6} />
-          </button>
-        </header>
-
-        <div className="scan-dialog__body">
-          {state.status === "scanning" ? (
-            <div className="scan-progress">
-              <div className="scan-progress__bar" aria-hidden="true">
-                <span />
-              </div>
-              <div className="scan-progress__metrics">
-                <div>
-                  <b>{state.progress?.scannedDirs ?? 0}</b>
-                  <span>已浏览目录</span>
-                </div>
-                <div>
-                  <b>{state.progress?.foundCandidates ?? 0}</b>
-                  <span>候选程序</span>
-                </div>
-                <div>
-                  <b>{Math.round((state.progress?.elapsedMs ?? 0) / 1000)}s</b>
-                  <span>已用时</span>
-                </div>
-              </div>
-              <div className="scan-progress__path" title={state.progress?.currentPath}>
-                <Loader2 size={13} strokeWidth={1.6} className="scan-spin" />
-                <code>
-                  {state.cancelling
-                    ? "正在停止扫描并保留已发现的结果…"
-                    : (state.progress?.currentPath ?? "正在读取目录…")}
-                </code>
-              </div>
-              <p className="scan-hint">
-                扫描只读取目录、可执行文件名和大小；不会移动、修改或启动游戏文件。遇到大量文件时可以在
-                确认页只导入需要的候选。
-              </p>
-            </div>
-          ) : null}
-
-          {state.status === "error" ? (
-            <div className="scan-error">
-              <AlertTriangle size={24} strokeWidth={1.4} />
-              <h3>无法完成扫描</h3>
-              <p>{state.message}</p>
-              <div className="scan-error__actions">
-                {state.rootPath ? (
-                  <Button variant="secondary" size="sm" onClick={onRetry}>
-                    重试
-                  </Button>
-                ) : null}
-                <Button variant="ghost" size="sm" onClick={onClose}>
-                  关闭
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
-          {state.status === "review" ? (
-            <>
-              <div className="scan-summary">
-                <div>
-                  <b>{state.candidates.length}</b>
-                  <span>个候选程序</span>
-                </div>
-                <div>
-                  <b>{selectedCandidates.length}</b>
-                  <span>个已选择</span>
-                </div>
-                <div>
-                  <b>{state.stats?.scannedDirs ?? "—"}</b>
-                  <span>个目录</span>
-                </div>
-                <div className="scan-summary__tags">
-                  {state.manual ? <Tag tone="data">手动导入</Tag> : null}
-                  {state.cancelled ? <Tag tone="muted">已取消，部分结果</Tag> : null}
-                  {state.stats?.truncated ? <Tag tone="accent">目录过多，提前结束</Tag> : null}
-                  {state.candidates.some((candidate) => candidate.alreadyImported) ? (
-                    <Tag tone="data">包含已在库项目</Tag>
-                  ) : null}
-                </div>
-              </div>
-
-              {state.candidates.length === 0 ? (
-                <div className="scan-empty">
-                  <ScanSearch size={26} strokeWidth={1.3} />
-                  <h3>没有发现可执行文件</h3>
-                  <p>
-                    这个目录可能只包含压缩包、安装器或非 Windows
-                    游戏。请选择包含游戏主程序的文件夹， 或者先在游戏目录中确认 .exe 的位置。
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <div className="scan-list-toolbar">
-                    <button type="button" className="scan-check" onClick={toggleAll}>
-                      <span
-                        className={cn(
-                          "scan-check__box",
-                          selectedCandidates.length > 0 && "is-checked",
-                        )}
-                      >
-                        {selectedCandidates.length > 0 ? (
-                          <Check size={11} strokeWidth={2.4} />
-                        ) : null}
-                      </span>
-                      全选可导入项
-                    </button>
-                    <span>点击标题可修改入库名称</span>
-                  </div>
-
-                  <div className="scan-candidates">
-                    {state.candidates.map((candidate) => {
-                      const checked = Boolean(selected[candidate.id]);
-                      const importable = !candidate.alreadyImported;
-                      return (
-                        <div
-                          className={cn(
-                            "scan-candidate",
-                            checked && "is-selected",
-                            !importable && "is-imported",
-                          )}
-                          key={candidate.id}
-                        >
-                          <label className="scan-candidate__check">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              disabled={!importable || importing}
-                              onChange={(event) => {
-                                const nextChecked = event.currentTarget.checked;
-                                setSelectionState((previous) => {
-                                  const base = previous.key === candidateKey ? previous : defaults;
-                                  return {
-                                    key: candidateKey,
-                                    selected: {
-                                      ...base.selected,
-                                      [candidate.id]: nextChecked,
-                                    },
-                                    names: base.names,
-                                  };
-                                });
-                              }}
-                              aria-label={"选择 " + candidate.suggestedTitle}
-                            />
-                            <span className="scan-check__box">
-                              {checked ? <Check size={11} strokeWidth={2.4} /> : null}
-                            </span>
-                          </label>
-
-                          <div className="scan-candidate__cover">
-                            <CoverArt
-                              work={{
-                                title: candidate.suggestedTitle,
-                                originalTitle: "",
-                                developer: "本地扫描",
-                                year: null,
-                                cover: null,
-                              }}
-                            />
-                          </div>
-
-                          <div className="scan-candidate__main">
-                            <input
-                              className="scan-candidate__title"
-                              value={names[candidate.id] ?? candidate.suggestedTitle}
-                              disabled={!importable || importing}
-                              aria-label={"入库名称 " + candidate.suggestedTitle}
-                              onChange={(event) => {
-                                const nextName = event.currentTarget.value;
-                                setSelectionState((previous) => {
-                                  const base = previous.key === candidateKey ? previous : defaults;
-                                  return {
-                                    key: candidateKey,
-                                    selected: base.selected,
-                                    names: {
-                                      ...base.names,
-                                      [candidate.id]: nextName,
-                                    },
-                                  };
-                                });
-                              }}
-                            />
-                            <code className="scan-candidate__path" title={candidate.exePath}>
-                              {candidate.exePath}
-                            </code>
-                            <p title={candidate.reason}>{candidate.reason || "本地扫描候选"}</p>
-                          </div>
-
-                          <div className="scan-candidate__meta">
-                            <span>{formatBytes(candidate.sizeBytes)}</span>
-                            <small>
-                              exe {formatBytes(candidate.fileSizeBytes)}
-                              {candidate.sizeIsEstimate ? "，估算" : ""}
-                            </small>
-                            <div>
-                              <Tag tone={confidenceTone(candidate.confidence)}>
-                                {confidenceLabels[candidate.confidence]}
-                              </Tag>
-                              {candidate.alreadyImported ? <Tag tone="muted">已在库中</Tag> : null}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </>
-          ) : null}
-        </div>
-
-        <footer className="scan-dialog__foot">
-          <p>
-            {state.status === "review" && state.candidates.length > 0
-              ? state.manual
-                ? "手动导入包含已排除的游戏；确认导入后会清除对应扫描排除。"
-                : "导入只会写入本地数据库和扫描路径，不会改动游戏目录。"
-              : state.status === "scanning"
-                ? "可以取消扫描，已发现的候选不会自动入库。"
-                : "扫描和导入都在本机完成。"}
-          </p>
-          <div className="scan-dialog__actions">
-            {state.status === "scanning" ? (
-              <Button variant="secondary" size="sm" disabled={state.cancelling} onClick={onCancel}>
-                {state.cancelling ? "正在取消…" : "取消扫描"}
-              </Button>
-            ) : null}
-            {state.status === "review" ? (
+      {state.status === "scanning" ? (
+        <>
+          <ImportSourceBar label="扫描目录" value={state.rootPath || "尚未选择目录"} />
+          <ImportProgress
+            icon={<Loader2 size={18} className="import-spin" />}
+            label={state.cancelling ? "正在停止扫描…" : "正在读取目录"}
+            detail={state.progress?.currentPath ?? state.rootPath}
+            metrics={
               <>
-                <Button variant="ghost" size="sm" onClick={onPickAnother}>
-                  重新选择目录
+                <ImportMetric value={state.progress?.scannedDirs ?? 0} label="已浏览目录" />
+                <ImportMetric value={state.progress?.foundCandidates ?? 0} label="候选程序" />
+                <ImportMetric
+                  value={Math.round((state.progress?.elapsedMs ?? 0) / 1000) + "s"}
+                  label="已用时"
+                />
+              </>
+            }
+          />
+        </>
+      ) : null}
+
+      {state.status === "error" ? (
+        <>
+          <ImportNotice tone="error">
+            <AlertTriangle size={14} />
+            <span>{state.message}</span>
+          </ImportNotice>
+          <ImportEmpty
+            icon={<AlertTriangle size={22} strokeWidth={1.5} />}
+            title="无法完成扫描"
+            description="检查目录是否可访问，或重新选择包含游戏主程序的文件夹。"
+            action={
+              state.rootPath ? (
+                <Button variant="secondary" size="sm" onClick={onRetry}>
+                  重试扫描
                 </Button>
-                <Button variant="primary" size="sm" disabled={!canImport} onClick={handleImport}>
-                  {importing ? <Loader2 size={13} className="scan-spin" /> : null}
-                  {importing ? "正在导入…" : "导入选中 " + selectedCandidates.length + " 部"}
+              ) : undefined
+            }
+          />
+        </>
+      ) : null}
+
+      {state.status === "review" ? (
+        <div className="import-review">
+          <ImportSourceBar label="扫描目录" value={state.rootPath} />
+          <ImportSummary
+            tags={
+              <>
+                {state.cancelled ? <Tag tone="muted">已取消，部分结果</Tag> : null}
+                {state.stats?.truncated ? <Tag tone="accent">目录过多，提前结束</Tag> : null}
+                {groups.some((group) => group.alreadyImported) ? (
+                  <Tag tone="data">包含已在库项目</Tag>
+                ) : null}
+              </>
+            }
+            actions={
+              <>
+                <Button variant="ghost" size="sm" onClick={toggleAll}>
+                  全选可导入
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={selectedGroups.length === 0}
+                  onClick={clearSelection}
+                >
+                  清空
                 </Button>
               </>
-            ) : null}
-            {state.status === "error" ? (
-              <Button variant="ghost" size="sm" onClick={onClose}>
-                关闭
-              </Button>
-            ) : null}
-          </div>
-        </footer>
-      </section>
-    </div>
+            }
+          >
+            <ImportCount value={groups.length} label="个游戏" />
+            <ImportCount value={selectedGroups.length} label="个已选" />
+            <ImportCount value={state.stats?.scannedDirs ?? "—"} label="个目录" />
+          </ImportSummary>
+
+          {groups.length === 0 ? (
+            <ImportEmpty
+              icon={<FolderSearch size={22} strokeWidth={1.5} />}
+              title="没有发现可执行文件"
+              description="这个目录可能只包含压缩包、安装器或非 Windows 游戏。选择包含游戏主程序的文件夹再扫描。"
+            />
+          ) : (
+            <div className="import-list-scroll">
+              <div className="import-list">
+                {groups.map((group) => {
+                  const chosenIndex = chosen[group.key] ?? group.defaultIndex;
+                  const candidate = (group.candidates[chosenIndex] ?? group.candidates[0])!;
+                  const checked = Boolean(selected[group.key]);
+                  const importable = !group.alreadyImported;
+                  return (
+                    <div
+                      className={cn(
+                        "import-row",
+                        "import-row--controls",
+                        checked && "is-selected",
+                        !importable && "is-imported",
+                      )}
+                      key={group.key}
+                    >
+                      <label className="import-row__check">
+                        <input
+                          type="checkbox"
+                          checked={checked && importable}
+                          disabled={!importable || importing}
+                          onChange={(event) => {
+                            const nextChecked = event.currentTarget.checked;
+                            setSelectionState((previous) => {
+                              const base = previous.key === groupKey ? previous : defaults;
+                              return {
+                                key: groupKey,
+                                selected: {
+                                  ...base.selected,
+                                  [group.key]: nextChecked,
+                                },
+                                names: base.names,
+                                chosen: base.chosen,
+                              };
+                            });
+                          }}
+                          aria-label={"选择 " + candidate.suggestedTitle}
+                        />
+                      </label>
+
+                      <div className="import-row__main">
+                        <div className="import-row__title">
+                          <b>{candidate.suggestedTitle}</b>
+                          <Tag tone={confidenceTone(candidate.confidence)}>
+                            {confidenceLabels[candidate.confidence]}
+                          </Tag>
+                          {candidate.alreadyImported ? <Tag tone="muted">已在库中</Tag> : null}
+                        </div>
+                        <Hint label={group.workingDir} side="bottom" align="start">
+                          <code className="import-row__path">{group.workingDir}</code>
+                        </Hint>
+                        <div className="import-row__submeta">
+                          <span>{formatBytes(candidate.sizeBytes)}</span>
+                          <span>{group.candidates.length} 个可执行文件</span>
+                          <Hint label={candidate.reason || "本地扫描候选"} side="top" align="start">
+                            <span className="import-row__reason">
+                              {candidate.reason || "本地扫描候选"}
+                            </span>
+                          </Hint>
+                        </div>
+                      </div>
+
+                      <div className="import-row__controls">
+                        <label className="import-field">
+                          <span>显示名称</span>
+                          <input
+                            value={names[group.key] ?? candidate.suggestedTitle}
+                            disabled={!importable || importing}
+                            aria-label={"显示名称 " + candidate.suggestedTitle}
+                            onChange={(event) => {
+                              const nextName = event.currentTarget.value;
+                              setSelectionState((previous) => {
+                                const base = previous.key === groupKey ? previous : defaults;
+                                return {
+                                  key: groupKey,
+                                  selected: base.selected,
+                                  names: {
+                                    ...base.names,
+                                    [group.key]: nextName,
+                                  },
+                                  chosen: base.chosen,
+                                };
+                              });
+                            }}
+                          />
+                        </label>
+                        <label className="import-field">
+                          <span>主程序</span>
+                          <span className="import-field__select">
+                            <select
+                              value={chosenIndex}
+                              disabled={!importable || importing}
+                              aria-label={"主程序 " + candidate.suggestedTitle}
+                              onChange={(event) =>
+                                chooseExecutable(group, Number(event.currentTarget.value))
+                              }
+                            >
+                              {group.candidates.map((item, index) => (
+                                <option value={index} key={item.id} disabled={item.alreadyImported}>
+                                  {item.exePath.split("\\").slice(-1)[0]}，
+                                  {confidenceLabels[item.confidence]}
+                                  {item.alreadyImported ? "（已在库）" : ""}
+                                </option>
+                              ))}
+                            </select>
+                            <ChevronDown size={12} />
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : null}
+    </ImportDialogFrame>
   );
 }

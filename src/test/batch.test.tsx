@@ -35,8 +35,6 @@ function previewFor(index: number): MergePreview {
         field: "title",
         label: "标题",
         current: "",
-        locked: false,
-        lockSource: null,
         candidates: [
           {
             provider: "vndb",
@@ -85,7 +83,6 @@ const applyResult: BatchApplyResult = {
     title: proposal.title,
     status: "applied",
     applied: ["title"],
-    skippedLocked: [],
     skippedNonEmpty: [],
     coverApplied: true,
     errors: [],

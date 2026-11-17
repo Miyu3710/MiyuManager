@@ -131,106 +131,109 @@ export function BigScreenGameMenu({
   }, [anchor, view]);
 
   return (
-    <div
-      ref={menuRef}
-      className="bigscreen-menu"
-      role="menu"
-      aria-label={`${item.title} 游戏菜单`}
-      data-bigscreen-scope="game-menu"
-      style={{ left: position.left, top: position.top }}
-    >
-      <header className="bigscreen-menu__head">
-        <div>
-          <b>{item.title}</b>
-        </div>
-        <span className="bigscreen-menu__status">{bigScreenStatusLabel(item.status)}</span>
-      </header>
+    <>
+      <div className="bigscreen-menu-backdrop" onClick={onClose} aria-hidden="true" />
+      <div
+        ref={menuRef}
+        className="bigscreen-menu"
+        role="menu"
+        aria-label={`${item.title} 游戏菜单`}
+        data-bigscreen-scope="game-menu"
+        style={{ left: position.left, top: position.top }}
+      >
+        <header className="bigscreen-menu__head">
+          <div>
+            <b>{item.title}</b>
+          </div>
+          <span className="bigscreen-menu__status">{bigScreenStatusLabel(item.status)}</span>
+        </header>
 
-      {view === "status" ? (
-        <div className="bigscreen-menu__list">
-          <MenuItem
-            focusKey="menu-status-back"
-            activeKey={activeKey}
-            icon={<ChevronLeft size={19} strokeWidth={1.8} />}
-            label="返回菜单"
-            onFocusKey={onFocusKey}
-            onClick={onBackFromStatus}
-          />
-          <div className="bigscreen-menu__divider" />
-          {bigScreenStatusOptions.map((option) => (
+        {view === "status" ? (
+          <div className="bigscreen-menu__list">
             <MenuItem
-              key={option.value}
-              focusKey={`menu-status-${option.value}`}
+              focusKey="menu-status-back"
               activeKey={activeKey}
-              icon={<span className={cn("bigscreen-status-dot", "is-" + option.value)} />}
-              label={option.label}
-              checked={item.status === option.value}
-              role="menuitemradio"
+              icon={<ChevronLeft size={19} strokeWidth={1.8} />}
+              label="返回菜单"
+              onFocusKey={onFocusKey}
+              onClick={onBackFromStatus}
+            />
+            <div className="bigscreen-menu__divider" />
+            {bigScreenStatusOptions.map((option) => (
+              <MenuItem
+                key={option.value}
+                focusKey={`menu-status-${option.value}`}
+                activeKey={activeKey}
+                icon={<span className={cn("bigscreen-status-dot", "is-" + option.value)} />}
+                label={option.label}
+                checked={item.status === option.value}
+                role="menuitemradio"
+                disabled={busy}
+                onFocusKey={onFocusKey}
+                onClick={() => onSetStatus(option.value)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="bigscreen-menu__list">
+            <MenuItem
+              focusKey="menu-launch"
+              activeKey={activeKey}
+              icon={
+                running ? (
+                  <Square size={18} fill="currentColor" strokeWidth={0} />
+                ) : (
+                  <Play size={19} fill="currentColor" strokeWidth={0} />
+                )
+              }
+              label={running ? "停止游戏" : "启动游戏"}
+              detail={running ? "运行中" : undefined}
+              danger={running}
+              disabled={busy || item.installStatus === "missing"}
+              onFocusKey={onFocusKey}
+              onClick={onLaunch}
+            />
+            <MenuItem
+              focusKey="menu-detail"
+              activeKey={activeKey}
+              icon={<Info size={19} strokeWidth={1.8} />}
+              label="查看详情"
+              onFocusKey={onFocusKey}
+              onClick={onOpenDetail}
+            />
+            <MenuItem
+              focusKey="menu-favorite"
+              activeKey={activeKey}
+              icon={
+                <Star size={19} fill={item.favorite ? "currentColor" : "none"} strokeWidth={1.7} />
+              }
+              label={item.favorite ? "取消收藏" : "收藏"}
               disabled={busy}
               onFocusKey={onFocusKey}
-              onClick={() => onSetStatus(option.value)}
+              onClick={onToggleFavorite}
             />
-          ))}
-        </div>
-      ) : (
-        <div className="bigscreen-menu__list">
-          <MenuItem
-            focusKey="menu-launch"
-            activeKey={activeKey}
-            icon={
-              running ? (
-                <Square size={18} fill="currentColor" strokeWidth={0} />
-              ) : (
-                <Play size={19} fill="currentColor" strokeWidth={0} />
-              )
-            }
-            label={running ? "停止游戏" : "启动游戏"}
-            detail={running ? "运行中" : undefined}
-            danger={running}
-            disabled={busy || item.installStatus === "missing"}
-            onFocusKey={onFocusKey}
-            onClick={onLaunch}
-          />
-          <MenuItem
-            focusKey="menu-detail"
-            activeKey={activeKey}
-            icon={<Info size={19} strokeWidth={1.8} />}
-            label="查看详情"
-            onFocusKey={onFocusKey}
-            onClick={onOpenDetail}
-          />
-          <MenuItem
-            focusKey="menu-favorite"
-            activeKey={activeKey}
-            icon={
-              <Star size={19} fill={item.favorite ? "currentColor" : "none"} strokeWidth={1.7} />
-            }
-            label={item.favorite ? "取消收藏" : "收藏"}
-            disabled={busy}
-            onFocusKey={onFocusKey}
-            onClick={onToggleFavorite}
-          />
-          <MenuItem
-            focusKey="menu-status"
-            activeKey={activeKey}
-            icon={<ListChecks size={19} strokeWidth={1.8} />}
-            label="游玩状态"
-            detail={bigScreenStatusLabel(item.status)}
-            disabled={busy}
-            onFocusKey={onFocusKey}
-            onClick={onOpenStatus}
-          />
-          <div className="bigscreen-menu__divider" />
-          <MenuItem
-            focusKey="menu-close"
-            activeKey={activeKey}
-            icon={<X size={19} strokeWidth={1.8} />}
-            label="关闭"
-            onFocusKey={onFocusKey}
-            onClick={onClose}
-          />
-        </div>
-      )}
-    </div>
+            <MenuItem
+              focusKey="menu-status"
+              activeKey={activeKey}
+              icon={<ListChecks size={19} strokeWidth={1.8} />}
+              label="游玩状态"
+              detail={bigScreenStatusLabel(item.status)}
+              disabled={busy}
+              onFocusKey={onFocusKey}
+              onClick={onOpenStatus}
+            />
+            <div className="bigscreen-menu__divider" />
+            <MenuItem
+              focusKey="menu-close"
+              activeKey={activeKey}
+              icon={<X size={19} strokeWidth={1.8} />}
+              label="关闭"
+              onFocusKey={onFocusKey}
+              onClick={onClose}
+            />
+          </div>
+        )}
+      </div>
+    </>
   );
 }

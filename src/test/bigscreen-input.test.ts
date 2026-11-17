@@ -4,6 +4,7 @@ import {
   readGamepadDirection,
   type GamepadSnapshot,
 } from "../features/bigscreen/useBigScreenInput";
+import { adjacentCategory } from "../features/bigscreen/bigscreenCategories";
 
 function pad(pressed: number[], axes: number[] = [0, 0]): GamepadSnapshot {
   return {
@@ -28,15 +29,25 @@ describe("big screen gamepad mapping", () => {
     expect(readGamepadDirection(pad([], [0.31, -0.28]))).toBeNull();
   });
 
-  it("keeps X unused while Y and Start have explicit actions", () => {
+  it("maps X to backspace and the shoulder buttons to categories", () => {
     expect(GAMEPAD_BUTTONS).toEqual({
       confirm: 0,
       back: 1,
+      backspace: 2,
       menu: 3,
-      prevZone: 4,
-      nextZone: 5,
+      prevCategory: 4,
+      nextCategory: 5,
+      prevPage: 6,
+      nextPage: 7,
+      search: 8,
       control: 9,
     });
-    expect(Object.values(GAMEPAD_BUTTONS)).not.toContain(2);
+    expect(GAMEPAD_BUTTONS.backspace).toBe(2);
+  });
+
+  it("cycles sidebar categories in both directions with wraparound", () => {
+    expect(adjacentCategory("recent", 1)).toBe("playing");
+    expect(adjacentCategory("recent", -1)).toBe("all");
+    expect(adjacentCategory("all", 1)).toBe("recent");
   });
 });

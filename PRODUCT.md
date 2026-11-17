@@ -13,7 +13,7 @@ with a controller and must stay legible from a distance.
 ## Product truth
 
 - Games, installations and covers are local files. Metadata may come from VNDB, Bangumi, Kungal,
-  Hikarinagi and Steam, with source and lock state retained.
+  Hikarinagi and Steam, with source and update time retained.
 - Play time comes from tracked launch sessions, not from reading a game's save data. A session can
   be corrected or entered manually and is marked accordingly.
 - User status, rating, notes and collection membership are user-authored. They must never look like
@@ -36,5 +36,6 @@ with a controller and must stay legible from a distance.
 
 The library's covers and real data carry the visual identity. Utility text stays quiet, controls
 state their result, and repeated explanatory copy is removed in favour of labels, structure and
-state. The desktop UI is an operating surface first: scanning, hierarchy and long-session comfort
-outrank decorative spectacle.
+state. Functional text never drops below 12px, and the primary reading roles use self-hosted Noto
+Sans SC, Noto Serif SC and Manrope. The desktop UI is an operating surface first: scanning,
+hierarchy and long-session comfort outrank decorative spectacle.

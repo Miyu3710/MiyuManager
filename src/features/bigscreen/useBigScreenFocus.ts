@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 
 export type FocusDirection = "up" | "down" | "left" | "right";
-export type FocusScope = "root" | "game-menu" | "drawer" | "control";
+export type FocusScope = "root" | "game-menu" | "drawer" | "control" | "search";
 
 function isVisible(element: HTMLElement): boolean {
   let node: HTMLElement | null = element;
@@ -18,25 +18,44 @@ function isVisible(element: HTMLElement): boolean {
 function focusWithoutScroll(element: HTMLElement) {
   element.focus({ preventScroll: true });
   if (typeof element.scrollIntoView === "function") {
+    // The shelf's left fade covers the moving edge, so the native smooth
+    // scroll can stay on without a separate selection-hide pass.
     element.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
 }
 
-function nearestByHorizontalCenter(
+function nextInDirection(
   elements: HTMLElement[],
   current: HTMLElement,
+  direction: FocusDirection,
 ): HTMLElement | null {
   const currentRect = current.getBoundingClientRect();
-  const center = currentRect.left + currentRect.width / 2;
-  let best: { element: HTMLElement; distance: number } | null = null;
+  const centerX = currentRect.left + currentRect.width / 2;
+  const centerY = currentRect.top + currentRect.height / 2;
+  let best: { element: HTMLElement; score: number } | null = null;
+
   for (const element of elements) {
+    if (element === current) {
+      continue;
+    }
     const rect = element.getBoundingClientRect();
-    const elementCenter = rect.left + rect.width / 2;
-    const distance = Math.abs(elementCenter - center);
-    if (!best || distance < best.distance) {
-      best = { element, distance };
+    if (rect.width === 0 && rect.height === 0) {
+      continue;
+    }
+    const dx = rect.left + rect.width / 2 - centerX;
+    const dy = rect.top + rect.height / 2 - centerY;
+    const primary =
+      direction === "left" ? -dx : direction === "right" ? dx : direction === "up" ? -dy : dy;
+    if (primary <= 2) {
+      continue;
+    }
+    const cross = direction === "left" || direction === "right" ? Math.abs(dy) : Math.abs(dx);
+    const score = primary + cross * 1.8;
+    if (!best || score < best.score) {
+      best = { element, score };
     }
   }
+
   return best?.element ?? null;
 }
 
@@ -125,6 +144,14 @@ export function useBigScreenFocus(scope: FocusScope) {
         return;
       }
 
+      if (scope === "search") {
+        const target = nextInDirection(list, current, direction);
+        if (target) {
+          focusElement(target);
+        }
+        return;
+      }
+
       const zone = current.dataset.bigscreenZone ?? "";
       const zoneElements = list.filter((element) => element.dataset.bigscreenZone === zone);
       const index = zoneElements.indexOf(current);
@@ -160,11 +187,11 @@ export function useBigScreenFocus(scope: FocusScope) {
           return;
         }
         if (direction === "right") {
-          const heroElements = list.filter((element) => element.dataset.bigscreenZone === "hero");
-          const remembered = lastZoneFocus.current.hero;
+          const shelfElements = list.filter((element) => element.dataset.bigscreenZone === "shelf");
+          const remembered = lastZoneFocus.current.shelf;
           const target =
-            heroElements.find((element) => element.dataset.bigscreenFocus === remembered) ??
-            heroElements[0];
+            shelfElements.find((element) => element.dataset.bigscreenFocus === remembered) ??
+            shelfElements[0];
           if (target) {
             focusElement(target);
           }
@@ -173,31 +200,8 @@ export function useBigScreenFocus(scope: FocusScope) {
       }
 
       if (zone === "hero") {
-        if (horizontal) {
-          const offset = direction === "right" ? 1 : -1;
-          const target = zoneElements[index + offset];
-          if (target) {
-            focusElement(target);
-            return;
-          }
-          if (direction === "left") {
-            const target = activeCategory();
-            if (target) {
-              focusElement(target);
-            }
-          }
-          return;
-        }
         if (direction === "up") {
           const target = activeCategory();
-          if (target) {
-            focusElement(target);
-          }
-          return;
-        }
-        if (direction === "down") {
-          const shelf = list.filter((element) => element.dataset.bigscreenZone === "shelf");
-          const target = nearestByHorizontalCenter(shelf, current);
           if (target) {
             focusElement(target);
           }
@@ -212,21 +216,12 @@ export function useBigScreenFocus(scope: FocusScope) {
           if (target) {
             focusElement(target);
           }
-          return;
         }
-        if (direction === "up") {
-          const heroElements = list.filter((element) => element.dataset.bigscreenZone === "hero");
-          const remembered = lastZoneFocus.current.hero;
-          const target =
-            heroElements.find((element) => element.dataset.bigscreenFocus === remembered) ??
-            heroElements[0];
-          if (target) {
-            focusElement(target);
-          }
-        }
+        // Vertical arrows stay inside the shelf: reaching the category rail is
+        // Tab (or LB/RB), so browsing covers never changes the page by accident.
       }
     },
-    [focusElement, focusables],
+    [focusElement, focusables, scope],
   );
 
   const switchZone = useCallback(
@@ -258,6 +253,13 @@ export function useBigScreenFocus(scope: FocusScope) {
       }
       const remembered = lastZoneFocus.current[targetZone];
       const target =
+        (targetZone === "categories"
+          ? list.find(
+              (element) =>
+                element.dataset.bigscreenZone === "categories" &&
+                element.getAttribute("aria-current") === "page",
+            )
+          : undefined) ??
         list.find((element) => element.dataset.bigscreenFocus === remembered) ??
         list.find((element) => element.dataset.bigscreenZone === targetZone);
       if (target) {

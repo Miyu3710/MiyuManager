@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use chrono::Utc;
@@ -12,6 +13,8 @@ use sqlx::SqlitePool;
 use tauri::{AppHandle, Emitter};
 
 use crate::db::{self, LaunchProfile};
+use crate::magpie;
+use crate::preferences::{self, WrapperConfig};
 use crate::tracking::{self, LaunchWatch, WatchOutcome};
 use process::ProcessJob;
 
@@ -113,16 +116,49 @@ impl LaunchManager {
     }
 }
 
-fn build_command(target: &db::LaunchTarget, profile: &LaunchProfile) -> Command {
-    let wrapper = profile
-        .wrapper_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|path| !path.is_empty());
-    let mut command = if let Some(wrapper) = wrapper {
-        let mut command = Command::new(wrapper);
-        command.args(&profile.wrapper_args);
+struct LaunchPlan {
+    command: Command,
+    uses_command_wrapper: bool,
+    magpie: Option<WrapperConfig>,
+}
+
+fn wrapper_config<'a>(wrappers: &'a [WrapperConfig], id: &str) -> Result<&'a WrapperConfig> {
+    wrappers
+        .iter()
+        .find(|wrapper| wrapper.id == id && !wrapper.path.trim().is_empty())
+        .with_context(|| format!("尚未配置 {} 程序路径", preferences::wrapper_label(id)))
+}
+
+fn validate_enabled_wrappers(profile: &LaunchProfile, wrappers: &[WrapperConfig]) -> Result<()> {
+    for id in &profile.wrapper_ids {
+        let wrapper = wrapper_config(wrappers, id)?;
+        if !std::path::Path::new(wrapper.path.trim()).is_file() {
+            bail!(
+                "{} 程序不存在：{}",
+                preferences::wrapper_label(id),
+                wrapper.path
+            );
+        }
+    }
+    Ok(())
+}
+
+fn build_command(
+    target: &db::LaunchTarget,
+    profile: &LaunchProfile,
+    wrappers: &[WrapperConfig],
+) -> Result<LaunchPlan> {
+    let locale_emulator = profile
+        .wrapper_ids
+        .iter()
+        .any(|id| id == preferences::WRAPPER_LOCALE_EMULATOR);
+    let mut uses_command_wrapper = false;
+    let mut command = if locale_emulator {
+        let wrapper = wrapper_config(wrappers, preferences::WRAPPER_LOCALE_EMULATOR)?;
+        let mut command = Command::new(wrapper.path.trim());
+        command.args(&wrapper.args);
         command.arg(&target.exe_path);
+        uses_command_wrapper = true;
         command
     } else {
         Command::new(&target.exe_path)
@@ -136,7 +172,20 @@ fn build_command(target: &db::LaunchTarget, profile: &LaunchProfile) -> Command 
     for variable in &profile.env {
         command.env(&variable.key, &variable.value);
     }
-    command
+    let magpie = if profile
+        .wrapper_ids
+        .iter()
+        .any(|id| id == preferences::WRAPPER_MAGPIE)
+    {
+        Some(wrapper_config(wrappers, preferences::WRAPPER_MAGPIE)?.clone())
+    } else {
+        None
+    };
+    Ok(LaunchPlan {
+        command,
+        uses_command_wrapper,
+        magpie,
+    })
 }
 
 fn validation_message(report: &db::ValidationReport) -> String {
@@ -146,11 +195,6 @@ fn validation_message(report: &db::ValidationReport) -> String {
     }
     if !report.working_dir.ok {
         parts.push(report.working_dir.message.clone());
-    }
-    if let Some(wrapper) = &report.wrapper
-        && !wrapper.ok
-    {
-        parts.push(wrapper.message.clone());
     }
     if parts.is_empty() {
         "启动路径无效".to_string()
@@ -169,13 +213,20 @@ pub async fn start(
         bail!("这部作品已经有一个正在运行的游戏进程");
     }
     let target = db::get_launch_target(&pool, work_id).await?;
-    db::validate_profile(&target.profile)?;
-    let report = db::validate_launch(&pool, work_id, Some(target.profile.clone())).await?;
+    let profile = target.profile.clone();
+    let settings = preferences::load(&pool).await?;
+    db::validate_profile(&profile)?;
+    validate_enabled_wrappers(&profile, &settings.wrappers)?;
+    let report = db::validate_launch(&pool, work_id, Some(profile.clone())).await?;
     if !report.valid {
         bail!("{}", validation_message(&report));
     }
 
-    let mut command = build_command(&target, &target.profile);
+    let LaunchPlan {
+        mut command,
+        uses_command_wrapper,
+        magpie: magpie_wrapper,
+    } = build_command(&target, &profile, &settings.wrappers)?;
     let launch_id = uuid::Uuid::new_v4().to_string();
     let started_at = Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
     let child = command
@@ -190,6 +241,50 @@ pub async fn start(
     }
     let job = job.map(Arc::new);
     let job_tracked = job.is_some();
+
+    if let Some(wrapper) = magpie_wrapper {
+        let magpie_exe = std::path::PathBuf::from(wrapper.path.trim());
+        let magpie_args = wrapper.args;
+        let exe_path = target.exe_path.clone();
+        let title = target.title.clone();
+        let warning_app = app.clone();
+        std::thread::spawn(move || {
+            let Some(window) =
+                process::wait_for_window_by_executable(&exe_path, Duration::from_secs(45))
+            else {
+                let message = "没有找到游戏窗口，Magpie 仅进入托盘模式".to_string();
+                eprintln!("Magpie: {message}");
+                let _ = warning_app.emit(
+                    "launch-warning",
+                    serde_json::json!({ "workId": work_id, "message": message }),
+                );
+                let _ = magpie::launch_tray(&magpie_exe, &magpie_args);
+                return;
+            };
+            let profile_title = if window.title.trim().is_empty() {
+                title.clone()
+            } else {
+                window.title.clone()
+            };
+            if let Err(error) = magpie::sync_auto_scale(
+                &magpie_exe,
+                &magpie_args,
+                std::path::Path::new(&window.exe_path),
+                &window.class_name,
+                &profile_title,
+            ) {
+                eprintln!("Magpie auto-scale setup failed: {error:#}");
+                let _ = warning_app.emit(
+                    "launch-warning",
+                    serde_json::json!({
+                        "workId": work_id,
+                        "message": format!("Magpie 自动缩放未启用：{error}")
+                    }),
+                );
+                let _ = magpie::launch_tray(&magpie_exe, &magpie_args);
+            }
+        });
+    }
     let snapshot = LaunchSnapshot {
         launch_id: launch_id.clone(),
         work_id,
@@ -239,7 +334,7 @@ pub async fn start(
     let watch_launch_id = launch_id.clone();
     let watch_target_exe = target.exe_path.clone();
     let watch_local_copy_id = target.local_copy_id;
-    let uses_wrapper = target.profile.wrapper_path.is_some();
+    let uses_wrapper = uses_command_wrapper;
     let steam_mode = target.steam_app_id.is_some();
     tauri::async_runtime::spawn(async move {
         let outcome = tracking::watch_launch(LaunchWatch {
@@ -315,15 +410,20 @@ mod tests {
                 key: "MIYU_TEST".to_string(),
                 value: "1".to_string(),
             }],
-            wrapper_path: Some("C:\\Tools\\LEProc.exe".to_string()),
-            wrapper_args: vec!["-runas".to_string(), "profile".to_string()],
+            wrapper_ids: vec![preferences::WRAPPER_LOCALE_EMULATOR.to_string()],
             monitor: None,
             fullscreen: false,
         };
-        let command = build_command(&target, &profile);
-        let program = command.get_program().to_string_lossy().to_string();
+        let wrappers = vec![WrapperConfig {
+            id: preferences::WRAPPER_LOCALE_EMULATOR.to_string(),
+            path: "C:\\Tools\\LEProc.exe".to_string(),
+            args: vec!["-runas".to_string(), "profile".to_string()],
+        }];
+        let plan = build_command(&target, &profile, &wrappers).expect("command");
+        let program = plan.command.get_program().to_string_lossy().to_string();
         assert!(program.ends_with("LEProc.exe"));
-        let args = command
+        let args = plan
+            .command
             .get_args()
             .map(|value| value.to_string_lossy().to_string())
             .collect::<Vec<_>>();
@@ -331,6 +431,38 @@ mod tests {
         assert_eq!(args[1], "profile");
         assert_eq!(args[2], target.exe_path);
         assert_eq!(args[3], "--window");
+        assert!(plan.uses_command_wrapper);
+        assert!(plan.magpie.is_none());
+    }
+
+    #[test]
+    fn magpie_is_scheduled_for_auto_scale() {
+        let target = db::LaunchTarget {
+            local_copy_id: 1,
+            title: "月影工房".to_string(),
+            exe_path: "C:\\Games\\月影工房\\game.exe".to_string(),
+            working_dir: "C:\\Games\\月影工房".to_string(),
+            steam_app_id: None,
+            profile: LaunchProfile::default(),
+        };
+        let profile = LaunchProfile {
+            wrapper_ids: vec![preferences::WRAPPER_MAGPIE.to_string()],
+            ..LaunchProfile::default()
+        };
+        let wrappers = vec![WrapperConfig {
+            id: preferences::WRAPPER_MAGPIE.to_string(),
+            path: "C:\\Tools\\Magpie\\Magpie.exe".to_string(),
+            args: vec!["-t".to_string()],
+        }];
+        let plan = build_command(&target, &profile, &wrappers).expect("command");
+        assert_eq!(
+            plan.command.get_program().to_string_lossy().to_string(),
+            target.exe_path
+        );
+        assert!(!plan.uses_command_wrapper);
+        let magpie = plan.magpie.expect("magpie wrapper");
+        assert!(magpie.path.ends_with("Magpie.exe"));
+        assert_eq!(magpie.args, vec!["-t"]);
     }
 
     #[cfg(windows)]

@@ -112,6 +112,23 @@ pub(crate) fn restore_main(app: &AppHandle) {
     }
 }
 
+pub(crate) async fn open_from_tray(app: AppHandle) -> Result<BigScreenState, String> {
+    let state = app.state::<AppState>();
+    let display = read_display(&state.pool).await;
+    let (index, monitor, message) = pick_monitor(&app, display)?;
+    if let Err(error) = ensure_window(&app, &monitor) {
+        restore_main(&app);
+        return Err(error);
+    }
+    hide_main(&app);
+    write_display(&state.pool, index).await?;
+    Ok(BigScreenState {
+        open: true,
+        display: Some(index),
+        message,
+    })
+}
+
 async fn read_display(pool: &SqlitePool) -> Option<i64> {
     let value: Option<String> = sqlx::query_scalar("SELECT value_json FROM settings WHERE key = ?")
         .bind(DISPLAY_KEY)

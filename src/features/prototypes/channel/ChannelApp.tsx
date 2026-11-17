@@ -5,6 +5,7 @@ import type { PrototypePage, Work } from "../types";
 import { ChannelDetail } from "./ChannelDetail";
 import { ChannelHome } from "./ChannelHome";
 import { ChannelLibrary } from "./ChannelLibrary";
+import "../channel.css";
 
 interface ChannelAppProps {
   page: PrototypePage;

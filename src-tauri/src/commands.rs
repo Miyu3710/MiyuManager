@@ -11,11 +11,13 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio_util::sync::CancellationToken;
 
 use crate::assets::{self, CoverAsset, CoverCandidate};
+use crate::database_maintenance::{self, BackupInfo, DatabaseHealth, RestoreOutcome};
 use crate::db::{
     self, AppInfo, CollectionSummary, ImportCandidateInput, ImportResult, LaunchConfigInput,
     LaunchProfile, LibraryItemDetail, LibraryPage, LibraryQuery, ScanExclusionRecord, ScanRoot,
     ValidationReport, WorkUpdateInput,
 };
+use crate::diagnostics::{self, FrontendError};
 use crate::launcher::{self, LaunchManager, LaunchSnapshot};
 use crate::metadata::{self, MetadataHttp, MetadataImportRequest, MetadataImportResult};
 use crate::oauth::OAuthService;
@@ -214,11 +216,35 @@ pub async fn create_app_state(app: &AppHandle) -> anyhow::Result<AppState> {
     };
     std::fs::create_dir_all(&data_dir)
         .with_context(|| format!("无法创建数据目录 {}", data_dir.display()))?;
+    diagnostics::init(&data_dir)?;
     let db_path = data_dir.join("miyumanager.sqlite3");
-    let pool = db::open_pool(&db_path).await?;
+    if let Some(backup) = database_maintenance::apply_pending_restore(&data_dir, &db_path)
+        .await
+        .with_context(|| "无法应用待恢复的数据库快照")?
+    {
+        diagnostics::event(
+            "info",
+            "database_restore_completed",
+            "数据库恢复已在启动阶段完成",
+            serde_json::json!({"safetyBackup": backup.path}),
+        );
+    }
+    let pool = db::open_pool(&db_path).await.inspect_err(|error| {
+        diagnostics::event(
+            "fatal",
+            "database_open_failed",
+            "数据库无法打开或迁移失败",
+            serde_json::json!({"error": error.to_string(), "path": db_path.to_string_lossy()}),
+        );
+    })?;
     let recovered = tracking::recover_open_sessions(&pool).await?;
     if recovered > 0 {
-        eprintln!("recovered {recovered} interrupted play session(s)");
+        diagnostics::event(
+            "info",
+            "play_sessions_recovered",
+            "已结算上次异常退出留下的游玩会话",
+            serde_json::json!({"count": recovered}),
+        );
     }
     let preferences = preferences::load(&pool).await?;
     let proxy = preferences.effective_proxy();
@@ -583,6 +609,76 @@ pub async fn collection_remove_work(
 }
 
 #[tauri::command]
+pub fn app_quit(app: AppHandle) {
+    app.exit(0);
+}
+
+#[tauri::command]
+pub fn report_frontend_error(input: FrontendError) -> Result<(), String> {
+    diagnostics::record_frontend_error(input);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn database_health(state: State<'_, AppState>) -> Result<DatabaseHealth, String> {
+    database_maintenance::health(&state.pool, &state.data_dir, &state.db_path)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn database_backup(
+    state: State<'_, AppState>,
+    destination: String,
+) -> Result<BackupInfo, String> {
+    database_maintenance::backup_to(
+        &state.pool,
+        &state.data_dir,
+        &state.db_path,
+        Path::new(&destination),
+    )
+    .await
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn database_backup_default(state: State<'_, AppState>) -> Result<BackupInfo, String> {
+    database_maintenance::backup_to_default(&state.pool, &state.data_dir, &state.db_path)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn database_restore(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    source_path: String,
+) -> Result<RestoreOutcome, String> {
+    let pool = state.pool.clone();
+    let data_dir = state.data_dir.clone();
+    let db_path = state.db_path.clone();
+    let result =
+        database_maintenance::restore_database(&pool, &data_dir, &db_path, Path::new(&source_path))
+            .await;
+    if let Err(error) = &result {
+        diagnostics::event(
+            "error",
+            "database_restore_failed",
+            "数据库恢复未完成",
+            serde_json::json!({"error": error.to_string(), "source": source_path}),
+        );
+    }
+    if result.is_ok() {
+        let restart_app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(450)).await;
+            restart_app.restart();
+        });
+    }
+    result.map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn app_info(state: State<'_, AppState>) -> Result<AppInfo, String> {
     let library_count = db::library_count(&state.pool)
         .await
@@ -601,6 +697,13 @@ pub async fn app_info(state: State<'_, AppState>) -> Result<AppInfo, String> {
     Ok(AppInfo {
         data_dir: state.data_dir.to_string_lossy().to_string(),
         db_path: state.db_path.to_string_lossy().to_string(),
+        backup_dir: database_maintenance::backup_dir(&state.data_dir)
+            .to_string_lossy()
+            .to_string(),
+        log_dir: diagnostics::log_dir()
+            .unwrap_or_else(|| state.data_dir.join("logs"))
+            .to_string_lossy()
+            .to_string(),
         library_count,
         exclusion_count,
         root_count,
@@ -657,6 +760,73 @@ pub fn open_data_dir(state: State<'_, AppState>) -> Result<(), String> {
     {
         let _ = state;
         Err("当前平台不支持打开数据目录".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn open_backup_dir(state: State<'_, AppState>) -> Result<(), String> {
+    let directory = database_maintenance::backup_dir(&state.data_dir);
+    std::fs::create_dir_all(&directory).map_err(|error| format!("无法创建备份目录：{error}"))?;
+    open_directory(&directory)
+}
+
+#[tauri::command]
+pub fn open_log_dir(state: State<'_, AppState>) -> Result<(), String> {
+    let directory = diagnostics::log_dir().unwrap_or_else(|| state.data_dir.join("logs"));
+    std::fs::create_dir_all(&directory).map_err(|error| format!("无法创建日志目录：{error}"))?;
+    open_directory(&directory)
+}
+
+fn open_directory(directory: &Path) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        std::process::Command::new("explorer.exe")
+            .arg(directory)
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| format!("无法打开目录：{error}"))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = directory;
+        Err("当前平台不支持打开目录".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn open_external_url(url: String) -> Result<(), String> {
+    let parsed = url::Url::parse(&url).map_err(|error| format!("链接格式无效：{error}"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("只允许打开 http 或 https 链接".to_string());
+    }
+    webbrowser::open(parsed.as_str())
+        .map(|_| ())
+        .map_err(|error| format!("无法打开系统浏览器：{error}"))
+}
+
+#[tauri::command]
+pub fn reveal_work_path(path: String) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let target = std::path::PathBuf::from(&path);
+        if !target.exists() {
+            return Err("路径不存在，可能已被移动或删除。".to_string());
+        }
+        let mut command = std::process::Command::new("explorer.exe");
+        if target.is_file() {
+            command.arg(format!("/select,{}", target.display()));
+        } else {
+            command.arg(&target);
+        }
+        command
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| format!("无法打开所在文件夹：{error}"))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        Err("当前平台不支持在文件夹中显示".to_string())
     }
 }
 
@@ -1057,18 +1227,6 @@ pub async fn metadata_import(
 }
 
 #[tauri::command]
-pub async fn metadata_set_field_lock(
-    state: State<'_, AppState>,
-    work_id: i64,
-    field: String,
-    locked: bool,
-) -> Result<(), String> {
-    metadata::set_field_lock(&state.pool, work_id, &field, locked)
-        .await
-        .map_err(|error| error.to_string())
-}
-
-#[tauri::command]
 pub async fn metadata_field_priorities(
     state: State<'_, AppState>,
 ) -> Result<Vec<metadata::FieldPriorityState>, String> {
@@ -1400,7 +1558,6 @@ pub async fn metadata_batch_apply(
         let mut selections = Vec::new();
         for field in &preview.fields {
             if field.default_selected
-                && !field.locked
                 && let Some(candidate) = field.candidates.first()
             {
                 selections.push(metadata::MergeSelection {
@@ -1425,10 +1582,18 @@ pub async fn metadata_batch_apply(
         } else {
             None
         };
-        let result = if selections.is_empty() && cover.is_none() {
+        let source_links = preview
+            .matched
+            .iter()
+            .map(|matched| metadata::MergeSourceLink {
+                provider: matched.provider.clone(),
+                source_id: matched.source_id.clone(),
+                title: matched.title.clone(),
+            })
+            .collect::<Vec<_>>();
+        let result = if selections.is_empty() && cover.is_none() && source_links.is_empty() {
             Ok(metadata::MergeApplyResult {
                 applied: Vec::new(),
-                skipped_locked: Vec::new(),
                 skipped_non_empty: Vec::new(),
                 cover_applied: false,
                 errors: Vec::new(),
@@ -1443,6 +1608,7 @@ pub async fn metadata_batch_apply(
                     work_id,
                     selections,
                     cover,
+                    source_links,
                     only_if_empty: true,
                 },
                 &job.cancel,
@@ -1467,7 +1633,6 @@ pub async fn metadata_batch_apply(
                     title: preview.title.clone(),
                     status: status.to_string(),
                     applied: result.applied,
-                    skipped_locked: result.skipped_locked,
                     skipped_non_empty: result.skipped_non_empty,
                     cover_applied: result.cover_applied,
                     errors: result.errors,
@@ -1480,7 +1645,6 @@ pub async fn metadata_batch_apply(
                     title: preview.title.clone(),
                     status: "failed".to_string(),
                     applied: Vec::new(),
-                    skipped_locked: Vec::new(),
                     skipped_non_empty: Vec::new(),
                     cover_applied: false,
                     errors: vec![error.to_string()],
@@ -1554,6 +1718,18 @@ pub async fn oauth_connect(
     state
         .oauth
         .connect(&state.pool, &provider_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn oauth_sync_profile(
+    state: State<'_, AppState>,
+    provider_id: String,
+) -> Result<crate::oauth::OAuthStatus, String> {
+    state
+        .oauth
+        .sync_profile(&state.pool, &provider_id)
         .await
         .map_err(|error| error.to_string())
 }

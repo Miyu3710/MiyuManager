@@ -428,16 +428,11 @@ pub async fn merge_preview(
         bail!("作品不存在");
     }
     let values = store::load_work_field_values(pool, work_id).await?;
-    let mut claims = store::load_claims(pool, work_id).await?;
     let priorities = effective_priorities(pool, oauth).await?;
-    apply_claim_priorities(&mut claims, &priorities);
     let (matched, errors) =
         best_matches(pool, http, oauth, &values, provider_filter, cancel).await?;
-    let fields = build_merge_fields(&values, &claims, &matched, &priorities);
-    let cover_locked = claims
-        .iter()
-        .any(|claim| claim.field == "cover" && claim.locked);
-    let default_cover = values.cover_source.is_none() && !cover_locked;
+    let fields = build_merge_fields(&values, &matched, &priorities);
+    let default_cover = values.cover_source.is_none();
     let covers = build_merge_covers(&matched, &priorities, default_cover);
     Ok(MergePreview {
         work_id,
@@ -454,21 +449,55 @@ pub async fn merge_preview(
     })
 }
 
+pub async fn sync_source_links(
+    pool: &SqlitePool,
+    http: &super::MetadataHttp,
+    oauth: &OAuthService,
+    work_id: i64,
+    cancel: &CancellationToken,
+) -> Result<usize> {
+    if !db::work_exists(pool, work_id).await? {
+        bail!("作品不存在");
+    }
+    let values = store::load_work_field_values(pool, work_id).await?;
+    let existing = store::load_source_links(pool, work_id)
+        .await?
+        .into_iter()
+        .map(|link| link.provider)
+        .collect::<HashSet<_>>();
+    let (matched, _) = best_matches(pool, http, oauth, &values, None, cancel).await?;
+    if matched.is_empty() {
+        return Ok(0);
+    }
+    let mut tx = pool.begin().await?;
+    let mut seen = HashSet::new();
+    let mut count = 0;
+    for item in &matched {
+        if existing.contains(&item.info.provider) || !seen.insert(item.info.provider.clone()) {
+            continue;
+        }
+        store::upsert_source_link(
+            &mut tx,
+            work_id,
+            &item.info.provider,
+            &item.info.source_id,
+            &item.info.title,
+        )
+        .await?;
+        count += 1;
+    }
+    tx.commit().await?;
+    Ok(count)
+}
+
 fn build_merge_fields(
     values: &WorkFieldValues,
-    claims: &[ClaimRow],
     matched: &[MatchedDetail],
     priorities: &HashMap<String, HashMap<String, i64>>,
 ) -> Vec<MergeFieldState> {
     let mut fields = Vec::new();
     for (field, label) in FIELD_LABELS {
         let current = values.current(field);
-        let field_claims: Vec<&ClaimRow> = claims
-            .iter()
-            .filter(|claim| claim.field == *field)
-            .collect();
-        let locked_claim = field_claims.iter().find(|claim| claim.locked);
-        let locked = locked_claim.is_some();
         let mut candidates: Vec<MergeFieldCandidate> = matched
             .iter()
             .filter_map(|item| {
@@ -506,14 +535,11 @@ fn build_merge_fields(
             && candidates
                 .iter()
                 .any(|candidate| candidate.value != current);
-        let default_selected =
-            is_empty_value(&current) && !locked && best_confidence >= AUTO_MATCH_SCORE;
+        let default_selected = is_empty_value(&current) && best_confidence >= AUTO_MATCH_SCORE;
         fields.push(MergeFieldState {
             field: field.to_string(),
             label: label.to_string(),
             current,
-            locked,
-            lock_source: locked_claim.map(|claim| claim.source.clone()),
             candidates,
             default_selected,
             conflict: distinct.len() > 1 || differs_from_current,
@@ -604,19 +630,34 @@ pub async fn merge_apply(
     if !db::work_exists(pool, request.work_id).await? {
         bail!("作品不存在");
     }
-    let claims = store::load_claims(pool, request.work_id).await?;
     let values = store::load_work_field_values(pool, request.work_id).await?;
-    let locked_fields: HashSet<String> = claims
-        .iter()
-        .filter(|claim| claim.locked)
-        .map(|claim| claim.field.clone())
-        .collect();
     let mut applied = Vec::new();
-    let mut skipped_locked = Vec::new();
     let mut skipped_non_empty = Vec::new();
     let mut errors = Vec::new();
     let mut details: HashMap<(String, String), CandidateDetail> = HashMap::new();
     let mut selected_fields = HashSet::new();
+
+    let mut source_links: HashMap<String, (String, String)> = HashMap::new();
+    for link in &request.source_links {
+        if !link.provider.trim().is_empty() && !link.source_id.trim().is_empty() {
+            source_links.insert(
+                link.provider.clone(),
+                (link.source_id.clone(), link.title.clone()),
+            );
+        }
+    }
+    for selection in request.selections.iter().chain(request.cover.iter()) {
+        source_links
+            .entry(selection.provider.clone())
+            .or_insert_with(|| (selection.source_id.clone(), String::new()));
+    }
+    if !source_links.is_empty() {
+        let mut tx = pool.begin().await?;
+        for (provider, (source_id, title)) in &source_links {
+            store::upsert_source_link(&mut tx, request.work_id, provider, source_id, title).await?;
+        }
+        tx.commit().await?;
+    }
 
     for selection in &request.selections {
         if !selected_fields.insert(selection.field.clone()) {
@@ -628,10 +669,6 @@ pub async fn merge_apply(
             .any(|(field, _)| *field == selection.field)
         {
             errors.push(format!("未知的元数据字段：{}", selection.field));
-            continue;
-        }
-        if locked_fields.contains(&selection.field) {
-            skipped_locked.push(selection.field.clone());
             continue;
         }
         if request.only_if_empty && !is_empty_value(&values.current(&selection.field)) {
@@ -677,7 +714,6 @@ pub async fn merge_apply(
                 &selection.source_id,
                 &value,
                 Some(0.9),
-                false,
             )
             .await?;
             store::touch_work(&mut tx, request.work_id).await?;
@@ -693,9 +729,7 @@ pub async fn merge_apply(
 
     let mut cover_applied = false;
     if let Some(selection) = &request.cover {
-        if locked_fields.contains("cover") {
-            skipped_locked.push("cover".to_string());
-        } else if request.only_if_empty && values.cover_source.is_some() {
+        if request.only_if_empty && values.cover_source.is_some() {
             skipped_non_empty.push("cover".to_string());
         } else {
             let key = (selection.provider.clone(), selection.source_id.clone());
@@ -752,7 +786,6 @@ pub async fn merge_apply(
                                     &selection.source_id,
                                     &Value::String(url.to_string()),
                                     Some(0.9),
-                                    false,
                                 )
                                 .await;
                                 cover_applied = true;
@@ -767,7 +800,6 @@ pub async fn merge_apply(
 
     Ok(MergeApplyResult {
         applied,
-        skipped_locked,
         skipped_non_empty,
         cover_applied,
         errors,
@@ -816,6 +848,11 @@ pub async fn adopt_claim(
         } else {
             None
         },
+        source_links: vec![MergeSourceLink {
+            provider: claim.source.clone(),
+            source_id: claim.source_id.clone(),
+            title: String::new(),
+        }],
         only_if_empty: false,
     };
     merge_apply(pool, data_dir, http, oauth, request, cancel).await
@@ -1008,7 +1045,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn merge_apply_skips_locked_fields_and_records_claims() {
+    async fn merge_apply_applies_selected_fields_and_records_claims() {
         let pool = open_memory_pool().await.expect("pool");
         let work_id = seed_work(&pool, "测试作品").await;
         let dir = tempfile::TempDir::new().expect("dir");
@@ -1018,15 +1055,6 @@ mod tests {
         store::cache_put(&pool, "vndb", "detail:vndb:v1", "v1", "detail", raw, 60)
             .await
             .expect("cache");
-        store::set_field_lock(
-            &pool,
-            work_id,
-            "description",
-            true,
-            Value::String("锁定简介".to_string()),
-        )
-        .await
-        .expect("lock");
         let result = merge_apply(
             &pool,
             Path::new("C:\\tmp"),
@@ -1049,24 +1077,49 @@ mod tests {
                     },
                 ],
                 cover: None,
+                source_links: vec![
+                    MergeSourceLink {
+                        provider: "vndb".to_string(),
+                        source_id: "v1".to_string(),
+                        title: "テスト作品".to_string(),
+                    },
+                    MergeSourceLink {
+                        provider: "bangumi".to_string(),
+                        source_id: "42".to_string(),
+                        title: "测试作品".to_string(),
+                    },
+                ],
                 only_if_empty: false,
             },
             &CancellationToken::new(),
         )
         .await
         .expect("apply");
-        assert_eq!(result.applied, vec!["title"]);
-        assert_eq!(result.skipped_locked, vec!["description"]);
+        assert_eq!(result.applied, vec!["title", "description"]);
         let values = store::load_work_field_values(&pool, work_id)
             .await
             .expect("values");
         assert_eq!(values.title, "テスト作品");
-        assert_eq!(values.description, "");
+        assert_eq!(values.description, "简介");
         let claims = store::load_claims(&pool, work_id).await.expect("claims");
         assert!(
             claims
                 .iter()
                 .any(|claim| claim.field == "title" && claim.source == "vndb")
+        );
+        assert!(
+            claims
+                .iter()
+                .any(|claim| claim.field == "description" && claim.source == "vndb")
+        );
+        let source_links = store::load_source_links(&pool, work_id)
+            .await
+            .expect("source links");
+        assert_eq!(source_links.len(), 2);
+        assert!(
+            source_links
+                .iter()
+                .any(|link| link.provider == "bangumi" && link.source_id == "42")
         );
     }
 
@@ -1100,6 +1153,7 @@ mod tests {
                     url: None,
                 }],
                 cover: None,
+                source_links: Vec::new(),
                 only_if_empty: true,
             },
             &CancellationToken::new(),

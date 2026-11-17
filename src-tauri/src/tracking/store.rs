@@ -8,14 +8,19 @@ use sqlx::{Row, SqlitePool};
 
 use super::types::{
     DailyPlaytime, PlaySessionRecord, PlaySessionWithWork, SessionCreateInput, SessionUpdateInput,
-    StatsOverview, StatsPeriod, TopGame,
+    StatsActivityEvent, StatsOverview, StatsPeriod, TopGame,
 };
 
 const SESSION_SELECT: &str = "
 SELECT ps.id, ps.local_copy_id, ps.launch_id, ps.status, ps.started_at,
        ps.last_heartbeat_at, ps.ended_at, ps.duration_sec, ps.end_reason,
        ps.source, ps.process_id, ps.exe_path, ps.note, ps.corrected,
-       r.work_id, w.canonical_title AS work_title, w.original_title
+       r.work_id, w.canonical_title AS work_title, w.original_title,
+       r.developer AS work_developer, w.release_year AS work_year,
+       (SELECT a.thumb_path FROM assets a
+         WHERE a.work_id = w.id AND a.kind = 'cover' LIMIT 1) AS cover_thumb_path,
+       (SELECT a.original_path FROM assets a
+         WHERE a.work_id = w.id AND a.kind = 'cover' LIMIT 1) AS cover_path
 FROM play_sessions ps
 JOIN local_copies lc ON lc.id = ps.local_copy_id
 JOIN releases r ON r.id = lc.release_id
@@ -75,6 +80,44 @@ fn row_to_session(row: &sqlx::sqlite::SqliteRow) -> Result<PlaySessionWithWork> 
         work_title: row.try_get("work_title")?,
         original_title: row.try_get("original_title")?,
     })
+}
+
+fn row_to_session_with_cover(
+    row: &sqlx::sqlite::SqliteRow,
+) -> Result<(PlaySessionWithWork, Option<String>, Option<String>)> {
+    Ok((
+        row_to_session(row)?,
+        row.try_get("cover_thumb_path")?,
+        row.try_get("cover_path")?,
+    ))
+}
+
+fn session_activity_event(
+    session: PlaySessionWithWork,
+    work_developer: Option<String>,
+    work_year: Option<i64>,
+    cover_thumb_path: Option<String>,
+    cover_path: Option<String>,
+) -> StatsActivityEvent {
+    StatsActivityEvent {
+        id: format!("play-{}", session.session.id),
+        kind: "play".to_string(),
+        occurred_at: session.session.started_at.clone(),
+        work_id: session.session.work_id,
+        work_title: session.work_title,
+        original_title: session.original_title,
+        work_developer,
+        work_year,
+        cover_thumb_path,
+        cover_path,
+        collection_name: None,
+        duration_sec: Some(session.session.duration_sec),
+        session_started_at: Some(session.session.started_at),
+        session_ended_at: session.session.ended_at,
+        end_reason: session.session.end_reason,
+        source: Some(session.session.source),
+        corrected: session.session.corrected,
+    }
 }
 
 pub async fn start_session(
@@ -450,12 +493,12 @@ pub async fn stats_overview(pool: &SqlitePool, period: StatsPeriod) -> Result<St
     .await?;
     let (range_seconds, range_launches) = sum_since(pool, range_start).await?;
 
-    let heatmap_start = local_day_start(today - ChronoDuration::days(83), now);
+    let daily_start = local_day_start(today - ChronoDuration::days(364), now);
     let daily_rows = sqlx::query(
         "SELECT started_at, duration_sec FROM play_sessions
          WHERE ended_at IS NOT NULL AND started_at >= ?",
     )
-    .bind(format_timestamp(heatmap_start))
+    .bind(format_timestamp(daily_start))
     .fetch_all(pool)
     .await?;
     let mut daily_map = HashMap::<NaiveDate, i64>::new();
@@ -468,9 +511,9 @@ pub async fn stats_overview(pool: &SqlitePool, period: StatsPeriod) -> Result<St
                 .or_default() += duration_sec;
         }
     }
-    let daily = (0..84)
+    let daily = (0..365)
         .map(|offset| {
-            let date = today - ChronoDuration::days(83 - offset);
+            let date = today - ChronoDuration::days(364 - offset);
             DailyPlaytime {
                 date: date.format("%Y-%m-%d").to_string(),
                 seconds: *daily_map.get(&date).unwrap_or(&0),
@@ -518,12 +561,12 @@ pub async fn stats_overview(pool: &SqlitePool, period: StatsPeriod) -> Result<St
     let recent_sql = if range_start.is_some() {
         format!(
             "{SESSION_SELECT} WHERE ps.ended_at IS NOT NULL AND ps.started_at >= ?
-             ORDER BY ps.ended_at DESC LIMIT 20"
+             ORDER BY ps.ended_at DESC LIMIT 80"
         )
     } else {
         format!(
             "{SESSION_SELECT} WHERE ps.ended_at IS NOT NULL
-             ORDER BY ps.ended_at DESC LIMIT 20"
+             ORDER BY ps.ended_at DESC LIMIT 80"
         )
     };
     let mut recent_query = sqlx::query(&recent_sql);
@@ -531,10 +574,115 @@ pub async fn stats_overview(pool: &SqlitePool, period: StatsPeriod) -> Result<St
         recent_query = recent_query.bind(format_timestamp(start));
     }
     let recent_rows = recent_query.fetch_all(pool).await?;
-    let recent_sessions = recent_rows
-        .iter()
-        .map(row_to_session)
-        .collect::<Result<Vec<_>>>()?;
+    let mut activity_sessions = Vec::with_capacity(recent_rows.len());
+    let mut timeline = Vec::with_capacity(recent_rows.len() + 80);
+    for row in &recent_rows {
+        let (session, cover_thumb_path, cover_path) = row_to_session_with_cover(row)?;
+        let work_developer: Option<String> = row.try_get("work_developer")?;
+        let work_year: Option<i64> = row.try_get("work_year")?;
+        timeline.push(session_activity_event(
+            session.clone(),
+            work_developer,
+            work_year,
+            cover_thumb_path,
+            cover_path,
+        ));
+        activity_sessions.push(session);
+    }
+    let recent_sessions = activity_sessions.into_iter().take(20).collect();
+
+    let range_param = range_start.map(format_timestamp);
+    let import_rows = sqlx::query(
+        "SELECT w.id AS work_id, w.canonical_title AS work_title, w.original_title,
+                w.release_year AS work_year, MAX(r.developer) AS work_developer,
+                MIN(lc.created_at) AS occurred_at,
+                (SELECT a.thumb_path FROM assets a
+                  WHERE a.work_id = w.id AND a.kind = 'cover' LIMIT 1) AS cover_thumb_path,
+                (SELECT a.original_path FROM assets a
+                  WHERE a.work_id = w.id AND a.kind = 'cover' LIMIT 1) AS cover_path
+         FROM local_copies lc
+         JOIN releases r ON r.id = lc.release_id
+         JOIN works w ON w.id = r.work_id
+         GROUP BY w.id
+         HAVING MIN(lc.created_at) >= COALESCE(?, '')
+         ORDER BY occurred_at DESC, w.id ASC LIMIT 40",
+    )
+    .bind(range_param.as_deref())
+    .fetch_all(pool)
+    .await?;
+    for row in &import_rows {
+        let work_id: i64 = row.try_get("work_id")?;
+        timeline.push(StatsActivityEvent {
+            id: format!("import-{work_id}"),
+            kind: "import".to_string(),
+            occurred_at: row.try_get("occurred_at")?,
+            work_id,
+            work_title: row.try_get("work_title")?,
+            original_title: row.try_get("original_title")?,
+            work_developer: row.try_get("work_developer")?,
+            work_year: row.try_get("work_year")?,
+            cover_thumb_path: row.try_get("cover_thumb_path")?,
+            cover_path: row.try_get("cover_path")?,
+            collection_name: None,
+            duration_sec: None,
+            session_started_at: None,
+            session_ended_at: None,
+            end_reason: None,
+            source: None,
+            corrected: false,
+        });
+    }
+
+    let collection_rows = sqlx::query(
+        "SELECT ci.collection_id, c.name AS collection_name,
+                ci.added_at AS occurred_at, w.id AS work_id,
+                w.canonical_title AS work_title, w.original_title,
+                w.release_year AS work_year,
+                (SELECT r.developer FROM releases r
+                  WHERE r.work_id = w.id ORDER BY r.id LIMIT 1) AS work_developer,
+                (SELECT a.thumb_path FROM assets a
+                  WHERE a.work_id = w.id AND a.kind = 'cover' LIMIT 1) AS cover_thumb_path,
+                (SELECT a.original_path FROM assets a
+                  WHERE a.work_id = w.id AND a.kind = 'cover' LIMIT 1) AS cover_path
+         FROM collection_items ci
+         JOIN collections c ON c.id = ci.collection_id
+         JOIN works w ON w.id = ci.work_id
+         WHERE ci.added_at >= COALESCE(?, '')
+         ORDER BY ci.added_at DESC, c.id ASC, w.id ASC LIMIT 40",
+    )
+    .bind(range_param.as_deref())
+    .fetch_all(pool)
+    .await?;
+    for row in &collection_rows {
+        let collection_id: i64 = row.try_get("collection_id")?;
+        let work_id: i64 = row.try_get("work_id")?;
+        timeline.push(StatsActivityEvent {
+            id: format!("collection-{collection_id}-{work_id}"),
+            kind: "collection".to_string(),
+            occurred_at: row.try_get("occurred_at")?,
+            work_id,
+            work_title: row.try_get("work_title")?,
+            original_title: row.try_get("original_title")?,
+            work_developer: row.try_get("work_developer")?,
+            work_year: row.try_get("work_year")?,
+            cover_thumb_path: row.try_get("cover_thumb_path")?,
+            cover_path: row.try_get("cover_path")?,
+            collection_name: Some(row.try_get("collection_name")?),
+            duration_sec: None,
+            session_started_at: None,
+            session_ended_at: None,
+            end_reason: None,
+            source: None,
+            corrected: false,
+        });
+    }
+    timeline.sort_by(|left, right| {
+        right
+            .occurred_at
+            .cmp(&left.occurred_at)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    timeline.truncate(80);
 
     Ok(StatsOverview {
         all_time_seconds: totals.try_get("all_time")?,
@@ -550,6 +698,7 @@ pub async fn stats_overview(pool: &SqlitePool, period: StatsPeriod) -> Result<St
         daily,
         top_games,
         recent_sessions,
+        timeline,
     })
 }
 
@@ -765,6 +914,40 @@ mod tests {
         assert_eq!(stats.all_time_sessions, 10_000);
         assert_eq!(stats.all_time_seconds, 6_000_000);
         assert_eq!(stats.recent_sessions.len(), 20);
+        assert_eq!(stats.timeline.len(), 80);
+        assert!(stats.timeline.iter().any(|event| event.kind == "play"));
+    }
+
+    #[tokio::test]
+    async fn stats_timeline_merges_library_and_collection_events() {
+        let temp = TempDir::new().expect("temp");
+        let (pool, work_id, _) = test_pool(&temp).await;
+        let collection_id = sqlx::query("INSERT INTO collections (name) VALUES ('深夜推荐')")
+            .execute(&pool)
+            .await
+            .expect("collection")
+            .last_insert_rowid();
+        sqlx::query("INSERT INTO collection_items (collection_id, work_id) VALUES (?, ?)")
+            .bind(collection_id)
+            .bind(work_id)
+            .execute(&pool)
+            .await
+            .expect("collection item");
+
+        let stats = stats_overview(&pool, StatsPeriod::All)
+            .await
+            .expect("stats");
+        assert!(
+            stats
+                .timeline
+                .iter()
+                .any(|event| event.kind == "import" && event.work_id == work_id)
+        );
+        assert!(stats.timeline.iter().any(|event| {
+            event.kind == "collection"
+                && event.work_id == work_id
+                && event.collection_name.as_deref() == Some("深夜推荐")
+        }));
     }
 
     #[tokio::test]
@@ -772,6 +955,8 @@ mod tests {
         let temp = TempDir::new().expect("temp");
         let (pool, work_id, _) = test_pool(&temp).await;
         let now = Utc::now();
+        let week_start = period_start(StatsPeriod::Week, Local::now()).expect("week start");
+        let recent_start = (now - ChronoDuration::minutes(5)).max(week_start);
         create_manual_session(
             &pool,
             SessionCreateInput {
@@ -789,8 +974,8 @@ mod tests {
             &pool,
             SessionCreateInput {
                 work_id,
-                started_at: format_timestamp(now - ChronoDuration::hours(2)),
-                ended_at: format_timestamp(now - ChronoDuration::minutes(5)),
+                started_at: format_timestamp(recent_start),
+                ended_at: format_timestamp(now),
                 note: String::new(),
             },
         )

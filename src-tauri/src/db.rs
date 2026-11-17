@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -6,6 +7,10 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::{Row, SqlitePool};
+
+use crate::preferences;
+
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 pub const STATUSES: [&str; 5] = ["unclassified", "playing", "queued", "finished", "paused"];
 
@@ -63,6 +68,7 @@ pub struct LibraryCounts {
     pub queued: i64,
     pub finished: i64,
     pub paused: i64,
+    pub favorite: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -96,6 +102,7 @@ pub struct LibraryItem {
     pub launch_count: i64,
     pub catalog_no: String,
     pub cover_thumb_path: Option<String>,
+    pub cover_hero_path: Option<String>,
     pub cover_path: Option<String>,
 }
 
@@ -129,9 +136,7 @@ pub struct LaunchProfile {
     #[serde(default)]
     pub env: Vec<EnvVar>,
     #[serde(default)]
-    pub wrapper_path: Option<String>,
-    #[serde(default)]
-    pub wrapper_args: Vec<String>,
+    pub wrapper_ids: Vec<String>,
     #[serde(default)]
     pub monitor: Option<i64>,
     #[serde(default)]
@@ -193,7 +198,6 @@ pub struct PathCheck {
 pub struct ValidationReport {
     pub exe: PathCheck,
     pub working_dir: PathCheck,
-    pub wrapper: Option<PathCheck>,
     pub valid: bool,
 }
 
@@ -251,6 +255,8 @@ pub struct ScanExclusionSets {
 pub struct AppInfo {
     pub data_dir: String,
     pub db_path: String,
+    pub backup_dir: String,
+    pub log_dir: String,
     pub library_count: i64,
     pub exclusion_count: i64,
     pub root_count: i64,
@@ -278,6 +284,44 @@ pub struct ImportResult {
     pub updated: usize,
 }
 
+fn compare_titles(left: &str, right: &str) -> Ordering {
+    #[cfg(windows)]
+    {
+        use std::ptr::null;
+        use windows_sys::Win32::Globalization::{
+            CSTR_EQUAL, CSTR_GREATER_THAN, CSTR_LESS_THAN, CompareStringEx, NORM_IGNORECASE,
+        };
+
+        let left_wide: Vec<u16> = left.encode_utf16().chain(std::iter::once(0)).collect();
+        let right_wide: Vec<u16> = right.encode_utf16().chain(std::iter::once(0)).collect();
+        let result = unsafe {
+            CompareStringEx(
+                windows_sys::core::w!("zh-CN"),
+                NORM_IGNORECASE,
+                left_wide.as_ptr(),
+                -1,
+                right_wide.as_ptr(),
+                -1,
+                null(),
+                null(),
+                0,
+            )
+        };
+
+        match result {
+            CSTR_LESS_THAN => Ordering::Less,
+            CSTR_EQUAL => Ordering::Equal,
+            CSTR_GREATER_THAN => Ordering::Greater,
+            _ => left.to_lowercase().cmp(&right.to_lowercase()),
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        left.to_lowercase().cmp(&right.to_lowercase())
+    }
+}
+
 pub async fn open_pool(db_path: &Path) -> Result<SqlitePool> {
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent)
@@ -290,7 +334,8 @@ pub async fn open_pool(db_path: &Path) -> Result<SqlitePool> {
         .journal_mode(SqliteJournalMode::Wal)
         .synchronous(SqliteSynchronous::Normal)
         .foreign_keys(true)
-        .busy_timeout(Duration::from_secs(5));
+        .busy_timeout(Duration::from_secs(5))
+        .collation("MIYU_TITLE", compare_titles);
 
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
@@ -298,6 +343,9 @@ pub async fn open_pool(db_path: &Path) -> Result<SqlitePool> {
         .await
         .with_context(|| format!("无法打开数据库 {}", db_path.display()))?;
 
+    if db_path.exists() {
+        crate::database_maintenance::backup_before_migration(&pool, db_path, &MIGRATOR).await?;
+    }
     run_migrations(&pool).await?;
     Ok(pool)
 }
@@ -306,7 +354,8 @@ pub async fn open_pool(db_path: &Path) -> Result<SqlitePool> {
 pub async fn open_memory_pool() -> Result<SqlitePool> {
     let options = "sqlite::memory:"
         .parse::<SqliteConnectOptions>()?
-        .foreign_keys(true);
+        .foreign_keys(true)
+        .collation("MIYU_TITLE", compare_titles);
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
         .connect_with(options)
@@ -316,10 +365,7 @@ pub async fn open_memory_pool() -> Result<SqlitePool> {
 }
 
 async fn run_migrations(pool: &SqlitePool) -> Result<()> {
-    sqlx::migrate!("./migrations")
-        .run(pool)
-        .await
-        .context("数据库迁移失败")?;
+    MIGRATOR.run(pool).await.context("数据库迁移失败")?;
     Ok(())
 }
 
@@ -497,7 +543,7 @@ fn build_filters(query: &LibraryQuery, force_like: bool, include_status: bool) -
 
 fn order_clause(sort: &str) -> &'static str {
     match sort {
-        "title_asc" => "w.canonical_title COLLATE NOCASE ASC, lc.id ASC",
+        "title_asc" => "w.canonical_title COLLATE MIYU_TITLE ASC, lc.id ASC",
         "size_desc" => "lc.size_bytes DESC, w.id DESC",
         "last_played_desc" => {
             "lc.last_launched_at IS NULL, lc.last_launched_at DESC, lc.created_at DESC, w.id DESC"
@@ -575,6 +621,8 @@ async fn query_library_inner(
            printf('LOCAL-%04d', lc.id) AS catalog_no,
            (SELECT a.thumb_path FROM assets a
              WHERE a.work_id = w.id AND a.kind = 'cover' LIMIT 1) AS cover_thumb_path,
+           (SELECT a.hero_path FROM assets a
+             WHERE a.work_id = w.id AND a.kind = 'cover' LIMIT 1) AS cover_hero_path,
            (SELECT a.original_path FROM assets a
              WHERE a.work_id = w.id AND a.kind = 'cover' LIMIT 1) AS cover_path
          {LIBRARY_JOINS}
@@ -601,7 +649,9 @@ async fn query_library_inner(
 
     let counts_sql = format!(
         "{PRIMARY_COPY_CTE}
-         SELECT COALESCE(ue.status, 'unclassified') AS status, COUNT(DISTINCT w.id) AS count
+         SELECT COALESCE(ue.status, 'unclassified') AS status,
+                COUNT(DISTINCT w.id) AS count,
+                COUNT(DISTINCT CASE WHEN COALESCE(ue.favorite, 0) = 1 THEN w.id END) AS favorite_count
          {LIBRARY_JOINS}
          WHERE {}
          GROUP BY COALESCE(ue.status, 'unclassified')",
@@ -616,7 +666,9 @@ async fn query_library_inner(
     for row in count_rows {
         let status: String = row.try_get("status")?;
         let count: i64 = row.try_get("count")?;
+        let favorite_count: i64 = row.try_get("favorite_count")?;
         counts.all += count;
+        counts.favorite += favorite_count;
         match status.as_str() {
             "playing" => counts.playing = count,
             "queued" => counts.queued = count,
@@ -665,6 +717,7 @@ fn row_to_library_item(row: &sqlx::sqlite::SqliteRow) -> Result<LibraryItem> {
         launch_count: row.try_get("launch_count")?,
         catalog_no: row.try_get("catalog_no")?,
         cover_thumb_path: row.try_get("cover_thumb_path")?,
+        cover_hero_path: row.try_get("cover_hero_path")?,
         cover_path: row.try_get("cover_path")?,
     })
 }
@@ -709,6 +762,8 @@ pub async fn get_library_item(
            printf('LOCAL-%04d', lc.id) AS catalog_no,
            (SELECT a.thumb_path FROM assets a
              WHERE a.work_id = w.id AND a.kind = 'cover' LIMIT 1) AS cover_thumb_path,
+           (SELECT a.hero_path FROM assets a
+             WHERE a.work_id = w.id AND a.kind = 'cover' LIMIT 1) AS cover_hero_path,
            (SELECT a.original_path FROM assets a
              WHERE a.work_id = w.id AND a.kind = 'cover' LIMIT 1) AS cover_path,
            COALESCE(ue.notes, '') AS notes,
@@ -1034,7 +1089,7 @@ pub async fn get_launch_profile(
     local_copy_id: i64,
 ) -> Result<Option<LaunchProfile>> {
     let row = sqlx::query(
-        "SELECT args_json, env_json, wrapper_path, wrapper_args_json, monitor, fullscreen
+        "SELECT args_json, env_json, wrapper_path, wrapper_ids_json, monitor, fullscreen
          FROM launch_profiles WHERE local_copy_id = ?",
     )
     .bind(local_copy_id)
@@ -1043,12 +1098,18 @@ pub async fn get_launch_profile(
     let Some(row) = row else {
         return Ok(None);
     };
+    let legacy_wrapper_path: Option<String> = row
+        .try_get::<Option<String>, _>("wrapper_path")?
+        .filter(|path| !path.trim().is_empty());
+    let mut wrapper_ids = parse_json_list(row.try_get("wrapper_ids_json")?);
+    if wrapper_ids.is_empty() && legacy_wrapper_path.is_some() {
+        wrapper_ids.push(preferences::WRAPPER_LOCALE_EMULATOR.to_string());
+    }
     Ok(Some(LaunchProfile {
         args: parse_json_list(row.try_get("args_json")?),
         env: serde_json::from_str::<Vec<EnvVar>>(&row.try_get::<String, _>("env_json")?)
             .unwrap_or_default(),
-        wrapper_path: row.try_get("wrapper_path")?,
-        wrapper_args: parse_json_list(row.try_get("wrapper_args_json")?),
+        wrapper_ids,
         monitor: row.try_get("monitor")?,
         fullscreen: row.try_get::<i64, _>("fullscreen")? != 0,
     }))
@@ -1100,14 +1161,19 @@ fn clean_env(values: Vec<EnvVar>) -> Result<Vec<EnvVar>> {
 
 pub fn validate_profile(profile: &LaunchProfile) -> Result<()> {
     clean_args(profile.args.clone(), "启动参数")?;
-    clean_args(profile.wrapper_args.clone(), "包装器参数")?;
     clean_env(profile.env.clone())?;
-    if profile
-        .wrapper_path
-        .as_deref()
-        .is_some_and(|path| path.contains('\0'))
-    {
-        bail!("包装器路径不能包含 NUL 字符");
+    if profile.wrapper_ids.len() > 8 {
+        bail!("包装器选择过多");
+    }
+    let mut seen = HashSet::new();
+    for id in &profile.wrapper_ids {
+        let id = id.trim();
+        if !preferences::is_known_wrapper(id) {
+            bail!("不支持的包装器：{id}");
+        }
+        if !seen.insert(id) {
+            bail!("包装器重复选择：{id}");
+        }
     }
     Ok(())
 }
@@ -1130,27 +1196,43 @@ pub async fn save_launch_profile(
     };
     validate_profile(&profile)?;
     let args = clean_args(profile.args, "启动参数")?;
-    let wrapper_args = clean_args(profile.wrapper_args, "包装器参数")?;
     let env = clean_env(profile.env)?;
-    let wrapper_path = clean_optional(profile.wrapper_path, 4096, "包装器路径")?;
-    if let Some(path) = &wrapper_path {
-        let wrapper = Path::new(path);
-        if !wrapper.is_file() {
-            bail!("包装器不存在或不是文件：{path}");
-        }
-    }
     let env_json = serde_json::to_string(&env)?;
     let args_json = serde_json::to_string(&args)?;
-    let wrapper_args_json = serde_json::to_string(&wrapper_args)?;
+    let wrapper_ids = profile
+        .wrapper_ids
+        .iter()
+        .map(|id| id.trim().to_string())
+        .collect::<Vec<_>>();
+    let settings = preferences::load(pool).await?;
+    let legacy_locale = if wrapper_ids
+        .iter()
+        .any(|id| id == preferences::WRAPPER_LOCALE_EMULATOR)
+    {
+        settings.wrappers.iter().find(|wrapper| {
+            wrapper.id == preferences::WRAPPER_LOCALE_EMULATOR && !wrapper.path.trim().is_empty()
+        })
+    } else {
+        None
+    };
+    let legacy_wrapper_path = legacy_locale.map(|wrapper| wrapper.path.clone());
+    let legacy_wrapper_args_json = serde_json::to_string(
+        &legacy_locale
+            .map(|wrapper| wrapper.args.clone())
+            .unwrap_or_default(),
+    )?;
+    let wrapper_ids_json = serde_json::to_string(&wrapper_ids)?;
     sqlx::query(
         "INSERT INTO launch_profiles
-           (local_copy_id, args_json, env_json, wrapper_path, wrapper_args_json, monitor, fullscreen)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+           (local_copy_id, args_json, env_json, wrapper_path, wrapper_args_json,
+            wrapper_ids_json, monitor, fullscreen)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(local_copy_id) DO UPDATE SET
            args_json = excluded.args_json,
            env_json = excluded.env_json,
            wrapper_path = excluded.wrapper_path,
            wrapper_args_json = excluded.wrapper_args_json,
+           wrapper_ids_json = excluded.wrapper_ids_json,
            monitor = excluded.monitor,
            fullscreen = excluded.fullscreen,
            updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
@@ -1158,8 +1240,9 @@ pub async fn save_launch_profile(
     .bind(local_copy_id)
     .bind(args_json)
     .bind(env_json)
-    .bind(wrapper_path)
-    .bind(wrapper_args_json)
+    .bind(legacy_wrapper_path)
+    .bind(legacy_wrapper_args_json)
+    .bind(wrapper_ids_json)
     .bind(profile.monitor)
     .bind(if profile.fullscreen { 1 } else { 0 })
     .execute(pool)
@@ -1182,11 +1265,6 @@ pub async fn save_launch_config(
         }
         if !report.working_dir.ok {
             reasons.push(report.working_dir.message);
-        }
-        if let Some(wrapper) = &report.wrapper
-            && !wrapper.ok
-        {
-            reasons.push(wrapper.message.clone());
         }
         bail!("{}", reasons.join("；"));
     }
@@ -1249,17 +1327,10 @@ pub async fn validate_launch_config_report(
     validate_launch_config(pool, work_id, input).await?;
     let exe = check_file(&input.exe_path, Some("exe"), "可执行文件");
     let working_dir = check_directory(&input.working_dir);
-    let wrapper = input
-        .profile
-        .wrapper_path
-        .as_deref()
-        .filter(|path| !path.trim().is_empty())
-        .map(|path| check_file(path, Some("exe"), "包装器"));
-    let valid = exe.ok && working_dir.ok && wrapper.as_ref().is_none_or(|check| check.ok);
+    let valid = exe.ok && working_dir.ok;
     Ok(ValidationReport {
         exe,
         working_dir,
-        wrapper,
         valid,
     })
 }
@@ -1382,12 +1453,7 @@ pub async fn validate_launch(
     validate_profile(&profile)?;
     let exe = check_file(&target.exe_path, Some("exe"), "可执行文件");
     let working_dir = check_directory(&target.working_dir);
-    let wrapper = profile
-        .wrapper_path
-        .as_deref()
-        .filter(|path| !path.trim().is_empty())
-        .map(|path| check_file(path, Some("exe"), "包装器"));
-    let valid = exe.ok && working_dir.ok && wrapper.as_ref().is_none_or(|check| check.ok);
+    let valid = exe.ok && working_dir.ok;
     if !exe.ok {
         sqlx::query("UPDATE local_copies SET install_status = 'missing' WHERE id = ?")
             .bind(target.local_copy_id)
@@ -1402,7 +1468,6 @@ pub async fn validate_launch(
     Ok(ValidationReport {
         exe,
         working_dir,
-        wrapper,
         valid,
     })
 }
@@ -2039,6 +2104,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sorts_chinese_titles_with_locale_collation() {
+        assert_eq!(compare_titles("Alpha", "alpha"), Ordering::Equal);
+
+        let pool = open_memory_pool().await.expect("pool");
+        let rows = sqlx::query(
+            "SELECT '海边的咖啡露台' AS title
+             UNION ALL SELECT '月影工房'
+             UNION ALL SELECT '白昼之梦'
+             ORDER BY title COLLATE MIYU_TITLE",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("sort titles");
+        let titles = rows
+            .iter()
+            .map(|row| row.get::<String, _>("title"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(titles, vec!["白昼之梦", "海边的咖啡露台", "月影工房"]);
+    }
+
+    #[tokio::test]
+    async fn library_title_sort_uses_chinese_collation() {
+        let temp = TempDir::new().expect("temp dir");
+        let root = temp.path().join("games");
+        fs::create_dir_all(&root).expect("games dir");
+        let titles = ["海边的咖啡露台", "月影工房", "白昼之梦"];
+        let mut candidates = Vec::new();
+        for title in titles {
+            let game = root.join(title);
+            fs::create_dir_all(&game).expect("game dir");
+            fs::write(game.join("game.exe"), vec![0u8; 256 * 1024]).expect("exe");
+            candidates.push(ImportCandidateInput {
+                exe_path: game.join("game.exe").to_string_lossy().to_string(),
+                working_dir: game.to_string_lossy().to_string(),
+                display_name: title.to_string(),
+                root_path: root.to_string_lossy().to_string(),
+                size_bytes: 512 * 1024,
+                steam_app_id: None,
+            });
+        }
+
+        let pool = open_memory_pool().await.expect("pool");
+        import_candidates(&pool, candidates)
+            .await
+            .expect("import candidates");
+        let page = query_library(
+            &pool,
+            LibraryQuery {
+                sort: "title_asc".to_string(),
+                page_size: 10,
+                ..LibraryQuery::default()
+            },
+        )
+        .await
+        .expect("query library");
+        let sorted = page
+            .items
+            .iter()
+            .map(|item| item.title.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(sorted, vec!["白昼之梦", "海边的咖啡露台", "月影工房"]);
+    }
+
+    #[tokio::test]
     async fn imports_and_queries_a_scanned_game() {
         let (temp, pool) = fixture_pool().await;
         let root = temp.path().join("games");
@@ -2273,6 +2404,115 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "manual 10k library benchmark"]
+    async fn benchmark_ten_thousand_library_and_five_thousand_covers() {
+        use std::time::Instant;
+
+        let pool = open_memory_pool().await.expect("pool");
+        let seed_started = Instant::now();
+        let mut tx = pool.begin().await.expect("transaction");
+        for index in 0..10_000 {
+            let work_id =
+                sqlx::query("INSERT INTO works (canonical_title, description) VALUES (?, ?)")
+                    .bind(format!("Benchmark visual novel {index:05}"))
+                    .bind(format!(
+                        "Short fixture description for library item {index:05}"
+                    ))
+                    .execute(&mut *tx)
+                    .await
+                    .expect("work")
+                    .last_insert_rowid();
+            let release_id = sqlx::query(
+                "INSERT INTO releases (work_id, developer, publisher, platform) VALUES (?, 'Fixture Studio', 'Fixture Publisher', 'Windows')",
+            )
+            .bind(work_id)
+            .execute(&mut *tx)
+            .await
+            .expect("release")
+            .last_insert_rowid();
+            sqlx::query(
+                "INSERT INTO local_copies
+                   (release_id, root_path, exe_path, exe_key, working_dir, display_name, size_bytes, file_size_bytes)
+                 VALUES (?, 'C:\\Games', ?, ?, 'C:\\Games', ?, ?, ?)",
+            )
+            .bind(release_id)
+            .bind(format!("C:\\Games\\{index:05}\\game.exe"))
+            .bind(format!("c:\\games\\{index:05}\\game.exe"))
+            .bind(format!("Benchmark visual novel {index:05}"))
+            .bind(1_024_i64 * 1024 * (index as i64 + 1))
+            .bind(1_024_i64 * 1024 * (index as i64 + 1))
+            .execute(&mut *tx)
+            .await
+            .expect("copy");
+            sqlx::query("INSERT INTO user_entries (work_id, status) VALUES (?, 'unclassified')")
+                .bind(work_id)
+                .execute(&mut *tx)
+                .await
+                .expect("entry");
+            if index < 5_000 {
+                sqlx::query(
+                    "INSERT INTO assets (work_id, original_path, thumb_path, checksum)
+                     VALUES (?, ?, ?, ?)",
+                )
+                .bind(work_id)
+                .bind(format!("covers/{index:05}.webp"))
+                .bind(format!("covers/{index:05}-thumb.webp"))
+                .bind(format!("fixture-{index:05}"))
+                .execute(&mut *tx)
+                .await
+                .expect("asset");
+            }
+        }
+        tx.commit().await.expect("commit");
+        let seed_ms = seed_started.elapsed().as_millis();
+
+        let first_started = Instant::now();
+        let page = query_library(
+            &pool,
+            LibraryQuery {
+                page_size: 60,
+                ..LibraryQuery::default()
+            },
+        )
+        .await
+        .expect("first page");
+        let first_page_ms = first_started.elapsed().as_millis();
+        assert_eq!(page.total, 10_000);
+        assert_eq!(page.items.len(), 60);
+
+        let search_started = Instant::now();
+        let search = query_library(
+            &pool,
+            LibraryQuery {
+                search: "00999".to_string(),
+                page_size: 60,
+                ..LibraryQuery::default()
+            },
+        )
+        .await
+        .expect("search");
+        let search_ms = search_started.elapsed().as_millis();
+        let last_started = Instant::now();
+        let last_page = query_library(
+            &pool,
+            LibraryQuery {
+                page: 166,
+                page_size: 60,
+                ..LibraryQuery::default()
+            },
+        )
+        .await
+        .expect("last page");
+        let last_page_ms = last_started.elapsed().as_millis();
+        assert_eq!(last_page.items.len(), 40);
+
+        eprintln!(
+            "10k benchmark: seed={seed_ms}ms, first_page={first_page_ms}ms, search={search_ms}ms ({} hits), last_page={last_page_ms}ms",
+            search.total
+        );
+    }
+
+    #[tokio::test]
     async fn updates_work_profile_and_user_entry() {
         let (temp, pool, work_id) = imported_pool().await;
         update_work(
@@ -2326,6 +2566,7 @@ mod tests {
         .await
         .expect("tag search");
         assert_eq!(tag_search.total, 1);
+        assert_eq!(tag_search.counts.favorite, 1);
 
         let invalid = update_work(
             &pool,
@@ -2440,11 +2681,21 @@ mod tests {
                 key: "MIYU_TEST".to_string(),
                 value: "1".to_string(),
             }],
-            wrapper_path: None,
-            wrapper_args: Vec::new(),
+            wrapper_ids: vec!["locale-emulator".to_string()],
             monitor: Some(0),
             fullscreen: true,
         };
+        let mut preferences = crate::preferences::AppPreferences::default();
+        preferences
+            .wrappers
+            .iter_mut()
+            .find(|wrapper| wrapper.id == crate::preferences::WRAPPER_LOCALE_EMULATOR)
+            .expect("locale wrapper")
+            .path = "C:\\Tools\\LEProc.exe".to_string();
+        preferences.validate().expect("preferences");
+        crate::preferences::save(&pool, &preferences)
+            .await
+            .expect("save preferences");
         let saved = save_launch_config(
             &pool,
             work_id,
@@ -2457,6 +2708,13 @@ mod tests {
         .await
         .expect("save launch config");
         assert_eq!(saved.args, vec!["--window"]);
+        assert_eq!(saved.wrapper_ids, vec!["locale-emulator"]);
+        let legacy_wrapper: Option<String> =
+            sqlx::query_scalar("SELECT wrapper_path FROM launch_profiles WHERE local_copy_id = 1")
+                .fetch_one(&pool)
+                .await
+                .expect("legacy wrapper");
+        assert_eq!(legacy_wrapper.as_deref(), Some("C:\\Tools\\LEProc.exe"));
         assert_eq!(saved.monitor, Some(0));
         assert!(saved.fullscreen);
 
@@ -2514,5 +2772,24 @@ mod tests {
                 .await
                 .expect("status");
         assert_eq!(status, "missing");
+    }
+
+    #[tokio::test]
+    async fn maps_a_legacy_wrapper_profile_to_locale_emulator() {
+        let (_temp, pool, _work_id) = imported_pool().await;
+        sqlx::query(
+            "INSERT INTO launch_profiles
+               (local_copy_id, args_json, env_json, wrapper_path, wrapper_args_json)
+             VALUES (1, '[]', '[]', 'C:\\Tools\\LEProc.exe', '[]')",
+        )
+        .execute(&pool)
+        .await
+        .expect("legacy profile");
+
+        let profile = get_launch_profile(&pool, 1)
+            .await
+            .expect("load")
+            .expect("profile");
+        assert_eq!(profile.wrapper_ids, vec!["locale-emulator"]);
     }
 }

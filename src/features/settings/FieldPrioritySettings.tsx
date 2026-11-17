@@ -20,7 +20,7 @@ export function FieldPrioritySettings() {
     queryFn: listMetadataFieldPriorities,
     staleTime: 5_000,
   });
-  const [expanded, setExpanded] = useState<string | null>("title");
+  const [expanded, setExpanded] = useState<string | null>(null);
   const isGlobal = query.data?.[0]?.global ?? false;
 
   const updateCache = (next: FieldPriorityState[]) => {
@@ -103,23 +103,26 @@ export function FieldPrioritySettings() {
       <div className="settings-field-priorities__head">
         <div>
           <b>字段优先级</b>
-          <span>默认每个字段独立排序；打开全局开关后，所有字段都跟随上方“元数据来源”的顺序。</span>
+          <span>为每个字段单独选择来源顺序。</span>
         </div>
-        <Tag tone={isGlobal ? "status" : "data"}>{isGlobal ? "全局顺序" : "字段级"}</Tag>
       </div>
-      <label className="settings-field-priority-mode">
-        <input
-          type="checkbox"
-          checked={isGlobal}
-          aria-label="全部字段跟随全局来源顺序"
-          onChange={() => void toggleGlobal()}
-        />
-        <span>
-          <b>全部字段跟随全局来源顺序</b>
-          <em>打开后，每个字段都使用上方来源列表的先后顺序；字段单独排序会保留，但暂时不生效。</em>
-        </span>
-        <Tag tone={isGlobal ? "status" : "muted"}>{isGlobal ? "已开启" : "已关闭"}</Tag>
-      </label>
+      <div className="settings-field-priority-mode">
+        <div className="settings-field-priority-mode__copy">
+          <b id="field-priority-mode-title">统一使用来源顺序</b>
+          <span id="field-priority-mode-description">字段级排序会保留，关闭后继续生效。</span>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={isGlobal}
+          aria-labelledby="field-priority-mode-title"
+          aria-describedby="field-priority-mode-description"
+          className={cn("settings-switch", isGlobal && "is-on")}
+          onClick={() => void toggleGlobal()}
+        >
+          <span aria-hidden="true" />
+        </button>
+      </div>
       {query.isPending ? (
         <div className="settings-source-loading">
           <Loader2 size={15} className="settings-spin" />
@@ -199,7 +202,7 @@ export function FieldPrioritySettings() {
                     <div className="settings-field-priority__footer">
                       <span>
                         {field.global
-                          ? "全局顺序模式已开启；关闭上方开关后可逐字段调整。"
+                          ? "关闭统一来源顺序后可逐字段调整。"
                           : "顺序会立即保存，并影响之后的搜索、导入和批量刮削。"}
                       </span>
                       <Button

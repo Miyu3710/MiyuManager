@@ -182,6 +182,7 @@ export function useStats(period: StatsPeriod) {
   return useQuery({
     queryKey: ["stats", period],
     queryFn: () => getStats(period),
+    placeholderData: keepPreviousData,
     staleTime: 3_000,
   });
 }

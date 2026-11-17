@@ -187,8 +187,15 @@ impl OAuthService {
                 std::fs::remove_file(&destination)
                     .with_context(|| format!("无法替换 {}", destination.display()))?;
             }
-            std::fs::rename(&temporary, &destination)
-                .with_context(|| format!("无法保存 {}", destination.display()))?;
+            if let Err(rename_error) = std::fs::rename(&temporary, &destination) {
+                std::fs::copy(&temporary, &destination).with_context(|| {
+                    format!(
+                        "无法保存 {}（原子替换失败：{rename_error}）",
+                        destination.display()
+                    )
+                })?;
+                let _ = std::fs::remove_file(&temporary);
+            }
         }
         let info = self.config_info();
         if info.error.is_some() || info.provider_ids.is_empty() {
@@ -218,6 +225,9 @@ impl OAuthService {
                     connected: account.is_some(),
                     account_name: account.and_then(|row| row.account_name.clone()),
                     account_id: account.and_then(|row| row.account_id.clone()),
+                    avatar_url: account.and_then(|row| row.avatar_url.clone()),
+                    profile_synced_at: account.and_then(|row| row.profile_synced_at.clone()),
+                    connected_at: account.and_then(|row| row.connected_at.clone()),
                     scopes: account.map(|row| row.scopes.clone()).unwrap_or_else(|| {
                         config
                             .provider(definition.id)
@@ -252,6 +262,44 @@ impl OAuthService {
         self.connecting.lock().await.remove(provider_id);
         let (tokens, account) = result?;
         store::save_account(pool, provider_id, &tokens, &account, &config.scopes).await?;
+        self.statuses(pool)
+            .await?
+            .into_iter()
+            .find(|status| status.id == provider_id)
+            .context("OAuth 状态读取失败")
+    }
+
+    pub async fn sync_profile(&self, pool: &SqlitePool, provider_id: &str) -> Result<OAuthStatus> {
+        let provider_id = normalize_id(provider_id);
+        let definition = provider_def(provider_id).context("未知的 OAuth 来源")?;
+        let config = self.current_config();
+        let provider = config.provider(provider_id).with_context(|| {
+            format!(
+                "{} 还没有 OAuth 配置，请先导入 providers.json",
+                definition.name
+            )
+        })?;
+        let stored = store::load_tokens(pool, provider_id)
+            .await?
+            .with_context(|| format!("{} 尚未连接", definition.name))?;
+        let access_token = if stored.expires_at > now_unix() + 90 {
+            decrypt_token(&stored.access_token_enc)?
+        } else if let Some(refresh_encrypted) = stored.refresh_token_enc.as_deref() {
+            let refresh_token = decrypt_token(refresh_encrypted)?;
+            let tokens =
+                flow::refresh_access_token(&self.http, provider_id, provider, &refresh_token)
+                    .await
+                    .context("刷新账号访问令牌失败")?;
+            store::update_tokens(pool, provider_id, &tokens, &provider.scopes).await?;
+            tokens.access_token
+        } else {
+            bail!("{} 登录已过期，请重新连接账号", definition.name);
+        };
+        let profile = flow::fetch_account_profile(&self.http, provider_id, &access_token).await;
+        if profile.name.is_none() && profile.id.is_none() && profile.avatar_url.is_none() {
+            bail!("{} 没有返回可用的账号资料", definition.name);
+        }
+        store::update_profile(pool, provider_id, &profile).await?;
         self.statuses(pool)
             .await?
             .into_iter()

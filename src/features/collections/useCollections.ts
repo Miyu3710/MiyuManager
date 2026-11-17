@@ -46,5 +46,6 @@ export function useInvalidateCollections() {
     void queryClient.invalidateQueries({ queryKey: ["library"] });
     void queryClient.invalidateQueries({ queryKey: ["home-library"] });
     void queryClient.invalidateQueries({ queryKey: ["library-summary"] });
+    void queryClient.invalidateQueries({ queryKey: ["stats"] });
   }, [queryClient]);
 }

@@ -6,12 +6,14 @@ import { CoverArt } from "../../../design-system/components/CoverArt";
 import { WindowBar } from "../components/WindowBar";
 import { continueWorks, directionList, featuredWork, recentWorks } from "../data";
 import type { Direction } from "../types";
+import "../shared.css";
+import "../gallery.css";
 
 function ScreeningPreview() {
   return (
     <div className="mini mini--screening" aria-hidden="true">
       <div className="mini-rail">
-        <span className="mini-mark">M</span>
+        <img className="mini-mark" src="/miyu-manager.png" alt="" />
         <span className="mini-rail__item mini-rail__item--active" />
         <span className="mini-rail__item" />
         <span className="mini-rail__item" />

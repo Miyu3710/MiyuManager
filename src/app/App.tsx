@@ -2,11 +2,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect } from "react";
 import type { ReactNode } from "react";
 import { createHashRouter, Navigate, RouterProvider } from "react-router-dom";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AppShell } from "./AppShell";
+import { HintProvider } from "../design-system/components/Hint";
 import { HomePage } from "../features/home/HomePage";
 import { useAppInfo } from "../features/library/useLibrary";
 
@@ -70,7 +71,7 @@ function OnboardedShell() {
   if (appInfo.isPending) {
     return (
       <div className="app-boot" aria-busy="true">
-        <span>M</span>
+        <img src="/miyu-manager.png" alt="" aria-hidden="true" />
         <p>正在读取本地游戏库…</p>
       </div>
     );
@@ -223,20 +224,41 @@ function useMainWindowBridge() {
   }, []);
 }
 
+function useLaunchWarnings() {
+  useEffect(() => {
+    if (!isTauri() || getCurrentWindow().label !== "main") {
+      return;
+    }
+
+    let unlisten: (() => void) | undefined;
+    void listen<{ workId: number; message: string }>("launch-warning", (event) => {
+      toast.warning(event.payload.message, { id: `launch-warning-${event.payload.workId}` });
+    }).then((cleanup) => {
+      unlisten = cleanup;
+    });
+
+    return () => unlisten?.();
+  }, []);
+}
+
 export default function App() {
   useRevealWindow();
   useMainWindowBridge();
+  useLaunchWarnings();
 
   return (
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-      <Toaster
-        position="bottom-left"
-        theme="light"
-        toastOptions={{
-          className: "miyu-toast",
-        }}
-      />
+      <HintProvider>
+        <RouterProvider router={router} />
+        <Toaster
+          position="bottom-right"
+          offset={18}
+          theme="light"
+          toastOptions={{
+            className: "miyu-toast",
+          }}
+        />
+      </HintProvider>
     </QueryClientProvider>
   );
 }

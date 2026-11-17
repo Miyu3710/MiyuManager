@@ -13,6 +13,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "../../design-system/components/Button";
+import { Hint } from "../../design-system/components/Hint";
 import { Tag } from "../../design-system/components/Tag";
 import { WindowBar } from "../../design-system/components/WindowBar";
 import { completeOnboarding } from "../../lib/app-api";
@@ -186,13 +187,30 @@ export function OnboardingPage() {
     void scan.pickAndStart();
   };
 
+  const directoryTitle =
+    scan.state.status === "review"
+      ? "确认要入库的游戏"
+      : scan.state.status === "scanning"
+        ? "正在扫描目录"
+        : scan.state.status === "error"
+          ? "扫描没有完成"
+          : "找到游戏目录";
+  const directoryDescription =
+    scan.state.status === "review"
+      ? "确认显示名和主程序后导入。"
+      : scan.state.status === "scanning"
+        ? "正在读取目录、文件名和大小，不会修改游戏文件。"
+        : scan.state.status === "error"
+          ? "可以重试当前目录，或重新选择一个游戏文件夹。"
+          : "选择包含游戏主程序的文件夹。";
+
   return (
     <div className="app-window onboarding-window">
       <WindowBar context="首次启动" />
       <main className="onboarding-main">
         <aside className="onboarding-rail" aria-label="首次启动步骤">
           <div className="onboarding-brand">
-            <span>M</span>
+            <img src="/miyu-manager.png" alt="" aria-hidden="true" />
             <div>
               <b>MiyuManager</b>
               <small>首次启动设置</small>
@@ -221,7 +239,6 @@ export function OnboardingPage() {
           {step === "welcome" ? (
             <div className="onboarding-welcome">
               <div className="onboarding-welcome__intro">
-                <p className="onboarding-eyebrow">首次启动</p>
                 <h1>开始整理你的游戏库</h1>
                 <p className="onboarding-lead">
                   MiyuManager 管理本地 Galgame / AVG 的安装、启动、游玩时长和可追溯元数据。
@@ -248,8 +265,8 @@ export function OnboardingPage() {
             <div className="onboarding-directory">
               <header className="onboarding-panel__head">
                 <div>
-                  <h1>找到游戏目录</h1>
-                  <p>选择包含游戏主程序的文件夹。</p>
+                  <h1>{directoryTitle}</h1>
+                  <p>{directoryDescription}</p>
                 </div>
                 {scan.state.status === "review" || scan.state.status === "error" ? (
                   <Button variant="ghost" size="sm" onClick={beginScan}>
@@ -277,7 +294,9 @@ export function OnboardingPage() {
                     <Loader2 size={26} strokeWidth={1.5} className="settings-spin" />
                   </span>
                   <h2>正在扫描目录</h2>
-                  <p title={scan.state.rootPath}>{scan.state.rootPath}</p>
+                  <Hint label={scan.state.rootPath} side="bottom" align="start">
+                    <p>{scan.state.rootPath}</p>
+                  </Hint>
                   <div className="onboarding-progress" aria-label="扫描进度">
                     <span />
                   </div>
@@ -322,7 +341,7 @@ export function OnboardingPage() {
                     <div className="onboarding-error">
                       <XCircle size={22} strokeWidth={1.5} />
                       <h2>没有找到可用的主程序</h2>
-                      <p>换一个包含 .exe 的目录，或稍后在游戏库手动导入。</p>
+                      <p>换一个包含 .exe 的目录；已排除的游戏可在设置中恢复。</p>
                       <Button variant="secondary" size="sm" onClick={beginScan}>
                         换一个目录
                       </Button>
@@ -379,7 +398,9 @@ export function OnboardingPage() {
                                   }))
                                 }
                               />
-                              <span title={candidate.exePath}>{candidate.exePath}</span>
+                              <Hint label={candidate.exePath} side="bottom" align="start">
+                                <span>{candidate.exePath}</span>
+                              </Hint>
                               <small>{candidate.reason}</small>
                             </div>
                             <div className="onboarding-candidate__tags">

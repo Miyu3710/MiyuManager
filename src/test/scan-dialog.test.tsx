@@ -35,6 +35,25 @@ const candidates: ScanCandidate[] = [
     rootPath: "C:\\Games",
     suggestedTitle: "海边的咖啡露台",
   },
+  {
+    ...baseCandidate,
+    id: "candidate-3",
+    exeKey: "candidate-3",
+    exePath: "C:\\Games\\月影工房\\game_zh.exe",
+    workingDir: "C:\\Games\\月影工房",
+    rootPath: "C:\\Games",
+    suggestedTitle: "月影工房 汉化版",
+  },
+  {
+    ...baseCandidate,
+    id: "candidate-4",
+    exeKey: "candidate-4",
+    exePath: "C:\\Games\\旧档案\\old.exe",
+    workingDir: "C:\\Games\\旧档案",
+    rootPath: "C:\\Games",
+    suggestedTitle: "旧档案",
+    alreadyImported: true,
+  },
 ];
 
 const reviewState: ScanView = {
@@ -43,7 +62,6 @@ const reviewState: ScanView = {
   candidates,
   cancelled: false,
   stats: null,
-  manual: false,
 };
 
 describe("scan import dialog", () => {
@@ -64,22 +82,29 @@ describe("scan import dialog", () => {
 
     const first = screen.getByRole("checkbox", { name: "选择 月影工房" });
     const second = screen.getByRole("checkbox", { name: "选择 海边的咖啡露台" });
+    expect(first).not.toBeChecked();
+    expect(second).not.toBeChecked();
+    const boxes = screen.getAllByRole("checkbox");
+    expect(boxes.at(-1)).toHaveAccessibleName("选择 旧档案");
+    expect(boxes.at(-1)).toBeDisabled();
+    await user.click(first);
     expect(first).toBeChecked();
     await user.click(first);
     expect(first).not.toBeChecked();
-    await user.click(first);
-    expect(first).toBeChecked();
 
+    await user.click(first);
     await user.click(second);
-    const name = screen.getByRole("textbox", { name: "入库名称 月影工房" });
+    await user.click(second);
+    const name = screen.getByRole("textbox", { name: "显示名称 月影工房" });
     await user.clear(name);
     await user.type(name, "月影工房 汉化版");
+    await user.selectOptions(screen.getByRole("combobox", { name: "主程序 月影工房" }), "1");
     await user.click(screen.getByRole("button", { name: /导入选中/ }));
 
     expect(onImport).toHaveBeenCalledTimes(1);
     expect(onImport.mock.calls[0]?.[0]).toEqual([
       expect.objectContaining({
-        exePath: "C:\\Games\\月影工房\\game.exe",
+        exePath: "C:\\Games\\月影工房\\game_zh.exe",
         displayName: "月影工房 汉化版",
       }),
     ]);

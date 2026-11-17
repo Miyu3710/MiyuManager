@@ -29,6 +29,9 @@ pub struct OAuthStatus {
     pub connected: bool,
     pub account_name: Option<String>,
     pub account_id: Option<String>,
+    pub avatar_url: Option<String>,
+    pub profile_synced_at: Option<String>,
+    pub connected_at: Option<String>,
     pub scopes: Vec<String>,
     pub expires_at: Option<i64>,
     pub hint: Option<String>,
@@ -49,6 +52,9 @@ pub struct OAuthAccountRow {
     pub provider: String,
     pub account_name: Option<String>,
     pub account_id: Option<String>,
+    pub avatar_url: Option<String>,
+    pub profile_synced_at: Option<String>,
+    pub connected_at: Option<String>,
     pub scopes: Vec<String>,
     pub expires_at: Option<i64>,
 }
@@ -57,6 +63,7 @@ pub struct OAuthAccountRow {
 pub struct AccountInfo {
     pub name: Option<String>,
     pub id: Option<String>,
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

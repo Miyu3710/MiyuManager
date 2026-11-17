@@ -105,6 +105,28 @@ pub struct TopGame {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct StatsActivityEvent {
+    pub id: String,
+    pub kind: String,
+    pub occurred_at: String,
+    pub work_id: i64,
+    pub work_title: String,
+    pub original_title: String,
+    pub work_developer: Option<String>,
+    pub work_year: Option<i64>,
+    pub cover_thumb_path: Option<String>,
+    pub cover_path: Option<String>,
+    pub collection_name: Option<String>,
+    pub duration_sec: Option<i64>,
+    pub session_started_at: Option<String>,
+    pub session_ended_at: Option<String>,
+    pub end_reason: Option<String>,
+    pub source: Option<String>,
+    pub corrected: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StatsOverview {
     pub all_time_seconds: i64,
     pub all_time_sessions: i64,
@@ -119,4 +141,5 @@ pub struct StatsOverview {
     pub daily: Vec<DailyPlaytime>,
     pub top_games: Vec<TopGame>,
     pub recent_sessions: Vec<PlaySessionWithWork>,
+    pub timeline: Vec<StatsActivityEvent>,
 }

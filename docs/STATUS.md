@@ -1,10 +1,42 @@
 # MiyuManager 项目状态
 
-> 最后更新：2026-11-15  
-> 当前阶段：C8 实现完成；首页、收藏集、全局搜索、设置和首次启动已接入真实 SQLite，并完成“樱纸档案”视觉统一。C7 大屏仍待 G5 确认；手柄实机与多显示器仍待验证。下一轮为 C9
+> 最后更新：2026-11-17
+> 当前阶段：C9 进行中；备份/恢复、日志与崩溃记录、前端错误边界、CSP/权限、性能和发布脚本已落地，Release EXE 已生成。MSI/NSIS、干净安装、签名、物理手柄和多显示器仍待验证。
 >
 > 计划文件：`docs/DEVELOPMENT_PLAN.md`  
 > 设计提案：`docs/DESIGN.md`
+
+> 2026-11-16：字段锁定机制已移除；旧锁定值在迁移中清零，导入和合并不再跳过锁定字段。下文涉及字段锁定的历史记录仅作归档。
+
+### 2026-11-17 大屏电视构图与交互收口（当前）
+
+- 大屏信息块改为贴着画面左缘的一列连续作品信息：目录编号 → 标题 → 原题 → 一行横向元信息（开发商、年份、版本、容量、入库）→ 细边框标签 →“简介”横带与正文 → 四项游玩记录 → 启动按钮，标题、简介、记录和按钮共用同一条左基线。旧的竖列资料组件 `.bigscreen-facts`、旧 `.bigscreen-hero__edition` 和主视觉“游戏详情”入口均已删除。
+- 顶部状态只保留时间显示，馆藏数量、本周时长和手柄/键盘连接文字已移除。侧栏收为 46px 图标列，应用图标与分类图标共用同一列并水平居中；图标列在窗口边缘与分隔线之间居中，左右各留约 12px，避免整组图标压向分隔线。
+- 大屏搜索：书架未收起时按 SELECT（手柄按钮 8）或 F、/ 打开右侧搜索键盘。搜索词是不可聚焦的显示层，初始焦点在数字键 1；键盘按 10 列排布为数字行、QWERTY、ASDFGHJKL+退格，底行 ZXCVBNM+宽空格，清空与关闭收在键盘下方操作栏。X 退格、Y 空格、RB 清空、B 返回分别标在对应按键或操作按钮上；输入框显示闪烁插入点与 0/48 字符计数。键帽为宽键，焦点用玫瑰色填充、细亮边和柔光，不使用外圈粗描边。关闭时遮罩淡出、面板向右轻移淡出，240ms 后卸载并恢复焦点。搜索基于当前分类，结果直接替换海报列表，分类标题变为“关键词”的搜索结果；浮层降低模糊度，左侧仍能看到结果。按 B 收起键盘后搜索词和当前分类保持不变：有结果时焦点回到结果海报，无结果时保留空状态、查询词和“查看全部游戏”，不会因焦点恢复重新选择分类或清空搜索。再按 SELECT 继续编辑。按键提示增加 SELECT 搜索。
+- 搜索键盘关闭修正：关闭时不再让程序化焦点触发分类 `onFocus` 的重新选择；恢复焦点前设置一次性抑制标记，并按搜索状态把焦点落到结果海报、空状态“查看全部游戏”或当前分类。无结果空状态补显示查询词。回归测试覆盖从分类栏打开搜索、以及搜索把原焦点海报过滤掉的情况。
+- 搜索键盘重排：面板在 1120×720 到 2048×1152 的视口内约为 717–780px 宽，10 列键帽约 59–63px 宽、46–54px 高，空格键约 190–202px；清空与关闭移到底部操作栏，输入框加入闪烁插入点和 0/48 字符计数，键帽焦点改为玫瑰色键帽填充、细亮边与柔光。
+- 字号按视口高度取值（标题 `clamp(50px, 7.2vh, 108px)`），2560×1440 不再被宽度上限压小；`min-height: 1300px` 时封面放大到 300px 宽，1440 高屏幕不再出现过大顶部空区。默认态目录编号从视口 10%–18% 处开始，2560×1440 的标题从 454px 抬到 295px。
+- 启动态：书架用 `grid-template-rows: minmax(0, 1fr) → 0fr` 按实际内容高度收起，恢复时按同一路径展开，不再依赖 `max-height` 估算；同时保留 `opacity: 0`、`inert`、`aria-hidden="true"`。裁切内层改为 `overflow: clip`，不再成为可滚动容器，修复展开期间标题被 `scrollIntoView` 推出顶部、短暂被裁切的问题。信息块扩展为视口约 50%–55% 高；简介放宽到 5 行，介绍与记录之间、记录与按钮之间加大留白，按钮跟随记录左对齐并保持 8–40px 间距。文案区上下内边距、简介与记录的间距、记录与按钮的间距都带 380ms 过渡，书架收起或恢复时整块信息平滑移动，按钮本身 320ms 淡入上移。方向键与 LT/RT 在启动态被锁在按钮上，只有 LB/RB 切换分类、B/Escape 收起。
+- 启动按钮宽度收为 200–250px，保留 600 字重和原字号，字距放宽到 0.06em；焦点改为按钮内部 1px 暖白细线，不添加外层厚环；按钮表面以约 3.8 秒一轮、带停顿的斜向扫光持续循环，图标向确认方向轻移 2px。减少动效时只保留静态细线。
+- “简介”横带改为当前海报的模糊切片（`blur(18px)` + 作品环境色 + 左侧压暗 + 樱红竖标），宽而矮的横条不再像被裁断的图片；没有高清图时退化为环境色渐变与樱红下划线，形状一致。
+- 书架：未选中的封面保持完全不透明、不变暗；分类名与作品数并列，数量紧跟标题。当前作品轻抬 2–3px，外加 2px 樱红外框、1px 暖白外沿和柔光，远距离仍能明确识别。书架容器左缘顶到侧栏分割线，第一张海报与分类标题共用内容左基线；分割线到内容基线之间整段作为左侧渐隐区，渐隐结束在选中外框左缘，分割线外直接裁切。右侧保留 36px 透明缓冲区和 26px 渐隐。方向键保留原生平滑滚动，左侧渐隐区会吞掉移动中的外框、封面高亮和光晕，不再需要额外的滚动隐藏层。切换分类时封面以最多 168ms 的延迟淡入。侧栏“全部游戏”排在第一项，樱红竖线从中心展开。减少动效时保留选中亮度与外框，但移除位移、缩放和入场延迟。方向键只在书架内横向移动，不再把焦点送去分类栏，键盘用 Tab 进入分类栏并优先落在当前分类。侧栏应用图标与分类图标共用同一条 46px 列并水平居中；该列在窗口边缘和分隔线之间居中，激活竖线位于图标左侧约 7px 处。
+- 横向浏览：书架行用负左边距顶到分割线，再用与 `--bs-gap` 对应的左内距把海报放回内容基线，右侧保留光晕余量；卡片用原生 `scrollIntoView({ block: "nearest", inline: "nearest" })` 平滑跟随焦点，不再在下一帧把焦点卡补滚到行首，也移除了滚动吸附。`.bigscreen-root` 保持 `overflow: clip`，连续右选时只有海报行滚动，整页不再横向移动。
+- 大屏控制（Start）清空原有内容，只保留五项：返回、刷新游戏库、隐藏/显示按键提示、退出大屏幕模式、关闭 Miyu。遮罩与控制列加入进入/退出过渡：遮罩从透明、无模糊落成烟粉模糊层，关闭时反向退场，240ms 后卸载并恢复焦点；系统或应用减少动效时立即关闭。关闭 Miyu 进入同一列的二次确认后调用新增的 `app_quit` 命令退出进程；显示器与手柄状态继续留在设置页。`cargo check` 通过。
+- 按键提示由“设置 → 电视大屏 → 按键提示”控制（`useAppearance.bigScreenHints`），也可在控制菜单里直接隐藏或显示；关闭后内容区按自身节奏收底。
+- 验证：当前 `pnpm typecheck`、`pnpm lint`、`pnpm build`、目标文件 Prettier 检查与 `pnpm test`（10 个文件、52 项）全部通过；大屏专项 23 项通过。侧栏居中修正后复跑 `pnpm typecheck`、`pnpm test` 与 `pnpm build`，均通过。上一轮 `scripts/capture-bigscreen-round6.mjs` 的 1120×720、1440×900、1920×1080、2048×1152、2560×1440 截图仍保留在 `2026-11-16/round6/`。本轮 `scripts/capture-bigscreen-round7.mjs` 覆盖标题内计数、侧栏首位分类、选中双层外框与安全区、按钮焦点、书架展开、连续右选不顶动整页、控制遮罩进出与减少动效；本次执行环境无法获得启动无头 Edge 的审批，因此尚未生成 `2026-11-17/round7/` 截图。
+- 验证（搜索键盘）：`pnpm typecheck`、`pnpm lint`、`pnpm build`、目标文件 Prettier 与 `pnpm test`（10 个文件、52 项）通过。无头 Edge 在 2048×1152（125%）、1920×1080、1120×720 下检查面板无滚动溢出，M → 空格 → 关闭 → 清空的方向键导航通过，关闭时遮罩与面板在 240ms 内完成退场，减少动效时立即关闭并恢复焦点；从分类栏打开搜索、搜索无结果、以及搜索把原焦点海报过滤掉三种关闭路径均保留查询词和当前分类，有结果时焦点回到结果海报，无结果时保留空状态与“查看全部游戏”。
+- 证据：`outputs/redesign-bigscreen/2026-11-16/round6/`（上一轮交互与菜单）与 `round5/`（电视构图，对照 `round4/`）；搜索键盘截图、方向键导航、退场时间线与关闭后的有结果/无结果状态在 `outputs/redesign-bigscreen/2026-11-17/search-keyboard/`（`search-closed-results.png`、`search-closed-no-results.png`、`search-close-state.json`）。本轮改动前检查点 `outputs/redesign-bigscreen/2026-11-17/checkpoints/before-large-screen-refactor/`，回退步骤见 `outputs/redesign-bigscreen/2026-11-17/ROLLBACK.md`。真实 Tauri 窗口（含 `app_quit` 实机退出）、物理手柄、多显示器与最新视觉截图仍待复验。
+
+### 2026-11-17 C9 发布硬化（本轮）
+
+- 数据安全：新增 `database_maintenance`。启动迁移前检测待执行版本并创建 `backups/pre-migration-*.sqlite3`；自动快照最多保留 20 份。“数据与关于”支持 SQLite 在线备份、完整性检查、迁移数量、备份目录和日志目录；恢复文件先检查 SQLite 文件头、`PRAGMA quick_check` 与必需数据表，再生成 `pre-restore-*` 安全快照并暂存。应用重启后、打开数据库前完成替换，避免 Windows 上运行中的 SQLite 文件锁导致半完成恢复。
+- 诊断：新增本地 JSONL 日志轮转、进程 panic 崩溃记录、前端渲染错误边界，以及 `window.error` / `unhandledrejection` 上报。日志包含时间、版本、事件和有限长度的错误堆栈，不上传；设置页可打开日志目录。
+- 安全：生产 CSP 已启用，开发 CSP 单独放行 Vite；自定义 `miyu-navigation-guard` 阻止 WebView 导航到应用外部地址，外部链接继续交给系统浏览器。capability 拆为主窗口与大屏：主窗口仅增加 open/save 对话框和自定义窗口控制，大屏只保留本地数据事件与受控焦点。
+- 发布：Tauri 目标改为 MSI + NSIS，NSIS 当前用户安装，关闭降级并设置最低 WebView2 版本。新增 `scripts/release/check.ps1`、`build.ps1`、`pnpm release:check`、`release:build`、`release:exe`，生成 `outputs/release/<version>/release-manifest.json` 与 `SHA256SUMS.txt`。
+- 文档：新增 `docs/RELEASE.md`、`docs/QA_MATRIX.md`、`docs/USER_GUIDE.md`、`docs/TROUBLESHOOTING.md`、`docs/PRIVACY.md`、`docs/RELEASE_NOTES.md`。
+- 验证：`pnpm release:check` 完整通过，包含前端 11 个文件 / 53 项测试、生产构建、Rustfmt、Clippy 与 Cargo 测试（82 passed / 13 ignored）。新增错误边界、数据库备份/恢复与安全导航测试。10,000 部作品、5,000 条封面记录的手动基准：seed 1,583ms、首屏 87ms、搜索 63ms、末页 92ms。Release EXE 在隔离数据目录启动 8 秒存活，写入 `app_start` 日志且无崩溃文件。
+- 产物：`outputs/release/0.1.0/miyumanager.exe`（23,156,224 bytes，SHA-256 `d2b5989c3f503eb818c6bc220ba3acc9647e4383e20381a1c90108fda00edf72`）、`release-manifest.json`、`SHA256SUMS.txt`。当前为 `executable-only`、未签名构建。
+- 阻塞：MSI/NSIS 打包需要 Tauri 下载 WiX/NSIS；当前沙箱无法解析 GitHub，联网审批审查连续超时，尚未生成安装器。无头 Edge 和新 Tauri 窗口的目视截图同样被当前 UI/权限审查阻塞；保留为发布前待验证项，不能据此宣称干净安装或最终视觉验收已完成。
 
 ## 当前状态
 
@@ -13,13 +45,13 @@
 | C0 规划与技术选型                     | 已完成 | 技术栈、范围、架构、数据模型、质量门槛和子对话拆分已写入 `docs/DEVELOPMENT_PLAN.md`                                                        |
 | C1 基础工程、设计系统与可点击壳       | 已完成 | 设计系统、应用壳、Home/Library/Detail/Big Screen、Stats/Settings 和探针已完成；2026-11-15 通过 G2 视觉确认                                 |
 | C2 SQLite、目录扫描与真实游戏库       | 已完成 | SQLite/WAL/FTS5、目录扫描、候选确认、汉化 exe 识别、扫描排除/手动导入、真实游戏库、搜索筛选排序、持久化和 5,000 条查询已接入；详见下文     |
-| C3 作品详情、图片缓存与启动器         | 已完成 | 真实详情编辑、封面缓存/发现、启动配置、包装器、路径校验、Job Object 启动跟踪与运行状态已接入；详见下文                                     |
+| C3 作品详情、图片缓存与启动器         | 已完成 | 真实详情编辑、封面缓存/发现、自动保存启动配置、兼容包装器、Job Object 启动跟踪与运行状态已接入；详见下文                                   |
 | C4 Metadata Provider、VNDB 与 Bangumi | 已完成 | Provider 框架、来源优先级、VNDB/Bangumi 搜索与导入、字段 claim/锁定、封面下载、来源账本和 OAuth 账号连接已接入；详见下文                   |
 | C5 Steam、多源合并与批量刮削          | 已完成 | Steam 来源、Steam 库自动嗅探、字段级/全局优先级、冲突采用/锁定、封面画廊、两阶段批量队列、暂停/取消/重试和局部成功已接入；详见下文         |
 | C6 自动时长统计与统计页               | 已完成 | `play_sessions`、Job Object 会话观察、前台宽限、心跳恢复、真实统计页和会话补录/修正/删除已接入；详见下文                                   |
-| C7 电视大屏与手柄导航                 | 待验收 | 正式 `bigscreen` 窗口、显示器选择、真实库、图标分类栏、竖版海报架、Y 菜单、Start 控制侧栏、启动/详情和焦点管理已接入；待 G5 确认；详见下文 |
+| C7 电视大屏与手柄导航                 | 待验收 | 正式 `bigscreen` 窗口、显示器选择、真实库、图标分类栏、竖版海报架、Y 菜单、Start 控制菜单、启动/详情和焦点管理已接入；待 G5 确认；详见下文 |
 | C8 首页、收藏集、设置与首次启动       | 已完成 | 真实首页、收藏集 CRUD/排序/作品增删、Ctrl+K 全局搜索、启动器/网络/数据设置、更新检查和首次启动向导已接入；详见下文                         |
-| C9 硬化、性能、打包与发布候选         | 未开始 | 依赖 C8                                                                                                                                    |
+| C9 硬化、性能、打包与发布候选         | 进行中 | 备份/恢复、日志、错误边界、CSP、权限、基准、发布脚本和 release EXE 已完成；MSI/NSIS、干净安装、签名和实体设备验证待完成                    |
 
 ## 已锁定的决策
 
@@ -37,7 +69,7 @@
 - 产品是本地 **Galgame / AVG 电子游戏库管理器**，不是电子书、视频或影视资料管理器。
 - 产品不是游戏商店；界面不使用店长、营业中、新入荷、发售表等商店语汇。
 - 管理器不读取游戏内进度、章节、路线、存档或成就，也不伪造百分比进度。
-- 可显示的数据：本地安装、启动配置、启动次数、累计时长、最近启动、安装大小、用户状态/评分/收藏/备注、可追溯元数据。
+- 可显示的数据：本地安装、启动配置、启动次数、累计时长、最近启动、安装大小、用户状态/评分/收藏/用户评价、可追溯元数据。
 - 视觉方向已从“私人放映室 / 电影档案库”调整为“游戏启动器 / 游戏收藏架 / 游玩频道”。
 - G1 已选择 **A 游戏启动器**；B/C 保留为对照，不再作为主方向。
 - A 的视觉母题确定为“深夜游戏盒”：墨蓝 #081521、盒面奶油 #F3EAD8、标签红 #D94B3D、状态薄荷 #8FD3C1、数据黄铜 #D9A441。
@@ -70,7 +102,9 @@
 ## C8 本轮产出
 
 - 数据层：`src-tauri/migrations/20261115000900_c8_collections.sql` 新增 `collections` 和 `collection_items`。收藏集名称不区分大小写唯一，支持手动排序；作品可属于多个收藏集。新增 `collections_list`、`collection_create`、`collection_rename`、`collection_delete`、`collection_reorder`、`collection_add_works` 和 `collection_remove_work`。`LibraryQuery` 增加 `favorite_only` 与 `collection_id`，游戏库查询可直接按收藏或收藏集过滤。
-- 应用设置：`src-tauri/src/preferences.rs` 使用 SQLite `settings` 的 `app.preferences` 保存代理模式/地址、默认显示器、默认全屏、包装器默认路径与参数、可选更新清单地址和首次启动完成标记。`app_info` 增加目录数量和首次启动状态；新增 `preferences_get`、`preferences_update`、`onboarding_complete`、`open_data_dir`、`update_check`。
+- 应用设置：`src-tauri/src/preferences.rs` 使用 SQLite `settings` 的 `app.preferences` 保存代理模式/地址、默认显示器、默认全屏、Locale Emulator 与 Magpie 各自的路径和参数、可选更新清单地址和首次启动完成标记。`app_info` 增加目录数量和首次启动状态；新增 `preferences_get`、`preferences_update`、`onboarding_complete`、`open_data_dir`、`update_check`。
+- 多包装器：设置页分别维护 Locale Emulator 与 Magpie；作品启动配置保存独立启用项。Locale Emulator 通过 `LEProc` 命令行包装游戏。Magpie 会在游戏窗口出现后按实际 exe 与窗口类名写入 `autoScale` 规则，并以 `-t` 托盘模式启动或重载，不打开主窗口；缩放效果沿用 Magpie 默认配置。配置失败或找不到窗口时通过 `launch-warning` 提示，并至少保持 Magpie 托盘可用。旧版单一 `wrapperPath`/`wrapperArgs` 设置在读取时归入 Locale Emulator，旧启动配置同步迁移。
+- 多包装器验证：`pnpm build`、`pnpm typecheck` 通过；`app-pages` 11 passed；Rust `preferences` 3 passed、`launcher` 6 passed、Magpie 配置/窗口类名/写入与启动配置迁移测试通过；无头 Edge 在 1440px 和 390px 下验证两个开关可独立启用，390px 无横向溢出。另用隔离的 Magpie 便携副本和 640×480 Tk 测试窗口完成真实自动缩放探测：Magpie 在 `-t` 模式下出现 `Window_Magpie_` 缩放窗口，未出现 `Magpie_Main`，日志记录源矩形 800×600 → 渲染 2560×1440，效果链为 Anime4K Upscale/Restore + CAS。全量 Rust 在跳过 3 个受沙箱网络/临时目录影响的既有测试后为 76 passed / 11 ignored。
 - 首页：`src/features/home/**` 使用真实 `library_query` 和 `play_sessions` 聚合。主视觉优先显示最近启动的作品，没有游玩记录时回退最近入库；下方显示最近启动、最近入库、收藏、想玩清单和累计/近 7 天/本周启动/收藏概览，并提供无库、加载骨架、错误重试和启动失败提示。
 - 收藏集：`src/features/collections/**`；列表显示作品数量和封面栈，支持新建、重命名、删除和上下移动；详情支持从游戏库搜索并批量添加作品、移除作品和加载更多。封面来自真实 `assets` 缩略图，没有封面时使用分组图标，不伪造封面。
 - 全局搜索：`src/features/search/GlobalSearchPalette.tsx`；Ctrl+K 打开命令面板，搜索作品标题、原题、别名、标签、开发商/路径和收藏集名称。支持方向键、Enter、Escape、中文输入法组合输入、最近 6 条搜索和“在游戏库查看全部结果”；关闭后焦点返回顶栏搜索按钮。
@@ -94,9 +128,11 @@
 
 ## C7 本轮产出
 
+以下为 C7 初始实现记录；当前大屏布局、封面缓存和输入映射以顶部“2026-11-16 大屏整屏海报重排（当前）”为准。
+
 - 独立窗口：`src-tauri/src/bigscreen.rs`；新增 `bigscreen_open`、`bigscreen_close`、`bigscreen_move`、`bigscreen_state`、`bigscreen_open_detail`。窗口标签 `bigscreen`，路由 `#/big-screen`，前端挂载后显示；无边框全屏，显示器选择写入 SQLite `settings` 的 `bigscreen.display`，无效显示器回退主屏并返回提示。打开时隐藏主窗口，关闭时恢复并聚焦；详情入口关闭大屏并在主窗口打开 `#/work/{id}`。
 - 大屏页面：`src/features/bigscreen/**`；使用真实作品、分类、游玩状态、累计时长和最近会话数据。左侧为纯图标分类栏（最近启动、在玩、想玩、已完成、搁置、收藏、全部游戏），垂直居中，不显示文字或计数；主视觉左侧显示状态、标题、原题、简介、标签和启动/详情，右侧显示 2:3 封面；底部为横向海报架，只显示 2:3 海报，不显示标题、开发商或入库时间。大屏不展示“最近入库”。
-- 输入：`useBigScreenInput.ts`、`useBigScreenFocus.ts`；A 确认、B 返回、Y 游戏菜单、Start 控制菜单、LB/RB 切换区域，X 未分配。D-pad/左摇杆移动，键盘方向键/Enter/Escape/C/M/Tab 提供完整替代；焦点按分类栏、主视觉、海报架分区域记忆，关闭菜单/抽屉后回到触发项。鼠标静止后隐藏光标，支持 reduced motion。
+- 输入：`useBigScreenInput.ts`、`useBigScreenFocus.ts`；A 确认、B 返回、Y 游戏菜单、Start 控制菜单、LB/RB 切换菜单区域、LT/RT 翻页，X 未分配。D-pad/左摇杆移动，键盘方向键/Enter/Escape/C/M/Tab/Q/E 提供完整替代；焦点按分类栏、主视觉、海报架分区域记忆，关闭菜单后回到触发项。鼠标静止后隐藏光标，支持 reduced motion。
 - 菜单：Y 在当前位置打开游戏菜单（启动/停止、查看详情、收藏、游玩状态子菜单、关闭）；Start 从右侧打开控制菜单（显示器、手柄状态、按键说明、刷新游戏库、返回主窗口）。B/Escape 只逐层返回，根界面不会退出大屏；退出入口只放在控制菜单。
 - 设置：`SettingsPage` 新增“电视大屏”，可选择显示器、查看手柄连接状态、打开大屏和查看简短键位提示。
 - 验证：`pnpm typecheck`、`pnpm lint`、`pnpm test`（8 个文件 / 26 passed）、`pnpm build`、`pnpm format:check`；`cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（62 passed / 10 ignored）。实际 Tauri 窗口在当前 2560×1440（125%）屏幕上以 2048×1152 CSS 全屏打开；7 个图标分类渲染正常，“全部游戏”切换后聚焦首张海报；真实 dummy 游戏从大屏启动并结算为 10 秒 `exited` 会话；“游戏详情”关闭大屏并把主窗口导航到 `#/work/2`；设置页打开/关闭大屏正常。当前机器未连接物理手柄，且只有一个显示器，因此手柄实机映射和多显示器移动尚未验证。
@@ -184,20 +220,21 @@
 ## C3 本轮产出
 
 - 数据层：`src-tauri/migrations/20261115000300_c3_detail_launch.sql`；新增 `assets`、`launch_profiles`、`works.tags_json`、`local_copies.last_launched_at` 和 `launch_count`。C2 数据库迁移测试通过。
-- 详情资料：`work_update` 支持标题、原题、别名、简介、年份、开发商/发行商、版本、语言、发行日期、标签、状态、评分、收藏和备注；重新扫描不会覆盖用户手动修改的标题。
+- 详情资料：`work_update` 支持标题、原题、别名、简介、年份、开发商/发行商、版本、语言、发行日期、标签、状态、评分、收藏和用户评价；重新扫描不会覆盖用户手动修改的标题。
 - 封面资产：`src-tauri/src/assets.rs`；手动选择图片、在游戏目录及常见封面子目录发现候选、原图缓存、WebP 缩略图、SHA-256 校验和、旧文件替换、清除封面和缺失回退。
 - 封面读取：Tauri 自定义只读协议 `miyu-asset://`（Windows 为 `http://miyu-asset.localhost/...`），只允许读取数据目录 `assets` 下的文件；列表加载缩略图，详情使用原图。
-- 启动配置：`launch_config_save` / `launch_config_validate`；支持 exe、工作目录、参数数组、环境变量、可选包装器 exe 与参数、显示器偏好和全屏偏好；路径变更会同步本地副本。
+- 启动配置：`launch_config_save` / `launch_config_validate`；支持游戏目录与可执行文件名组合路径、参数数组、环境变量、兼容包装器启用状态，并保留显示器与全屏字段；详情页改动自动保存，路径变更会同步本地副本。
 - 启动器：`src-tauri/src/launcher/**`；使用 `std::process::Command` 参数数组启动，不经过 shell；Windows Job Object 跟踪进程树；启动、运行、退出、停止状态通过 `launch-state` 事件回传。
-- UI：`src/features/work-detail/**`；真实详情、编辑资料弹窗（焦点管理、Tab 循环、Escape）、封面操作、启动配置表单、路径校验结果、运行/退出状态、无效路径反馈和来源占位。
-- 首页和设置：首页“启动游戏”接入真实启动；设置页启动器分区说明按作品配置包装器，不再显示 C3 待接入。
+- UI：`src/features/work-detail/**`；真实详情、内联资料与评价编辑、封面操作、自动保存启动配置、运行/退出状态、无效路径反馈，以及 Bangumi/Kungal 来源入口。
+- 来源编号：`work_source_links` 保存每部作品在 VNDB、Bangumi、Kungal/NextMoe、Hikarinagi、Steam 的当前匹配编号；多源匹配应用时同步全部匹配来源，单源搜索导入后补跑一次来源匹配。
+- 首页和设置：首页“启动游戏”接入真实启动；设置页分别维护 Locale Emulator 与 Magpie 的程序路径和参数，作品详情分别显示启用开关。
 - 证据：`outputs/app/c3/01-detail-cover.png`、`02-detail-launch.png`、`03-detail-edit.png`、`04-launch-running.png`、`05-launch-exited.png`、`06-library-thumbnail.png`、`07-invalid-path.png`、`08-cover-fallback.png`、`probe.log`。浏览器尺寸截图已重新生成到 `outputs/app/1440x900/`、`1920x1080/`、`150pct-1280x720/` 和 `4k/`，包含 `02-detail`、`02b-detail-launch`、`02c-detail-edit`。
 
 ### C3 已知边界
 
 - C3 当时只记录启动次数和最近启动时间；C6 已补上 `play_sessions`、自动累计时长和统计页。
 - 封面只支持手动选择和本地发现；C4/C5 已补充在线封面候选、下载和画廊。
-- 包装器是通用模型：用户选择 exe 并填写参数，参数后接游戏 exe 与游戏参数；不内置 Locale Emulator/NTLEA，不自动检测安装路径，不提供 profile 选择器。
+- 包装器按适配器区分：Locale Emulator 以命令包装方式接收游戏 exe；Magpie 由管理器写入作品自动缩放规则并以托盘模式启动。设置页分别维护路径与参数，作品详情分别保存启用项。不捆绑或自动下载第三方程序，不自动检测安装路径，也不提供 LE profile 选择器。
 - 显示器与全屏偏好只保存并展示，不强制移动游戏窗口；实际窗口放置留给大屏/后续阶段。
 - 启动状态保存在内存中，应用重启后不会恢复“正在运行”；进程树跟踪只在本次应用运行期间有效。关闭管理器不会强制结束游戏（Job Object 未设置 kill-on-close）。
 - 多本地副本目前仍以主副本作为详情和启动对象；多副本管理不在 C3。
@@ -270,7 +307,7 @@
 - `pnpm typecheck`、`pnpm lint`、`pnpm test`（8 个文件 / 26 passed）、`pnpm build`、`pnpm format:check`；`cargo fmt --check`、`cargo clippy -- -D warnings`、`cargo test`（62 passed / 10 ignored）。
 - 实际 Tauri 窗口（`MIYU_DATA_DIR=tmp/c7-appdata`）打开 `bigscreen` 窗口，2048×1152 CSS 无边框全屏；关闭后主窗口恢复。设置页显示器选择和“在电视上打开”可用，关闭大屏后按钮状态复位。
 - 分类探针确认 7 个纯图标项渲染正常、`railText` 为空、标签只在 `aria-label`；点击“全部游戏”后分类切换并聚焦首张海报。底部书架为 2:3 竖版海报，没有标题/开发商文字，页面没有“最近入库”。
-- Y/右键菜单显示启动/停止、查看详情、收藏、游玩状态和关闭；Start 控制侧栏显示显示器、手柄状态、按键说明、刷新游戏库和返回主窗口；B/Escape 在根界面不退出。
+- Y/右键菜单显示启动/停止、查看详情、收藏、游玩状态和关闭；Start 控制菜单显示显示器、手柄状态、按键说明、刷新游戏库和返回主窗口；B/Escape 在根界面不退出。
 - 真实 dummy 游戏从大屏启动，运行中显示“停止游戏”，退出后生成 10 秒 `exited` 会话；“游戏详情”关闭大屏并把主窗口导航到 `#/work/2`。
 - 16 张浏览器截图和实际窗口截图覆盖 1440×900、1920×1080、150%（1280×720 CSS）和 4K；均无横向溢出。当前没有物理手柄，Gamepad API 返回 0 个设备。
 
@@ -399,13 +436,13 @@ C2/C3 不再扩展；已知边界见上文，C4 及之后内容不在本对话�
 
 ## 下一轮入口
 
-C8 已完成，下一轮进入 C9：
+C9 核心硬化已完成，剩余发布验收：
 
-1. C9 处理错误边界、结构化日志、崩溃记录、数据库备份/恢复和迁移安全检查。
-2. 收紧 Tauri capability/CSP，验证没有远程导航、任意 shell 或越权文件访问；补安装包、版本、更新清单和发布脚本。
-3. 做 10,000 作品、5,000 封面缩略图、冷启动、大屏 4K、内存和安装包的基准；完成 Windows 10/11、1080p/4K/150%、中文/日文路径、离线/断网/限流、手柄和异常退出 QA 矩阵。
+1. 在可联网环境运行 `pnpm release:build`，下载 WiX/NSIS 并生成 MSI、NSIS、清单和校验文件。
+2. 在干净 Windows 10 22H2 与 Windows 11 x64 环境验证安装、启动、升级、卸载和数据保留；确认 release EXE 在 CSP 下的设置、备份、恢复和错误边界。
+3. 完成冷启动、内存和安装包体积基准，并把结果补入 `docs/QA_MATRIX.md`。
 4. G5 仍待确认：有物理手柄时复测 A/B/Y/Start/LB/RB 和摇杆重复节奏；有第二块显示器时复测窗口移动与主窗口恢复。
-5. 继续调整首页、收藏集或设置时，保持 `play_sessions` 和 `collections` 为事实来源，并同步更新 `docs/DESIGN.md`、`docs/PAGE_VISIONS.md` 与 `outputs/app/c8/` 截图。
+5. G6 待决策：正式版本号、代码签名证书、便携版和自动更新通道；当前包明确标记未签名，只提供手动更新检查。
 
 ## 待决策与风险
 

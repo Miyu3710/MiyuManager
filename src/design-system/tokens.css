@@ -1,97 +1,132 @@
 :root,
 [data-theme="sakura"] {
-  --color-bg: #f5efec;
-  --color-bg-deep: #2b2225;
-  --color-bg-raised: #efe5e1;
-  --color-surface: #fffaf7;
-  --color-surface-raised: #fffdfb;
-  --color-surface-soft: rgba(72, 49, 55, 0.045);
-  --color-line: rgba(65, 44, 49, 0.13);
-  --color-line-strong: rgba(65, 44, 49, 0.24);
-  --color-text: #2c2225;
-  --color-text-muted: #4d3d42;
-  --color-text-soft: #67565b;
-  --color-text-faint: #78666b;
-  --text-caption: 11.5px;
-  --text-meta: 12px;
-  --text-ui: 13px;
-  --text-body: 14px;
-  --text-title: 16px;
-  --color-accent: #a94e5f;
-  --color-accent-text: #8f3f4f;
-  --color-accent-hover: #974253;
-  --color-accent-soft: rgba(183, 93, 108, 0.12);
-  --color-accent-contrast: #fffaf8;
-  --color-status: #506b5a;
-  --color-status-soft: rgba(88, 117, 99, 0.12);
-  --color-data: #84602d;
-  --color-data-soft: rgba(140, 105, 53, 0.11);
-  --color-focus: #a94e5f;
-  --color-danger: #a5454f;
-  --color-bar-bg: #2b2225;
-  --color-bar-fg: #f6ebe7;
-  --color-bar-hover: rgba(255, 255, 255, 0.075);
-  --focus-color: var(--color-focus);
-  --selection-bg: var(--color-accent);
-  --selection-fg: #fffaf8;
-  --scroll-thumb: rgba(64, 44, 49, 0.24);
+  /* Sakura atelier: Bilibili-pink frame, white shelves, plum ink. */
+  --color-bg: #fff3f6;
+  --color-bg-deep: #3b1f2a;
+  --color-rail: #fc84a5;
+  --color-bg-raised: #ffe8ef;
+  --color-topbar: #fff4f7;
+  --color-surface: #ffffff;
+  --color-surface-raised: #fffdfc;
+  --color-surface-soft: rgba(107, 42, 61, 0.055);
+  --color-surface-muted: #fff8fa;
+  --color-surface-inset: #fff1f5;
+  --color-line: rgba(166, 59, 93, 0.15);
+  --color-line-strong: rgba(177, 46, 87, 0.25);
+  --color-text: #2d2025;
+  --color-text-muted: #58434b;
+  --color-text-soft: #6d535d;
+  --color-text-faint: #765b65;
 
-  --rail-width: 216px;
-  --topbar-height: 64px;
-  --page-pad: 38px;
+  --color-accent: #d43868;
+  --color-accent-bright: #fc84a5;
+  --color-action: #f46d96;
+  --color-action-hover: #e95f89;
+  --color-action-ink: #34202a;
+  --color-accent-text: #b82c58;
+  --color-accent-hover: #c3315f;
+  --color-accent-soft: rgba(252, 132, 165, 0.14);
+  --color-accent-contrast: #ffffff;
+  --color-status: #4f6b5b;
+  --color-status-soft: rgba(79, 107, 91, 0.12);
+  --color-data: #905463;
+  --color-data-soft: rgba(144, 84, 99, 0.1);
+  --color-focus: #d43868;
+  --color-danger: #c03b45;
+
+  --color-bar-bg: #fc84a5;
+  --color-bar-fg: #3b1f2a;
+  --color-bar-hover: rgba(255, 255, 255, 0.24);
+  --focus-color: var(--color-focus);
+  --selection-bg: #fc84a5;
+  --selection-fg: #3b1f2a;
+  --scroll-thumb: rgba(201, 50, 97, 0.22);
+
+  /* Fixed product type scale. Functional text never drops below 12px. */
+  --text-micro: 12px;
+  --text-caption: 13px;
+  --text-meta: 13.5px;
+  --text-ui: 14px;
+  --text-body: 15px;
+  --text-title: 18px;
+  --text-heading: 22px;
+  --text-section: 28px;
+  --text-page: 42px;
+  --text-display: 54px;
+  --leading-tight: 1.18;
+  --leading-copy: 1.68;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 56px;
+
+  --rail-width: 232px;
+  --topbar-height: 76px;
+  --page-pad: 32px;
   --cover-gap: 18px;
   --library-columns: 6;
-  --control-height: 38px;
+  --control-height: 40px;
+  --control-height-sm: 32px;
+  --icon-stroke: 1.85;
 
-  --radius-xs: 2px;
-  --radius-control: 7px;
-  --radius-card: 10px;
-  --radius-panel: 14px;
-  --radius-hero: 2px;
-  --radius-pill: 2px;
-  --radius-cover: 2px;
-  --radius-popover: 12px;
+  --radius-xs: 6px;
+  --radius-control: 10px;
+  --radius-card: 14px;
+  --radius-panel: 18px;
+  --radius-hero: 24px;
+  --radius-pill: 999px;
+  --radius-cover: 6px;
+  --radius-popover: 16px;
 
-  --shadow-cover: 0 8px 20px rgba(62, 39, 44, 0.15);
-  --shadow-raised: 0 18px 48px rgba(58, 37, 42, 0.14);
-  --shadow-soft: 0 2px 10px rgba(58, 37, 42, 0.055);
-  --shadow-hero: 0 0 0 rgba(0, 0, 0, 0);
+  --shadow-cover: 0 16px 34px rgba(120, 40, 65, 0.18);
+  --shadow-raised: 0 24px 64px rgba(120, 40, 65, 0.14);
+  --shadow-soft: 0 3px 14px rgba(120, 40, 65, 0.05);
+  --shadow-hero: 0 28px 64px rgba(201, 50, 97, 0.13);
 
   --motion-fast: 120ms;
-  --motion-base: 180ms;
-  --motion-slow: 260ms;
+  --motion-base: 200ms;
+  --motion-slow: 320ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-swift: cubic-bezier(0.3, 0.7, 0.2, 1);
 }
 
 [data-density="compact"] {
-  --rail-width: 204px;
-  --page-pad: 30px;
+  --rail-width: 216px;
+  --page-pad: 28px;
   --cover-gap: 15px;
   --library-columns: 7;
   --control-height: 36px;
 }
 
 [data-density="comfortable"] {
-  --rail-width: 216px;
-  --page-pad: 38px;
+  --rail-width: 232px;
+  --page-pad: 34px;
   --cover-gap: 18px;
   --library-columns: 6;
-  --control-height: 38px;
+  --control-height: 40px;
 }
 
-@media (max-width: 1230px) {
+@media (max-width: 1320px) {
   :root,
   [data-theme="sakura"] {
-    --rail-width: 196px;
-    --page-pad: 30px;
+    --rail-width: 216px;
+    --page-pad: 28px;
     --library-columns: 5;
   }
 }
 
-@media (max-width: 1080px) {
+@media (max-width: 1180px) {
   :root,
   [data-theme="sakura"] {
+    --rail-width: 198px;
     --page-pad: 24px;
     --library-columns: 4;
+    --topbar-height: 72px;
   }
 }

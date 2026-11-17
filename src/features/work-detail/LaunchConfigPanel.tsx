@@ -1,63 +1,59 @@
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { CheckCircle2, FolderOpen, Play, Save, ShieldCheck, XCircle } from "lucide-react";
-import { toast } from "sonner";
-import { z } from "zod";
-import { Button } from "../../design-system/components/Button";
-import {
-  pickDirectory,
-  pickExecutable,
-  saveLaunchConfig,
-  validateLaunchConfig,
-} from "../../lib/library-api";
-import type {
-  LaunchConfigInput,
-  LaunchProfile,
-  LibraryItemDetail,
-  MonitorInfo,
-  ValidationReport,
-} from "../../lib/library-types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { FolderOpen } from "lucide-react";
+import { Hint } from "../../design-system/components/Hint";
+import { pickDirectory, pickExecutable, saveLaunchConfig } from "../../lib/library-api";
+import type { LaunchConfigInput, LaunchProfile, LibraryItemDetail } from "../../lib/library-types";
 import type { AppPreferences } from "../../lib/app-types";
+import {
+  WRAPPER_DEFINITIONS,
+  isWrapperConfigured,
+  orderedWrapperIds,
+  wrapperConfig,
+} from "../../lib/launch-wrappers";
 
-const schema = z.object({
-  exePath: z.string().trim().min(1, "需要选择可执行文件"),
-  workingDir: z.string().trim().min(1, "需要选择工作目录"),
-  argsText: z.string().max(16_000),
-  envText: z.string().max(16_000),
-  wrapperPath: z.string().max(4096),
-  wrapperArgsText: z.string().max(16_000),
-  monitor: z.string(),
-  fullscreen: z.boolean(),
-});
-
-type FormValues = z.infer<typeof schema>;
-
-function defaultProfile(detail: LibraryItemDetail, preferences: AppPreferences): LaunchProfile {
-  return (
-    detail.launchProfile ?? {
-      args: [],
-      env: [],
-      wrapperPath: preferences.wrapperPath.trim() || null,
-      wrapperArgs: preferences.wrapperArgs,
-      monitor: preferences.defaultMonitor,
-      fullscreen: preferences.launchFullscreen,
-    }
-  );
+interface LaunchDraft {
+  workingDir: string;
+  exeName: string;
+  argsText: string;
+  envText: string;
+  wrapperIds: string[];
+  monitor: number | null;
+  fullscreen: boolean;
 }
 
-function valuesFrom(detail: LibraryItemDetail, preferences: AppPreferences): FormValues {
-  const profile = defaultProfile(detail, preferences);
-  return {
-    exePath: detail.exePath,
-    workingDir: detail.workingDir,
-    argsText: profile.args.join("\n"),
-    envText: profile.env.map((variable) => variable.key + "=" + variable.value).join("\n"),
-    wrapperPath: profile.wrapperPath ?? "",
-    wrapperArgsText: profile.wrapperArgs.join("\n"),
-    monitor: profile.monitor === null ? "" : String(profile.monitor),
-    fullscreen: profile.fullscreen,
-  };
+type SaveState = "idle" | "pending" | "saving" | "saved" | "error";
+
+function normalizeWindowsPath(value: string): string {
+  return value.trim().replace(/\//g, "\\");
+}
+
+function directoryOf(value: string): string {
+  const path = normalizeWindowsPath(value);
+  const index = path.lastIndexOf("\\");
+  if (index <= 0) {
+    return path;
+  }
+  return path.slice(0, index === 2 && path[1] === ":" ? 3 : index);
+}
+
+function nameOf(value: string): string {
+  const path = normalizeWindowsPath(value);
+  return path.slice(path.lastIndexOf("\\") + 1);
+}
+
+function executableName(exePath: string, workingDir: string): string {
+  const exe = normalizeWindowsPath(exePath);
+  const directory = normalizeWindowsPath(workingDir).replace(/\\+$/, "");
+  if (directory && exe.toLowerCase().startsWith(directory.toLowerCase() + "\\")) {
+    return exe.slice(directory.length + 1);
+  }
+  return nameOf(exe);
+}
+
+function joinExecutable(workingDir: string, exeName: string): string {
+  const directory = normalizeWindowsPath(workingDir).replace(/\\+$/, "");
+  const name = normalizeWindowsPath(exeName).replace(/^\\+/, "");
+  return directory ? directory + "\\" + name : name;
 }
 
 function parseLines(value: string): string[] {
@@ -77,287 +73,330 @@ function parseEnv(value: string): LaunchProfile["env"] {
   });
 }
 
-function toConfig(values: FormValues): LaunchConfigInput {
+function draftFrom(detail: LibraryItemDetail, preferences: AppPreferences): LaunchDraft {
+  const profile = detail.launchProfile;
   return {
-    exePath: values.exePath.trim(),
-    workingDir: values.workingDir.trim(),
+    workingDir: detail.workingDir,
+    exeName: executableName(detail.exePath, detail.workingDir),
+    argsText: profile?.args.join("\n") ?? "",
+    envText: profile?.env.map((variable) => variable.key + "=" + variable.value).join("\n") ?? "",
+    wrapperIds: orderedWrapperIds(profile?.wrapperIds ?? []),
+    monitor: profile?.monitor ?? preferences.defaultMonitor,
+    fullscreen: profile?.fullscreen ?? preferences.launchFullscreen,
+  };
+}
+
+function toConfig(draft: LaunchDraft, preferences: AppPreferences): LaunchConfigInput {
+  return {
+    exePath: joinExecutable(draft.workingDir, draft.exeName),
+    workingDir: normalizeWindowsPath(draft.workingDir),
     profile: {
-      args: parseLines(values.argsText),
-      env: parseEnv(values.envText),
-      wrapperPath: values.wrapperPath.trim() || null,
-      wrapperArgs: parseLines(values.wrapperArgsText),
-      monitor: values.monitor === "" ? null : Number(values.monitor),
-      fullscreen: values.fullscreen,
+      args: parseLines(draft.argsText),
+      env: parseEnv(draft.envText),
+      wrapperIds: draft.wrapperIds.filter((id) => isWrapperConfigured(preferences, id)),
+      monitor: draft.monitor,
+      fullscreen: draft.fullscreen,
     },
   };
 }
 
-function CheckRow({ label, check }: { label: string; check: ValidationReport["exe"] | null }) {
-  if (!check) {
-    return null;
-  }
-  return (
-    <div className="detail-check-row">
-      {check.ok ? (
-        <CheckCircle2 size={14} strokeWidth={1.6} className="is-ok" />
-      ) : (
-        <XCircle size={14} strokeWidth={1.6} className="is-error" />
-      )}
-      <span>{label}</span>
-      <p title={check.path}>{check.message}</p>
-    </div>
-  );
-}
-
 interface LaunchConfigPanelProps {
   detail: LibraryItemDetail;
-  monitors: MonitorInfo[];
   preferences: AppPreferences;
   onSaved: () => void;
-  onLaunch: () => void;
 }
 
-export function LaunchConfigPanel({
-  detail,
-  monitors,
-  preferences,
-  onSaved,
-  onLaunch,
-}: LaunchConfigPanelProps) {
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    getValues,
-    formState: { isSubmitting },
-  } = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: valuesFrom(detail, preferences),
-  });
-  const [report, setReport] = useState<ValidationReport | null>(null);
+export function LaunchConfigPanel({ detail, preferences, onSaved }: LaunchConfigPanelProps) {
+  const [draft, setDraft] = useState(() => draftFrom(detail, preferences));
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const draftRef = useRef(draft);
+  const detailRef = useRef(detail);
+  const preferencesRef = useRef(preferences);
+  const onSavedRef = useRef(onSaved);
+  const dirtyRef = useRef(false);
+  const timerRef = useRef<number | null>(null);
+  const requestRef = useRef(0);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
 
-  const buildConfig = () => {
-    try {
-      return toConfig(getValues());
-    } catch (error) {
-      toast.error(String(error));
-      return null;
-    }
-  };
+  useEffect(() => {
+    detailRef.current = detail;
+    preferencesRef.current = preferences;
+    onSavedRef.current = onSaved;
+  }, [detail, onSaved, preferences]);
 
-  const validate = async () => {
-    const config = buildConfig();
-    if (!config) {
-      return;
-    }
-    try {
-      const result = await validateLaunchConfig(detail.workId, config);
-      setReport(result);
-      if (result.valid) {
-        toast.success("启动路径校验通过");
-      } else {
-        toast.error("启动路径存在问题，请查看校验结果");
+  const persist = useCallback((value: LaunchDraft) => {
+    const requestId = ++requestRef.current;
+    setSaveState("saving");
+    setSaveError(null);
+    saveQueueRef.current = saveQueueRef.current.then(async () => {
+      if (requestId !== requestRef.current) {
+        return;
       }
-    } catch (error) {
-      setReport(null);
-      toast.error(String(error));
-    }
-  };
+      try {
+        await saveLaunchConfig(detailRef.current.workId, toConfig(value, preferencesRef.current));
+        if (requestId === requestRef.current) {
+          dirtyRef.current = false;
+          setSaveState("saved");
+          onSavedRef.current();
+        }
+      } catch (error) {
+        if (requestId === requestRef.current) {
+          setSaveState("error");
+          setSaveError(String(error));
+        }
+      }
+    });
+  }, []);
 
-  const save = handleSubmit(async (values) => {
-    let config: LaunchConfigInput;
-    try {
-      config = toConfig(values);
-    } catch (error) {
-      toast.error(String(error));
+  const flushSave = (value = draftRef.current) => {
+    if (!dirtyRef.current) {
       return;
     }
-    try {
-      await saveLaunchConfig(detail.workId, config);
-      toast.success("启动配置已保存");
-      onSaved();
-    } catch (error) {
-      toast.error(String(error));
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
     }
-  });
+    persist(value);
+  };
 
-  const saveAndLaunch = handleSubmit(async (values) => {
-    let config: LaunchConfigInput;
-    try {
-      config = toConfig(values);
-    } catch (error) {
-      toast.error(String(error));
+  const applyDraft = (patch: Partial<LaunchDraft>) => {
+    const next = { ...draftRef.current, ...patch };
+    draftRef.current = next;
+    dirtyRef.current = true;
+    setDraft(next);
+    setSaveState("pending");
+    setSaveError(null);
+  };
+
+  useEffect(() => {
+    if (!dirtyRef.current) {
       return;
     }
-    try {
-      await saveLaunchConfig(detail.workId, config);
-      onSaved();
-      onLaunch();
-    } catch (error) {
-      toast.error(String(error));
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
     }
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      persist(draftRef.current);
+    }, 350);
+    return () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [draft, persist]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      if (dirtyRef.current) {
+        persist(draftRef.current);
+      }
+    };
+  }, [persist]);
+
+  const browseExecutable = async () => {
+    const current = draftRef.current;
+    const selected = await pickExecutable(
+      current.exeName ? joinExecutable(current.workingDir, current.exeName) : undefined,
+    );
+    if (!selected) {
+      return;
+    }
+    applyDraft({
+      workingDir: directoryOf(selected),
+      exeName: nameOf(selected),
+    });
+  };
+
+  const browseDirectory = async () => {
+    const selected = await pickDirectory(draftRef.current.workingDir || undefined);
+    if (selected) {
+      applyDraft({ workingDir: selected });
+    }
+  };
+
+  const toggleWrapper = (id: string) => {
+    const next = new Set(draftRef.current.wrapperIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    applyDraft({ wrapperIds: orderedWrapperIds(next) });
+  };
+
+  const saveErrorText = saveError ? saveError.replace(/^Error:\s*/, "") : null;
+  const wrappers = WRAPPER_DEFINITIONS.map((definition) => {
+    const config = wrapperConfig(preferences, definition.id);
+    const configured = Boolean(config?.path.trim());
+    return {
+      definition,
+      configured,
+      enabled: configured && draft.wrapperIds.includes(definition.id),
+      path: config?.path.trim() ?? "",
+    };
   });
-
-  const browseExe = async () => {
-    const selected = await pickExecutable(getValues("exePath") || undefined);
-    if (selected) {
-      setValue("exePath", selected, { shouldDirty: true });
-    }
-  };
-
-  const browseWorkingDir = async () => {
-    const selected = await pickDirectory(getValues("workingDir") || undefined);
-    if (selected) {
-      setValue("workingDir", selected, { shouldDirty: true });
-    }
-  };
-
-  const browseWrapper = async () => {
-    const selected = await pickExecutable(getValues("wrapperPath") || undefined);
-    if (selected) {
-      setValue("wrapperPath", selected, { shouldDirty: true });
-    }
-  };
+  const localeEmulatorEnabled = wrappers.some(
+    (entry) => entry.definition.id === "locale-emulator" && entry.enabled,
+  );
+  const magpieEnabled = wrappers.some((entry) => entry.definition.id === "magpie" && entry.enabled);
+  const bothEnabled = localeEmulatorEnabled && magpieEnabled;
 
   return (
-    <form className="detail-launch-form" onSubmit={save}>
-      <section className="detail-launch-section">
-        <header>
-          <div>
-            <h2>程序路径</h2>
-            <p>启动时使用参数数组和工作目录，不经过 shell。</p>
-          </div>
-          <Button type="button" variant="ghost" size="sm" onClick={() => void validate()}>
-            <ShieldCheck size={14} strokeWidth={1.6} /> 校验路径
-          </Button>
-        </header>
-        <label className="detail-field">
-          <span>可执行文件</span>
-          <div className="detail-field-row">
-            <input {...register("exePath")} spellCheck={false} />
-            <Button type="button" variant="secondary" size="sm" onClick={() => void browseExe()}>
-              <FolderOpen size={13} strokeWidth={1.6} /> 选择
-            </Button>
-          </div>
-        </label>
-        <label className="detail-field">
-          <span>工作目录</span>
-          <div className="detail-field-row">
-            <input {...register("workingDir")} spellCheck={false} />
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => void browseWorkingDir()}
-            >
-              <FolderOpen size={13} strokeWidth={1.6} /> 选择
-            </Button>
-          </div>
-        </label>
-        {report ? (
-          <div className="detail-validation" aria-live="polite">
-            <div className="detail-validation__head">
-              <b>{report.valid ? "路径可用" : "需要修复"}</b>
-              <span>{report.valid ? "可以保存并启动" : "保存前请先处理下面的路径"}</span>
+    <div className="detail-launch-form" aria-busy={saveState === "saving"}>
+      <section className="detail-launch-section detail-launch-paths">
+        <div className="launch-path-builder">
+          <div className="launch-path-field">
+            <label htmlFor="launch-working-dir">游戏目录</label>
+            <div className="launch-path-field__surface">
+              <input
+                id="launch-working-dir"
+                value={draft.workingDir}
+                onChange={(event) => applyDraft({ workingDir: event.currentTarget.value })}
+                onBlur={() => flushSave()}
+                spellCheck={false}
+                aria-label="游戏目录"
+              />
+              <Hint label="选择游戏目录" side="bottom">
+                <button
+                  type="button"
+                  className="launch-path-field__button launch-path-field__separator"
+                  onClick={() => void browseDirectory()}
+                  aria-label="选择游戏目录"
+                >
+                  \
+                </button>
+              </Hint>
             </div>
-            <CheckRow label="可执行文件" check={report.exe} />
-            <CheckRow label="工作目录" check={report.workingDir} />
-            {report.wrapper ? <CheckRow label="包装器" check={report.wrapper} /> : null}
           </div>
-        ) : null}
+          <div className="launch-path-field launch-path-field--exe">
+            <label htmlFor="launch-exe-name">可执行文件</label>
+            <div className="launch-path-field__surface">
+              <input
+                id="launch-exe-name"
+                value={draft.exeName}
+                onChange={(event) => applyDraft({ exeName: event.currentTarget.value })}
+                onBlur={() => flushSave()}
+                spellCheck={false}
+                aria-label="可执行文件"
+              />
+              <Hint label="选择可执行文件" side="bottom">
+                <button
+                  type="button"
+                  className="launch-path-field__button"
+                  onClick={() => void browseExecutable()}
+                  aria-label="选择可执行文件"
+                >
+                  <FolderOpen size={18} strokeWidth={1.7} />
+                </button>
+              </Hint>
+            </div>
+          </div>
+        </div>
       </section>
 
-      <section className="detail-launch-section">
+      <section className="detail-launch-section detail-launch-params">
         <header>
           <div>
             <h2>启动参数</h2>
-            <p>每行一个参数；含空格的参数也不需要额外加引号。</p>
           </div>
         </header>
-        <label className="detail-field">
-          <span>游戏参数</span>
-          <textarea rows={3} placeholder="-window" {...register("argsText")} />
-        </label>
-        <label className="detail-field">
-          <span>环境变量（KEY=VALUE，每行一个）</span>
-          <textarea rows={3} placeholder="MIYU_TEST=1" {...register("envText")} />
-        </label>
-      </section>
-
-      <section className="detail-launch-section">
-        <header>
-          <div>
-            <h2>兼容包装器</h2>
-            <p>可接 Locale Emulator、NTLEA 或其他本地包装器；不会自动下载或捆绑。</p>
-          </div>
-        </header>
-        <label className="detail-field">
-          <span>包装器程序（可选）</span>
-          <div className="detail-field-row">
-            <input placeholder="例如 LEProc.exe" {...register("wrapperPath")} spellCheck={false} />
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => void browseWrapper()}
-            >
-              <FolderOpen size={13} strokeWidth={1.6} /> 选择
-            </Button>
-          </div>
-        </label>
-        <label className="detail-field">
-          <span>包装器参数（每行一个）</span>
-          <textarea
-            rows={3}
-            placeholder="-runas&#10;profile-name"
-            {...register("wrapperArgsText")}
-          />
-        </label>
-        <p className="detail-hint">
-          包装器参数会放在游戏 exe 之前；例如 LEProc 的 profile 参数可以写在这里。
-        </p>
-      </section>
-
-      <section className="detail-launch-section">
-        <header>
-          <div>
-            <h2>显示偏好</h2>
-            <p>偏好会保存到配置；C3 不强制搬动游戏窗口。</p>
-          </div>
-        </header>
-        <div className="detail-form-grid detail-form-grid--two">
+        <div className="detail-launch-params__grid">
           <label className="detail-field">
-            <span>显示器</span>
-            <select {...register("monitor")}>
-              <option value="">跟随游戏 / 主显示器</option>
-              {monitors.map((monitor) => (
-                <option key={monitor.index} value={monitor.index}>
-                  {monitor.name}，{monitor.width}×{monitor.height}
-                </option>
-              ))}
-            </select>
+            <span>游戏参数</span>
+            <textarea
+              rows={2}
+              placeholder="每行一个，例如 -window"
+              value={draft.argsText}
+              onChange={(event) => applyDraft({ argsText: event.currentTarget.value })}
+              onBlur={() => flushSave()}
+              aria-label="游戏参数"
+            />
           </label>
-          <label className="detail-field detail-field--check">
-            <input type="checkbox" {...register("fullscreen")} />
-            <span>优先全屏启动（由游戏或包装器解释）</span>
+          <label className="detail-field">
+            <span>环境变量</span>
+            <textarea
+              rows={2}
+              placeholder="KEY=VALUE，每行一个"
+              value={draft.envText}
+              onChange={(event) => applyDraft({ envText: event.currentTarget.value })}
+              onBlur={() => flushSave()}
+              aria-label="环境变量"
+            />
           </label>
         </div>
       </section>
 
-      <footer className="detail-launch-actions">
-        <Button type="submit" variant="secondary" size="sm" disabled={isSubmitting}>
-          <Save size={13} strokeWidth={1.6} /> {isSubmitting ? "正在保存…" : "保存配置"}
-        </Button>
-        <Button
-          type="button"
-          variant="primary"
-          size="sm"
-          disabled={isSubmitting}
-          onClick={() => void saveAndLaunch()}
-        >
-          <Play size={13} fill="currentColor" strokeWidth={0} /> 保存并启动
-        </Button>
-      </footer>
-    </form>
+      <section className="detail-launch-section detail-launch-wrapper">
+        <header>
+          <div>
+            <h2>兼容包装器</h2>
+          </div>
+        </header>
+        <div className="detail-wrapper-list">
+          {wrappers.map(({ definition, configured, enabled, path }) => (
+            <div className="detail-wrapper-row" key={definition.id}>
+              <div className="detail-wrapper-copy">
+                <div className="detail-wrapper-title">
+                  <b>{definition.name}</b>
+                  <span>{definition.role}</span>
+                </div>
+                <Hint label={path} side="bottom" align="start">
+                  <span
+                    id={`detail-wrapper-${definition.id}`}
+                    className={configured ? "detail-wrapper-path" : "detail-wrapper-path is-empty"}
+                  >
+                    {configured ? path : `在设置中配置 ${definition.name} 程序路径`}
+                  </span>
+                </Hint>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={enabled}
+                aria-label={`启用 ${definition.name}`}
+                aria-describedby={`detail-wrapper-${definition.id}`}
+                className={enabled ? "detail-switch is-on" : "detail-switch"}
+                disabled={!configured}
+                onClick={() => toggleWrapper(definition.id)}
+              >
+                <span aria-hidden="true" />
+              </button>
+            </div>
+          ))}
+        </div>
+        {bothEnabled ? (
+          <p className="detail-wrapper-note">
+            同时启用时，先由 Locale Emulator 启动游戏，再自动写入 Magpie 缩放规则。
+          </p>
+        ) : null}
+      </section>
+
+      <span className="sr-only" role="status" aria-live="polite">
+        {saveState === "pending"
+          ? "待保存"
+          : saveState === "saving"
+            ? "正在保存"
+            : saveState === "saved"
+              ? "已保存"
+              : saveState === "error"
+                ? "保存失败"
+                : ""}
+      </span>
+
+      {saveErrorText ? (
+        <Hint label={saveErrorText} side="top" align="start">
+          <p className="detail-launch-save-error" aria-live="polite">
+            {saveErrorText}
+          </p>
+        </Hint>
+      ) : null}
+    </div>
   );
 }

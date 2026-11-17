@@ -1,7 +1,7 @@
 import { Dialog } from "radix-ui";
 import { BarChart3, Clock3, FolderHeart, Home, Library, Search, Settings2, X } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { CoverArt } from "../../design-system/components/CoverArt";
 import { Tag } from "../../design-system/components/Tag";
 import { statusLabels } from "../../lib/game-data";
@@ -9,6 +9,7 @@ import { libraryItemToGame } from "../../lib/library-api";
 import type { CollectionSummary, LibraryItem } from "../../lib/library-types";
 import { useGlobalSearchResults } from "../library/useLibrary";
 import { useCollections } from "../collections/useCollections";
+import { workLinkState, workOriginForPath } from "../../lib/work-navigation";
 import "./global-search.css";
 
 const RECENT_KEY = "miyu-recent-searches";
@@ -42,6 +43,7 @@ interface GlobalSearchPaletteProps {
 
 export function GlobalSearchPalette({ open, onOpenChange }: GlobalSearchPaletteProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [query, setQuery] = useState("");
   const [recent, setRecent] = useState<string[]>(() => readRecentSearches());
   const [activeIndex, setActiveIndex] = useState(0);
@@ -108,7 +110,9 @@ export function GlobalSearchPalette({ open, onOpenChange }: GlobalSearchPaletteP
     }
     onOpenChange(false);
     if (result.kind === "work") {
-      navigate("/work/" + result.item.workId);
+      navigate("/work/" + result.item.workId, {
+        state: workLinkState(workOriginForPath(location)),
+      });
     } else if (result.kind === "collection") {
       navigate("/collections/" + result.collection.id);
     } else {

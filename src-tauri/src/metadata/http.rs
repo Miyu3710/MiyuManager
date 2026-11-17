@@ -263,6 +263,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[ignore = "requires a local loopback listener; sandboxed release checks block TCP"]
     async fn retries_rate_limited_response_and_succeeds() {
         let server = tiny_http::Server::http("127.0.0.1:0").expect("server");
         let address = match server.server_addr() {

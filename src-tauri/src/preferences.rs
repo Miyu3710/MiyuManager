@@ -8,6 +8,52 @@ use crate::metadata::MetadataHttp;
 
 const PREFERENCES_KEY: &str = "app.preferences";
 
+pub const WRAPPER_LOCALE_EMULATOR: &str = "locale-emulator";
+pub const WRAPPER_MAGPIE: &str = "magpie";
+const WRAPPER_IDS: [&str; 2] = [WRAPPER_LOCALE_EMULATOR, WRAPPER_MAGPIE];
+
+pub fn is_known_wrapper(id: &str) -> bool {
+    WRAPPER_IDS.contains(&id)
+}
+
+pub fn wrapper_label(id: &str) -> &'static str {
+    match id {
+        WRAPPER_LOCALE_EMULATOR => "Locale Emulator",
+        WRAPPER_MAGPIE => "Magpie",
+        _ => "包装器",
+    }
+}
+
+fn default_wrapper_args(id: &str) -> Vec<String> {
+    if id == WRAPPER_MAGPIE {
+        vec!["-t".to_string()]
+    } else {
+        Vec::new()
+    }
+}
+
+fn default_wrappers() -> Vec<WrapperConfig> {
+    WRAPPER_IDS
+        .iter()
+        .map(|id| WrapperConfig {
+            id: (*id).to_string(),
+            path: String::new(),
+            args: default_wrapper_args(id),
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WrapperConfig {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub path: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppPreferences {
@@ -19,6 +65,8 @@ pub struct AppPreferences {
     pub default_monitor: Option<i64>,
     #[serde(default)]
     pub launch_fullscreen: bool,
+    #[serde(default)]
+    pub wrappers: Vec<WrapperConfig>,
     #[serde(default)]
     pub wrapper_path: String,
     #[serde(default)]
@@ -40,6 +88,7 @@ impl Default for AppPreferences {
             proxy_url: String::new(),
             default_monitor: None,
             launch_fullscreen: false,
+            wrappers: default_wrappers(),
             wrapper_path: String::new(),
             wrapper_args: Vec::new(),
             update_manifest_url: String::new(),
@@ -61,18 +110,84 @@ impl AppPreferences {
             }
             validate_http_url(&self.proxy_url, "代理地址")?;
         }
-        if self.wrapper_path.chars().count() > 4096 {
-            bail!("包装器路径过长");
-        }
-        self.wrapper_path = self.wrapper_path.trim().to_string();
-        self.wrapper_args.retain(|value| !value.trim().is_empty());
-        if self.wrapper_args.len() > 64 {
-            bail!("包装器参数过多");
-        }
+        self.normalize_wrappers()?;
         self.update_manifest_url = self.update_manifest_url.trim().to_string();
         if !self.update_manifest_url.is_empty() {
             validate_http_url(&self.update_manifest_url, "更新清单地址")?;
         }
+        Ok(())
+    }
+
+    fn normalize_wrappers(&mut self) -> Result<()> {
+        let legacy_path = self.wrapper_path.trim().to_string();
+        let legacy_args = self.wrapper_args.clone();
+        let mut normalized: Vec<WrapperConfig> = Vec::new();
+        for mut wrapper in self.wrappers.clone() {
+            let id = wrapper.id.trim().to_ascii_lowercase();
+            if !is_known_wrapper(&id) || normalized.iter().any(|entry| entry.id == id) {
+                continue;
+            }
+            wrapper.id = id;
+            wrapper.path = wrapper.path.trim().to_string();
+            if wrapper.path.chars().count() > 4096 {
+                bail!("{} 路径过长", wrapper_label(&wrapper.id));
+            }
+            if wrapper.path.contains('\0') {
+                bail!("{} 路径不能包含 NUL 字符", wrapper_label(&wrapper.id));
+            }
+            wrapper.args.retain(|value| !value.trim().is_empty());
+            if wrapper.args.len() > 64 {
+                bail!("{} 参数过多", wrapper_label(&wrapper.id));
+            }
+            for arg in &wrapper.args {
+                if arg.contains('\0') {
+                    bail!("{} 参数不能包含 NUL 字符", wrapper_label(&wrapper.id));
+                }
+                if arg.chars().count() > 8192 {
+                    bail!(
+                        "{} 单个参数不能超过 8192 个字符",
+                        wrapper_label(&wrapper.id)
+                    );
+                }
+            }
+            normalized.push(wrapper);
+        }
+        if normalized.is_empty() && !legacy_path.is_empty() {
+            let mut args = legacy_args;
+            args.retain(|value| !value.trim().is_empty());
+            normalized.push(WrapperConfig {
+                id: WRAPPER_LOCALE_EMULATOR.to_string(),
+                path: legacy_path,
+                args,
+            });
+        }
+        for id in WRAPPER_IDS {
+            if normalized.iter().any(|entry| entry.id == id) {
+                continue;
+            }
+            normalized.push(WrapperConfig {
+                id: id.to_string(),
+                path: String::new(),
+                args: default_wrapper_args(id),
+            });
+        }
+        normalized.sort_by_key(|entry| {
+            WRAPPER_IDS
+                .iter()
+                .position(|id| *id == entry.id)
+                .unwrap_or(WRAPPER_IDS.len())
+        });
+        self.wrappers = normalized;
+        let locale = self
+            .wrappers
+            .iter()
+            .find(|wrapper| wrapper.id == WRAPPER_LOCALE_EMULATOR);
+        self.wrapper_path = locale
+            .map(|wrapper| wrapper.path.clone())
+            .unwrap_or_default();
+        self.wrapper_args = locale
+            .map(|wrapper| wrapper.args.clone())
+            .unwrap_or_default();
         Ok(())
     }
 
@@ -284,18 +399,63 @@ mod tests {
         preferences.proxy_mode = "custom".to_string();
         preferences.proxy_url = "http://127.0.0.1:7890".to_string();
         preferences.default_monitor = Some(1);
-        preferences.wrapper_args = vec!["--locale".to_string(), "ja".to_string()];
+        let locale = preferences
+            .wrappers
+            .iter_mut()
+            .find(|wrapper| wrapper.id == super::WRAPPER_LOCALE_EMULATOR)
+            .expect("locale wrapper");
+        locale.path = "C:\\Tools\\LEProc.exe".to_string();
+        locale.args = vec!["--locale".to_string(), "ja".to_string()];
         preferences.validate().expect("validate");
         super::save(&pool, &preferences).await.expect("save");
 
         let loaded = super::load(&pool).await.expect("load");
         assert_eq!(loaded.proxy_mode, "custom");
         assert_eq!(loaded.default_monitor, Some(1));
-        assert_eq!(loaded.wrapper_args, vec!["--locale", "ja"]);
+        let locale = loaded
+            .wrappers
+            .iter()
+            .find(|wrapper| wrapper.id == super::WRAPPER_LOCALE_EMULATOR)
+            .expect("locale wrapper");
+        assert_eq!(locale.path, "C:\\Tools\\LEProc.exe");
+        assert_eq!(locale.args, vec!["--locale", "ja"]);
+        assert!(
+            loaded
+                .wrappers
+                .iter()
+                .any(|wrapper| wrapper.id == super::WRAPPER_MAGPIE)
+        );
 
         let mut invalid = super::AppPreferences::default();
         invalid.proxy_mode = "custom".to_string();
         invalid.proxy_url = "file:///tmp/proxy".to_string();
         assert!(invalid.validate().is_err());
+    }
+
+    #[tokio::test]
+    async fn migrates_the_legacy_single_wrapper_setting() {
+        let pool = db::open_memory_pool().await.expect("pool");
+        let raw = r#"{
+            "proxyMode":"system",
+            "wrapperPath":"C:\\Tools\\LE\\LEProc.exe",
+            "wrapperArgs":["-runas","{profile-guid}"]
+        }"#;
+        sqlx::query("INSERT INTO settings (key, value_json) VALUES (?, ?)")
+            .bind(super::PREFERENCES_KEY)
+            .bind(raw)
+            .execute(&pool)
+            .await
+            .expect("legacy settings");
+
+        let loaded = super::load(&pool).await.expect("load");
+        let locale = loaded
+            .wrappers
+            .iter()
+            .find(|wrapper| wrapper.id == super::WRAPPER_LOCALE_EMULATOR)
+            .expect("locale wrapper");
+        assert_eq!(locale.path, "C:\\Tools\\LE\\LEProc.exe");
+        assert_eq!(locale.args, vec!["-runas", "{profile-guid}"]);
+        assert_eq!(loaded.wrapper_path, "C:\\Tools\\LE\\LEProc.exe");
+        assert_eq!(loaded.wrapper_args, vec!["-runas", "{profile-guid}"]);
     }
 }

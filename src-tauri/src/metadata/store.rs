@@ -5,6 +5,8 @@ use serde_json::Value;
 use sqlx::sqlite::SqliteConnection;
 use sqlx::{Row, SqlitePool};
 
+use super::types::WorkSourceLink;
+
 #[derive(Debug, Clone)]
 pub struct ProviderDescriptor {
     pub id: &'static str,
@@ -33,7 +35,6 @@ pub struct ClaimRow {
     pub source_id: String,
     pub value: Value,
     pub confidence: Option<f64>,
-    pub locked: bool,
     pub fetched_at: String,
     pub provider_name: String,
     pub priority: i64,
@@ -312,7 +313,7 @@ pub async fn cache_put(
 pub async fn load_claims(pool: &SqlitePool, work_id: i64) -> Result<Vec<ClaimRow>> {
     let rows = sqlx::query(
         "SELECT c.id, c.field, c.source, c.source_id, c.value_json, c.confidence,
-                c.locked, c.fetched_at,
+                c.fetched_at,
                 COALESCE(p.name, CASE WHEN c.source = 'manual' THEN '手动编辑' ELSE c.source END) AS provider_name,
                 COALESCE(p.priority, 0) AS priority
          FROM metadata_claims c
@@ -332,44 +333,11 @@ pub async fn load_claims(pool: &SqlitePool, work_id: i64) -> Result<Vec<ClaimRow
             source_id: row.get("source_id"),
             value: serde_json::from_str(&row.get::<String, _>("value_json")).unwrap_or(Value::Null),
             confidence: row.get("confidence"),
-            locked: row.get::<i64, _>("locked") != 0,
             fetched_at: row.get("fetched_at"),
             provider_name: row.get("provider_name"),
             priority: row.get("priority"),
         })
         .collect())
-}
-
-pub async fn set_field_lock(
-    pool: &SqlitePool,
-    work_id: i64,
-    field: &str,
-    locked: bool,
-    current_value: Value,
-) -> Result<()> {
-    let mut tx = pool.begin().await?;
-    let result =
-        sqlx::query("UPDATE metadata_claims SET locked = ? WHERE work_id = ? AND field = ?")
-            .bind(if locked { 1 } else { 0 })
-            .bind(work_id)
-            .bind(field)
-            .execute(&mut *tx)
-            .await?;
-    if locked && result.rows_affected() == 0 {
-        upsert_claim(
-            &mut tx,
-            work_id,
-            field,
-            "manual",
-            "",
-            &current_value,
-            None,
-            true,
-        )
-        .await?;
-    }
-    tx.commit().await?;
-    Ok(())
 }
 
 pub async fn load_work_field_values(pool: &SqlitePool, work_id: i64) -> Result<WorkFieldValues> {
@@ -421,17 +389,15 @@ pub async fn upsert_claim(
     source_id: &str,
     value: &Value,
     confidence: Option<f64>,
-    locked: bool,
 ) -> Result<()> {
     let value_json = serde_json::to_string(value)?;
     sqlx::query(
         "INSERT INTO metadata_claims
-           (work_id, field, source, source_id, value_json, confidence, locked, fetched_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+           (work_id, field, source, source_id, value_json, confidence, fetched_at)
+         VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
          ON CONFLICT(work_id, field, source, source_id) DO UPDATE SET
            value_json = excluded.value_json,
            confidence = excluded.confidence,
-           locked = excluded.locked,
            fetched_at = excluded.fetched_at",
     )
     .bind(work_id)
@@ -440,10 +406,56 @@ pub async fn upsert_claim(
     .bind(source_id)
     .bind(value_json)
     .bind(confidence)
-    .bind(if locked { 1 } else { 0 })
     .execute(conn)
     .await?;
     Ok(())
+}
+
+pub async fn upsert_source_link(
+    conn: &mut SqliteConnection,
+    work_id: i64,
+    provider: &str,
+    source_id: &str,
+    title: &str,
+) -> Result<()> {
+    let provider = provider.trim();
+    let source_id = source_id.trim();
+    if provider.is_empty() || source_id.is_empty() {
+        return Ok(());
+    }
+    sqlx::query(
+        "INSERT INTO work_source_links (work_id, provider, source_id, title, updated_at)
+         VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+         ON CONFLICT(work_id, provider) DO UPDATE SET
+           source_id = excluded.source_id,
+           title = excluded.title,
+           updated_at = excluded.updated_at",
+    )
+    .bind(work_id)
+    .bind(provider)
+    .bind(source_id)
+    .bind(title.trim())
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+pub async fn load_source_links(pool: &SqlitePool, work_id: i64) -> Result<Vec<WorkSourceLink>> {
+    let rows = sqlx::query(
+        "SELECT provider, source_id, title
+         FROM work_source_links WHERE work_id = ? ORDER BY provider ASC",
+    )
+    .bind(work_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| WorkSourceLink {
+            provider: row.get("provider"),
+            source_id: row.get("source_id"),
+            title: row.get("title"),
+        })
+        .collect())
 }
 
 pub async fn apply_field(

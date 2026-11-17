@@ -13,8 +13,10 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "../../design-system/components/Button";
 import { Tag } from "../../design-system/components/Tag";
+import { useDialogFocus } from "../../design-system/useDialogFocus";
 import {
   applyMetadataBatch,
   cancelMetadataBatch,
@@ -133,6 +135,14 @@ export function BatchScrapeDialog({ open, workIds, onClose, onApplied }: BatchSc
   const [selectedWorks, setSelectedWorks] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const dialogRef = useDialogFocus<HTMLDivElement>({
+    open,
+    onEscape: () => {
+      if (step !== "scanning" && step !== "applying") {
+        onClose();
+      }
+    },
+  });
 
   const selectedProviders = selectedProviderIds ?? providers.map((provider) => provider.id);
 
@@ -187,19 +197,6 @@ export function BatchScrapeDialog({ open, workIds, onClose, onApplied }: BatchSc
       }
     };
   }, [open]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && step !== "scanning" && step !== "applying") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [onClose, open, step]);
 
   if (!open) {
     return null;
@@ -316,7 +313,7 @@ export function BatchScrapeDialog({ open, workIds, onClose, onApplied }: BatchSc
     ? Math.round((progress.completed / Math.max(1, progress.total)) * 100)
     : 0;
 
-  return (
+  return createPortal(
     <div
       className="batch-overlay"
       role="presentation"
@@ -326,10 +323,16 @@ export function BatchScrapeDialog({ open, workIds, onClose, onApplied }: BatchSc
         }
       }}
     >
-      <div className="batch-dialog" role="dialog" aria-modal="true" aria-labelledby="batch-title">
+      <div
+        ref={dialogRef}
+        className="batch-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="batch-title"
+        tabIndex={-1}
+      >
         <header className="batch-head">
           <div>
-            <p className="app-kicker">批量刮削</p>
             <h2 id="batch-title">
               {step === "setup"
                 ? "批量补全元数据"
@@ -341,7 +344,7 @@ export function BatchScrapeDialog({ open, workIds, onClose, onApplied }: BatchSc
                       ? "批量任务完成"
                       : "检查批量提案"}
             </h2>
-            <p>{workIds.length} 部作品；默认只填空和未锁定字段，已锁定的资料不会被覆盖。</p>
+            <p>{workIds.length} 部作品；默认只填空白字段，已有资料需要明确选择才会覆盖。</p>
           </div>
           <Button
             variant="ghost"
@@ -407,7 +410,7 @@ export function BatchScrapeDialog({ open, workIds, onClose, onApplied }: BatchSc
                           <b>{provider.name}</b>
                           <em>{provider.description}</em>
                         </span>
-                        <Tag tone={unavailable ? "muted" : provider.connected ? "status" : "data"}>
+                        <Tag tone={unavailable || !provider.enabled ? "muted" : "status"}>
                           {unavailable ? "待登录" : provider.enabled ? "启用" : "停用"}
                         </Tag>
                       </label>
@@ -571,7 +574,7 @@ export function BatchScrapeDialog({ open, workIds, onClose, onApplied }: BatchSc
               </div>
             ) : null}
             <footer className="batch-actions">
-              <span>应用前再次检查锁定字段；已有值不会被静默覆盖。</span>
+              <span>应用前再次检查空字段；已有值不会被覆盖。</span>
               <div>
                 {failed > 0 ? (
                   <Button
@@ -639,6 +642,7 @@ export function BatchScrapeDialog({ open, workIds, onClose, onApplied }: BatchSc
           </div>
         ) : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

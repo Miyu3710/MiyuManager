@@ -12,9 +12,11 @@ describe("Steam library scan dialog", () => {
     render(<SteamLibraryDialog open onClose={() => undefined} onImported={onImported} />);
 
     await screen.findByRole("heading", { name: "选择要入库的 Steam 游戏" }, { timeout: 3000 });
-    expect(document.querySelectorAll(".steam-game")).toHaveLength(2);
+    expect(document.querySelectorAll(".import-row--controls")).toHaveLength(2);
     expect(screen.getByText("CLANNAD")).toBeInTheDocument();
     expect(screen.getByText("月影工房")).toBeInTheDocument();
+    expect(screen.getByLabelText("选择 CLANNAD")).not.toBeChecked();
+    expect(screen.getByLabelText("选择 月影工房")).not.toBeChecked();
 
     await user.click(screen.getByRole("button", { name: "清空" }));
     await user.click(screen.getByLabelText("选择 CLANNAD"));

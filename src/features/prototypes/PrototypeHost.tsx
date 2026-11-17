@@ -5,6 +5,7 @@ import { ArchiveApp } from "./archive/ArchiveApp";
 import { ChannelApp } from "./channel/ChannelApp";
 import { ScreeningApp } from "./screening/ScreeningApp";
 import type { Direction, PrototypePage } from "./types";
+import "./shared.css";
 
 function asDirection(value: string | undefined): Direction | null {
   return value === "screening" || value === "archive" || value === "channel" ? value : null;

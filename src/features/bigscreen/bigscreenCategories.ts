@@ -24,6 +24,7 @@ export interface BigScreenCategorySpec {
 }
 
 export const bigScreenCategories: BigScreenCategorySpec[] = [
+  { id: "all", label: "全部游戏", icon: Library, status: "all", sort: "title_asc" },
   {
     id: "recent",
     label: "最近启动",
@@ -50,7 +51,6 @@ export const bigScreenCategories: BigScreenCategorySpec[] = [
     sort: "last_played_desc",
     favoriteOnly: true,
   },
-  { id: "all", label: "全部游戏", icon: Library, status: "all", sort: "title_asc" },
 ];
 
 export function bigScreenCategorySpec(id: BigScreenCategory): BigScreenCategorySpec {
@@ -59,4 +59,13 @@ export function bigScreenCategorySpec(id: BigScreenCategory): BigScreenCategoryS
 
 export function bigScreenCategoryLabel(id: BigScreenCategory): string {
   return bigScreenCategorySpec(id).label;
+}
+
+export function adjacentCategory(id: BigScreenCategory, direction: -1 | 1): BigScreenCategory {
+  const index = bigScreenCategories.findIndex((category) => category.id === id);
+  const next =
+    bigScreenCategories[
+      (index + direction + bigScreenCategories.length) % bigScreenCategories.length
+    ];
+  return next?.id ?? id;
 }

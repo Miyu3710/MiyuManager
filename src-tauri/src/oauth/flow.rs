@@ -285,23 +285,26 @@ async fn token_request(
 
 async fn fetch_account(http: &Client, provider_id: &str, tokens: &TokenResponse) -> AccountInfo {
     let mut account = match provider_id {
-        "nextmoe" => jwt_claims(&tokens.access_token).and_then(|value| account_from_value(&value)),
+        "nextmoe" => jwt_claims(&tokens.access_token)
+            .and_then(|value| account_from_value(&value, provider_id)),
         "hikarinagi" => tokens
             .id_token
             .as_deref()
             .and_then(jwt_claims)
-            .and_then(|value| account_from_value(&value))
+            .and_then(|value| account_from_value(&value, provider_id))
             .or_else(|| {
-                jwt_claims(&tokens.access_token).and_then(|value| account_from_value(&value))
+                jwt_claims(&tokens.access_token)
+                    .and_then(|value| account_from_value(&value, provider_id))
             }),
         _ => None,
     }
     .unwrap_or(AccountInfo {
         name: None,
         id: None,
+        avatar_url: None,
     });
 
-    if account.name.is_none() {
+    if account.name.is_none() || account.avatar_url.is_none() {
         let url = match provider_id {
             "bangumi" => "https://api.bgm.tv/v0/me",
             "nextmoe" => "https://api.nextmoe.dev/v2/me/profile",
@@ -317,9 +320,11 @@ async fn fetch_account(http: &Client, provider_id: &str, tokens: &TokenResponse)
             .await
             && response.status().is_success()
             && let Ok(value) = response.json::<Value>().await
-            && let Some(fetched) = account_from_value(&value)
+            && let Some(fetched) = account_from_value(&value, provider_id)
         {
-            account = fetched;
+            account.name = fetched.name.or(account.name);
+            account.id = fetched.id.or(account.id);
+            account.avatar_url = fetched.avatar_url.or(account.avatar_url);
         }
     }
     if account.id.is_none() {
@@ -333,7 +338,26 @@ async fn fetch_account(http: &Client, provider_id: &str, tokens: &TokenResponse)
             })
             .filter(|value| !value.is_empty());
     }
+    account.avatar_url = account
+        .avatar_url
+        .as_deref()
+        .and_then(|value| normalize_avatar_url(value, provider_id));
     account
+}
+
+pub async fn fetch_account_profile(
+    http: &Client,
+    provider_id: &str,
+    access_token: &str,
+) -> AccountInfo {
+    let tokens = TokenResponse {
+        access_token: access_token.to_string(),
+        refresh_token: None,
+        expires_in: None,
+        id_token: None,
+        user_id: None,
+    };
+    fetch_account(http, provider_id, &tokens).await
 }
 
 fn jwt_claims(token: &str) -> Option<Value> {
@@ -342,7 +366,7 @@ fn jwt_claims(token: &str) -> Option<Value> {
     serde_json::from_slice(&bytes).ok()
 }
 
-fn account_from_value(value: &Value) -> Option<AccountInfo> {
+fn account_from_value(value: &Value, provider_id: &str) -> Option<AccountInfo> {
     let candidates = [
         value,
         value.get("data").unwrap_or(value),
@@ -369,11 +393,79 @@ fn account_from_value(value: &Value) -> Option<AccountInfo> {
                 _ => None,
             })
         });
-        if name.is_some() || id.is_some() {
-            return Some(AccountInfo { name, id });
+        let avatar_url = avatar_from_value(candidate)
+            .and_then(|value| normalize_avatar_url(&value, provider_id));
+        if name.is_some() || id.is_some() || avatar_url.is_some() {
+            return Some(AccountInfo {
+                name,
+                id,
+                avatar_url,
+            });
         }
     }
     None
+}
+
+fn avatar_from_value(value: &Value) -> Option<String> {
+    for key in [
+        "avatar_url",
+        "avatarUrl",
+        "picture",
+        "profile_image_url",
+        "avatar",
+        "image",
+    ] {
+        if let Some(candidate) = value.get(key)
+            && let Some(url) = avatar_string(candidate)
+        {
+            return Some(url);
+        }
+    }
+    for parent in ["images", "profile", "user", "data"] {
+        if let Some(candidate) = value.get(parent).and_then(|item| item.get("avatar"))
+            && let Some(url) = avatar_string(candidate)
+        {
+            return Some(url);
+        }
+    }
+    None
+}
+
+fn avatar_string(value: &Value) -> Option<String> {
+    if let Some(text) = value.as_str() {
+        let text = text.trim();
+        return (!text.is_empty()).then(|| text.to_string());
+    }
+    let object = value.as_object()?;
+    for key in ["large", "medium", "small", "url", "src"] {
+        if let Some(text) = object.get(key).and_then(Value::as_str) {
+            let text = text.trim();
+            if !text.is_empty() {
+                return Some(text.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn normalize_avatar_url(value: &str, provider_id: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+    if value.starts_with("https://") || value.starts_with("http://") {
+        return Some(value.to_string());
+    }
+    if let Some(rest) = value.strip_prefix("//") {
+        return Some(format!("https://{rest}"));
+    }
+    let base = match provider_id {
+        "bangumi" => "https://lain.bgm.tv",
+        "nextmoe" => "https://api.nextmoe.dev",
+        "hikarinagi" => "https://www.hikarinagi.org",
+        _ => return None,
+    };
+    value.starts_with('/').then(|| format!("{base}{value}"))
 }
 
 #[cfg(test)]
@@ -421,21 +513,52 @@ mod tests {
         );
         let token = format!("header.{payload}.signature");
         let claims = jwt_claims(&token).expect("claims");
-        let account = account_from_value(&claims).expect("account");
+        let account = account_from_value(&claims, "nextmoe").expect("account");
         assert_eq!(account.name.as_deref(), Some("miyu"));
         assert_eq!(account.id.as_deref(), Some("user-1"));
     }
 
     #[test]
     fn reads_bangumi_me_shape() {
-        let account = account_from_value(&serde_json::json!({
-            "id": 42,
-            "username": "miyu",
-            "nickname": "Miyu"
-        }))
+        let account = account_from_value(
+            &serde_json::json!({
+                "id": 42,
+                "username": "miyu",
+                "nickname": "Miyu"
+            }),
+            "bangumi",
+        )
         .expect("account");
         assert_eq!(account.name.as_deref(), Some("Miyu"));
         assert_eq!(account.id.as_deref(), Some("42"));
+    }
+
+    #[test]
+    fn reads_bangumi_avatar_shape() {
+        let account = account_from_value(
+            &serde_json::json!({
+                "id": 42,
+                "nickname": "Miyu",
+                "avatar": {
+                    "large": "//lain.bgm.tv/pic/user/l/000/00/00/42.jpg",
+                    "medium": "https://lain.bgm.tv/pic/user/m/42.jpg"
+                }
+            }),
+            "bangumi",
+        )
+        .expect("account");
+        assert_eq!(
+            account.avatar_url.as_deref(),
+            Some("https://lain.bgm.tv/pic/user/l/000/00/00/42.jpg")
+        );
+    }
+
+    #[test]
+    fn normalizes_relative_hikarinagi_avatar() {
+        assert_eq!(
+            normalize_avatar_url("/uploads/avatar/miyu.png", "hikarinagi").as_deref(),
+            Some("https://www.hikarinagi.org/uploads/avatar/miyu.png")
+        );
     }
 
     #[tokio::test]

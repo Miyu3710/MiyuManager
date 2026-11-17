@@ -124,7 +124,6 @@ pub struct MetadataClaimRecord {
     pub source_id: String,
     pub value: Value,
     pub confidence: Option<f64>,
-    pub locked: bool,
     pub fetched_at: String,
     pub provider_name: String,
     pub priority: i64,
@@ -138,8 +137,6 @@ pub struct MetadataFieldState {
     pub current: Value,
     pub source: Option<String>,
     pub source_id: Option<String>,
-    pub locked: bool,
-    pub lock_source: Option<String>,
     pub conflict: bool,
     pub preferred_claim_id: Option<i64>,
     pub current_claim_id: Option<i64>,
@@ -148,10 +145,19 @@ pub struct MetadataFieldState {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct WorkSourceLink {
+    pub provider: String,
+    pub source_id: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MetadataWorkState {
     pub work_id: i64,
     pub providers: Vec<ProviderInfo>,
     pub fields: Vec<MetadataFieldState>,
+    pub source_links: Vec<WorkSourceLink>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -161,7 +167,6 @@ pub struct ClaimPreview {
     pub source_id: String,
     pub value: Value,
     pub priority: i64,
-    pub locked: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -173,8 +178,6 @@ pub struct PreviewField {
     pub candidate: Value,
     pub source: String,
     pub source_id: String,
-    pub locked: bool,
-    pub lock_source: Option<String>,
     pub default_selected: bool,
     pub priority: i64,
     pub existing: Vec<ClaimPreview>,
@@ -187,7 +190,6 @@ pub struct PreviewCover {
     pub candidate_url: String,
     pub kind: String,
     pub default_selected: bool,
-    pub locked: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -221,7 +223,6 @@ pub struct MetadataImportRequest {
 #[serde(rename_all = "camelCase")]
 pub struct MetadataImportResult {
     pub applied: Vec<String>,
-    pub skipped_locked: Vec<String>,
     pub cover_applied: bool,
 }
 
@@ -273,8 +274,6 @@ pub struct MergeFieldState {
     pub field: String,
     pub label: String,
     pub current: Value,
-    pub locked: bool,
-    pub lock_source: Option<String>,
     pub candidates: Vec<MergeFieldCandidate>,
     pub default_selected: bool,
     pub conflict: bool,
@@ -316,10 +315,21 @@ pub struct MergeSelection {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct MergeSourceLink {
+    pub provider: String,
+    pub source_id: String,
+    #[serde(default)]
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MergeApplyRequest {
     pub work_id: i64,
     pub selections: Vec<MergeSelection>,
     pub cover: Option<MergeSelection>,
+    #[serde(default)]
+    pub source_links: Vec<MergeSourceLink>,
     #[serde(default)]
     pub only_if_empty: bool,
 }
@@ -328,7 +338,6 @@ pub struct MergeApplyRequest {
 #[serde(rename_all = "camelCase")]
 pub struct MergeApplyResult {
     pub applied: Vec<String>,
-    pub skipped_locked: Vec<String>,
     pub skipped_non_empty: Vec<String>,
     pub cover_applied: bool,
     pub errors: Vec<String>,
@@ -394,7 +403,6 @@ pub struct BatchApplyWorkResult {
     pub title: String,
     pub status: String,
     pub applied: Vec<String>,
-    pub skipped_locked: Vec<String>,
     pub skipped_non_empty: Vec<String>,
     pub cover_applied: bool,
     pub errors: Vec<String>,

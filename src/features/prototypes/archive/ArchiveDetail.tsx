@@ -139,7 +139,7 @@ export function ArchiveDetail({ work }: { work: Work }) {
           <p>{work.description}</p>
           <p>
             原型游戏的标题、简介和来源均为 mock
-            数据。正式版本会保留原始响应，并支持逐字段锁定、合并和修正。
+            数据。正式版本会保留原始响应，并支持逐字段采用、合并和修正。
           </p>
         </section>
         <section className="archive-session-ledger">

@@ -1,3 +1,5 @@
+import type { CoverId } from "../design-system/components/CoverArt";
+
 export type LibraryStatus = "unclassified" | "playing" | "queued" | "finished" | "paused";
 export type LibraryFilter = "all" | LibraryStatus;
 export type LibrarySort = "added_desc" | "title_asc" | "size_desc" | "last_played_desc";
@@ -32,6 +34,7 @@ export interface LibraryItem {
   launchCount: number;
   catalogNo: string;
   coverThumbPath: string | null;
+  coverHeroPath: string | null;
   coverPath: string | null;
   steamAppId?: number | null;
 }
@@ -55,8 +58,7 @@ export interface EnvVar {
 export interface LaunchProfile {
   args: string[];
   env: EnvVar[];
-  wrapperPath: string | null;
-  wrapperArgs: string[];
+  wrapperIds: string[];
   monitor: number | null;
   fullscreen: boolean;
 }
@@ -94,7 +96,6 @@ export interface PathCheck {
 export interface ValidationReport {
   exe: PathCheck;
   workingDir: PathCheck;
-  wrapper: PathCheck | null;
   valid: boolean;
 }
 
@@ -109,6 +110,7 @@ export interface CoverAsset {
   workId: number;
   originalPath: string;
   thumbPath: string;
+  heroPath: string;
   width: number;
   height: number;
   source: string;
@@ -187,6 +189,30 @@ export interface TopGame {
   sessionCount: number;
 }
 
+export type StatsActivityKind = "play" | "import" | "collection";
+
+export interface StatsActivityEvent {
+  id: string;
+  kind: StatsActivityKind;
+  occurredAt: string;
+  workId: number;
+  workTitle: string;
+  originalTitle: string;
+  workDeveloper: string | null;
+  workYear: number | null;
+  coverThumbPath: string | null;
+  coverPath: string | null;
+  collectionName: string | null;
+  durationSec: number | null;
+  sessionStartedAt: string | null;
+  sessionEndedAt: string | null;
+  endReason: string | null;
+  source: PlaySessionSource | null;
+  corrected: boolean;
+  /** Browser preview only. Real builds use the cover paths above. */
+  previewCover?: CoverId | null;
+}
+
 export interface StatsOverview {
   allTimeSeconds: number;
   allTimeSessions: number;
@@ -201,6 +227,7 @@ export interface StatsOverview {
   daily: DailyPlaytime[];
   topGames: TopGame[];
   recentSessions: PlaySessionWithWork[];
+  timeline: StatsActivityEvent[];
 }
 
 export interface LibraryCounts {
@@ -210,6 +237,7 @@ export interface LibraryCounts {
   queued: number;
   finished: number;
   paused: number;
+  favorite: number;
 }
 
 export interface LibraryPage {
@@ -289,6 +317,8 @@ export interface ScanErrorEvent {
 export interface AppInfo {
   dataDir: string;
   dbPath: string;
+  backupDir: string;
+  logDir: string;
   libraryCount: number;
   exclusionCount: number;
   rootCount: number;
@@ -395,7 +425,6 @@ export interface MetadataClaim {
   sourceId: string;
   value: MetadataValue;
   confidence: number | null;
-  locked: boolean;
   fetchedAt: string;
   providerName: string;
   priority: number;
@@ -407,18 +436,23 @@ export interface MetadataFieldState {
   current: MetadataValue;
   source: string | null;
   sourceId: string | null;
-  locked: boolean;
-  lockSource: string | null;
   conflict: boolean;
   preferredClaimId: number | null;
   currentClaimId: number | null;
   claims: MetadataClaim[];
 }
 
+export interface WorkSourceLink {
+  provider: string;
+  sourceId: string;
+  title: string;
+}
+
 export interface MetadataWorkState {
   workId: number;
   providers: MetadataProvider[];
   fields: MetadataFieldState[];
+  sourceLinks: WorkSourceLink[];
 }
 
 export interface MetadataSearchCandidate {
@@ -474,7 +508,6 @@ export interface ClaimPreview {
   sourceId: string;
   value: MetadataValue;
   priority: number;
-  locked: boolean;
 }
 
 export interface PreviewField {
@@ -484,8 +517,6 @@ export interface PreviewField {
   candidate: MetadataValue;
   source: string;
   sourceId: string;
-  locked: boolean;
-  lockSource: string | null;
   defaultSelected: boolean;
   priority: number;
   existing: ClaimPreview[];
@@ -496,7 +527,6 @@ export interface PreviewCover {
   candidateUrl: string;
   kind: string;
   defaultSelected: boolean;
-  locked: boolean;
 }
 
 export interface MetadataCoverOption {
@@ -543,7 +573,6 @@ export interface MetadataImportRequest {
 
 export interface MetadataImportResult {
   applied: string[];
-  skippedLocked: string[];
   coverApplied: boolean;
 }
 
@@ -585,8 +614,6 @@ export interface MergeFieldState {
   field: string;
   label: string;
   current: MetadataValue;
-  locked: boolean;
-  lockSource: string | null;
   candidates: MergeFieldCandidate[];
   defaultSelected: boolean;
   conflict: boolean;
@@ -619,16 +646,22 @@ export interface MergeSelection {
   url?: string | null;
 }
 
+export interface MergeSourceLink {
+  provider: string;
+  sourceId: string;
+  title?: string;
+}
+
 export interface MergeApplyRequest {
   workId: number;
   selections: MergeSelection[];
   cover: MergeSelection | null;
+  sourceLinks?: MergeSourceLink[];
   onlyIfEmpty?: boolean;
 }
 
 export interface MergeApplyResult {
   applied: string[];
-  skippedLocked: string[];
   skippedNonEmpty: string[];
   coverApplied: boolean;
   errors: string[];
@@ -682,7 +715,6 @@ export interface BatchApplyWorkResult {
   title: string;
   status: "applied" | "skipped" | "failed" | string;
   applied: string[];
-  skippedLocked: string[];
   skippedNonEmpty: string[];
   coverApplied: boolean;
   errors: string[];
@@ -707,6 +739,9 @@ export interface OAuthStatus {
   connected: boolean;
   accountName: string | null;
   accountId: string | null;
+  avatarUrl: string | null;
+  profileSyncedAt: string | null;
+  connectedAt: string | null;
   scopes: string[];
   expiresAt: number | null;
   hint: string | null;

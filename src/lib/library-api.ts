@@ -35,6 +35,7 @@ import type {
   MetadataClaim,
   MetadataValue,
   MetadataFieldState,
+  WorkSourceLink,
   OAuthConfigInfo,
   OAuthStatus,
   FieldPriorityState,
@@ -59,6 +60,7 @@ import type {
   SessionCreateInput,
   SessionUpdateInput,
   StatsOverview,
+  StatsActivityEvent,
   StatsPeriod,
   TopGame,
 } from "./library-types";
@@ -68,7 +70,28 @@ type PreviewLibraryItem = LibraryItem & { previewGame?: Game };
 
 const previewImported: PreviewLibraryItem[] = [];
 const previewRemoved = new Set<number>();
-const previewExclusions: ScanExclusion[] = [];
+const previewExclusions: ScanExclusion[] = [
+  {
+    id: 1,
+    exeKey: "e:\\h\\gal\\key\\summer pockets\\siglusengine.exe",
+    exePath: "E:\\h\\Gal\\Key\\Summer Pockets\\SiglusEngine.exe",
+    dirKey: "e:\\h\\gal\\key\\summer pockets",
+    workingDir: "E:\\h\\Gal\\Key\\Summer Pockets",
+    rootPath: "E:\\h\\Gal",
+    reason: "removed_from_library",
+    createdAt: new Date(Date.now() - 86_400_000).toISOString(),
+  },
+  {
+    id: 2,
+    exeKey: "e:\\h\\gal\\madosoft\\常轨脱离creative recall\\delfile.exe",
+    exePath: "E:\\h\\Gal\\madosoft\\常轨脱离Creative ReRecall\\delfile.exe",
+    dirKey: "e:\\h\\gal\\madosoft\\常轨脱离creative recall",
+    workingDir: "E:\\h\\Gal\\madosoft\\常轨脱离Creative ReRecall",
+    rootPath: "E:\\h\\Gal",
+    reason: "removed_from_library",
+    createdAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+  },
+];
 const previewStatus = new Map<number, LibraryStatus>();
 const previewFavorite = new Map<number, boolean>([
   [2, true],
@@ -162,6 +185,7 @@ const emptyCounts = (): LibraryCounts => ({
   queued: 0,
   finished: 0,
   paused: 0,
+  favorite: 0,
 });
 
 function mockToItem(game: Game, index: number): PreviewLibraryItem {
@@ -194,6 +218,7 @@ function mockToItem(game: Game, index: number): PreviewLibraryItem {
     launchCount: game.launchCount,
     catalogNo: game.catalogNo,
     coverThumbPath: null,
+    coverHeroPath: null,
     coverPath: null,
     previewGame: game,
   };
@@ -229,6 +254,9 @@ function countStatuses(items: LibraryItem[]): LibraryCounts {
   const counts = emptyCounts();
   for (const item of items) {
     counts.all += 1;
+    if (item.favorite) {
+      counts.favorite += 1;
+    }
     counts[item.status] += 1;
   }
   return counts;
@@ -514,7 +542,7 @@ export async function removeLibraryWork(workId: number): Promise<void> {
   await invoke("library_remove_work", { workId });
 }
 
-export async function pickLibraryRoot(manualImport = false): Promise<string | null> {
+export async function pickLibraryRoot(): Promise<string | null> {
   if (!isTauri()) {
     return previewRoots[0]?.path ?? "D:\\Games\\Preview";
   }
@@ -522,7 +550,7 @@ export async function pickLibraryRoot(manualImport = false): Promise<string | nu
   const selected = await open({
     directory: true,
     multiple: false,
-    title: manualImport ? "选择要手动导入的游戏目录" : "选择 Galgame / AVG 所在目录",
+    title: "选择 Galgame / AVG 所在目录",
   });
   if (typeof selected === "string") {
     return selected;
@@ -739,6 +767,7 @@ export async function importLibraryCandidates(
         launchCount: 0,
         catalogNo: "LOCAL-" + String(workId).padStart(4, "0"),
         coverThumbPath: null,
+        coverHeroPath: null,
         coverPath: null,
         steamAppId: candidate.steamAppId ?? null,
       });
@@ -754,6 +783,8 @@ export async function getAppInfo(): Promise<AppInfo> {
     return {
       dataDir: "浏览器预览",
       dbPath: "未连接 SQLite",
+      backupDir: "浏览器预览",
+      logDir: "浏览器预览",
       libraryCount: previewItems().length,
       exclusionCount: previewExclusions.length,
       rootCount: previewRoots.length,
@@ -787,7 +818,6 @@ export async function validateWork(workId: number): Promise<ValidationReport> {
     return {
       exe: { path: item.exePath, ok: true, message: "浏览器预览不检查本地路径" },
       workingDir: { path: item.workingDir, ok: true, message: "浏览器预览不检查本地路径" },
-      wrapper: null,
       valid: true,
     };
   }
@@ -828,9 +858,6 @@ export async function validateLaunchConfig(
     return {
       exe: { path: input.exePath, ok: true, message: "浏览器预览不检查本地路径" },
       workingDir: { path: input.workingDir, ok: true, message: "浏览器预览不检查本地路径" },
-      wrapper: input.profile.wrapperPath
-        ? { path: input.profile.wrapperPath, ok: true, message: "浏览器预览不检查包装器" }
-        : null,
       valid: true,
     };
   }
@@ -849,9 +876,6 @@ export async function validateLaunch(
     return {
       exe: { path: item.exePath, ok: true, message: "浏览器预览不检查本地路径" },
       workingDir: { path: item.workingDir, ok: true, message: "浏览器预览不检查本地路径" },
-      wrapper: profile.wrapperPath
-        ? { path: profile.wrapperPath, ok: true, message: "浏览器预览不检查包装器" }
-        : null,
       valid: true,
     };
   }
@@ -891,6 +915,13 @@ export async function startWork(workId: number): Promise<LaunchSnapshot> {
     throw new Error("浏览器预览不启动本地程序；请在 Tauri 窗口中使用。");
   }
   return invoke<LaunchSnapshot>("launch_start", { workId });
+}
+
+export async function revealWorkPath(path: string): Promise<void> {
+  if (!isTauri()) {
+    throw new Error("浏览器预览不支持打开本地文件夹；请在 Tauri 窗口中使用。");
+  }
+  await invoke("reveal_work_path", { path });
 }
 
 export async function stopWork(workId: number): Promise<boolean> {
@@ -998,6 +1029,98 @@ function localDayKey(value: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function previewActivityTimeline(rangeStart: Date | null): StatsActivityEvent[] {
+  const now = Date.now();
+  const items = previewItems();
+  const events: StatsActivityEvent[] = previewPlaySessions
+    .filter((session) => session.status === "ended")
+    .map((session) => ({
+      id: `play-${session.id}`,
+      kind: "play",
+      occurredAt: session.startedAt,
+      workId: session.workId,
+      workTitle: session.workTitle,
+      originalTitle: session.originalTitle,
+      workDeveloper: items.find((item) => item.workId === session.workId)?.developer ?? null,
+      workYear: items.find((item) => item.workId === session.workId)?.year ?? null,
+      coverThumbPath: null,
+      coverPath: null,
+      collectionName: null,
+      durationSec: session.durationSec,
+      sessionStartedAt: session.startedAt,
+      sessionEndedAt: session.endedAt,
+      endReason: session.endReason,
+      source: session.source,
+      corrected: session.corrected,
+      previewCover:
+        items.find((item) => item.workId === session.workId)?.previewGame?.cover ?? null,
+    }));
+
+  for (const item of items) {
+    events.push({
+      id: `import-${item.workId}`,
+      kind: "import",
+      occurredAt: item.addedAt,
+      workId: item.workId,
+      workTitle: item.title,
+      originalTitle: item.originalTitle,
+      workDeveloper: item.developer,
+      workYear: item.year,
+      coverThumbPath: item.coverThumbPath,
+      coverPath: item.coverPath,
+      collectionName: null,
+      durationSec: null,
+      sessionStartedAt: null,
+      sessionEndedAt: null,
+      endReason: null,
+      source: null,
+      corrected: false,
+      previewCover: item.previewGame?.cover ?? null,
+    });
+  }
+
+  for (const [collectionIndex, [collectionId, workIds]] of [
+    ...previewCollectionMembers.entries(),
+  ].entries()) {
+    const collection = previewCollections.find((entry) => entry.id === collectionId);
+    if (!collection) continue;
+    for (const [memberIndex, workId] of [...workIds].entries()) {
+      const item = items.find((entry) => entry.workId === workId);
+      if (!item) continue;
+      events.push({
+        id: `collection-${collectionId}-${workId}`,
+        kind: "collection",
+        occurredAt: new Date(
+          now - (collectionIndex + 1) * 86_400_000 - (memberIndex + 1) * 3_600_000,
+        ).toISOString(),
+        workId,
+        workTitle: item.title,
+        originalTitle: item.originalTitle,
+        workDeveloper: item.developer,
+        workYear: item.year,
+        coverThumbPath: item.coverThumbPath,
+        coverPath: item.coverPath,
+        collectionName: collection.name,
+        durationSec: null,
+        sessionStartedAt: null,
+        sessionEndedAt: null,
+        endReason: null,
+        source: null,
+        corrected: false,
+        previewCover: item.previewGame?.cover ?? null,
+      });
+    }
+  }
+
+  return events
+    .filter((event) => !rangeStart || new Date(event.occurredAt) >= rangeStart)
+    .sort(
+      (left, right) =>
+        right.occurredAt.localeCompare(left.occurredAt) || left.id.localeCompare(right.id),
+    )
+    .slice(0, 80);
+}
+
 function previewStats(period: StatsPeriod): StatsOverview {
   const now = new Date();
   const rangeStart =
@@ -1026,14 +1149,14 @@ function previewStats(period: StatsPeriod): StatsOverview {
 
   const dailyMap = new Map<string, number>();
   for (const session of completed) {
-    if (new Date(session.startedAt) < new Date(now.getTime() - 84 * 86_400_000)) {
+    if (new Date(session.startedAt) < new Date(now.getTime() - 365 * 86_400_000)) {
       continue;
     }
     const key = localDayKey(new Date(session.startedAt));
     dailyMap.set(key, (dailyMap.get(key) ?? 0) + session.durationSec);
   }
-  const daily: DailyPlaytime[] = Array.from({ length: 84 }, (_, index) => {
-    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 83 + index);
+  const daily: DailyPlaytime[] = Array.from({ length: 365 }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 364 + index);
     const key = localDayKey(date);
     return { date: key, seconds: dailyMap.get(key) ?? 0 };
   });
@@ -1087,6 +1210,7 @@ function previewStats(period: StatsPeriod): StatsOverview {
     recentSessions: [...ranged]
       .sort((left, right) => (right.endedAt ?? "").localeCompare(left.endedAt ?? ""))
       .slice(0, 20),
+    timeline: previewActivityTimeline(rangeStart),
   };
 }
 
@@ -1341,6 +1465,7 @@ const previewMetadataProviderDefaults = previewMetadataProviders.map((provider) 
 }));
 
 const previewMetadataClaims = new Map<number, MetadataClaim[]>();
+const previewWorkSourceLinks = new Map<number, WorkSourceLink[]>();
 let previewMetadataClaimId = 1;
 
 export function resetMetadataPreviewState() {
@@ -1349,12 +1474,30 @@ export function resetMetadataPreviewState() {
     entry.provider.enabled = entry.enabled;
   }
   previewMetadataClaims.clear();
+  previewWorkSourceLinks.clear();
   previewWorkUpdates.clear();
   previewCoverSources.clear();
   previewFieldPriorityOverrides.clear();
   previewFieldPriorityGlobal = false;
   previewBatchJobs.clear();
   previewMetadataClaimId = 1;
+}
+
+function previewUpsertSourceLink(workId: number, provider: string, sourceId: string, title = "") {
+  if (!provider.trim() || !sourceId.trim()) {
+    return;
+  }
+  const links = previewWorkSourceLinks.get(workId) ?? [];
+  const existing = links.find((link) => link.provider === provider);
+  if (existing) {
+    existing.sourceId = sourceId;
+    if (title) {
+      existing.title = title;
+    }
+  } else {
+    links.push({ provider, sourceId, title });
+  }
+  previewWorkSourceLinks.set(workId, links);
 }
 
 type PreviewMetadataCandidate = MetadataPreview["candidate"];
@@ -1588,6 +1731,22 @@ const previewMergeDetails: Record<string, PreviewMetadataCandidate> = {
     ],
     related: [],
   },
+  "nextmoe:99001": {
+    provider: "nextmoe",
+    sourceId: "99001",
+    title: "月影工房",
+    originalTitle: "月影のアトリエ",
+    aliases: ["Moonlit Atelier"],
+    description: "鲲 Galgame 中的月影工房条目，记录夜间工房、旧书与手写信件的故事。",
+    releaseDate: "2022-09-30",
+    year: 2022,
+    developer: "Kaguya Soft",
+    publisher: "Kaguya Soft",
+    tags: ["Galgame", "剧情", "悬疑"],
+    coverUrl:
+      "https://image.kungal.iloveren.link/70/80/7080e1a974b979fd159793c144909fb154ad9407aadb02a281283cc9184f024d.webp",
+    related: [],
+  },
 };
 
 const previewMergeCandidates: MetadataSearchCandidate[] = [
@@ -1752,7 +1911,6 @@ function previewMetadataWorkState(workId: number): MetadataWorkState {
     const sourceClaim = fieldClaims.find(
       (claim) => JSON.stringify(claim.value) === JSON.stringify(current),
     );
-    const lockedClaim = fieldClaims.find((claim) => claim.locked);
     const nonEmpty = fieldClaims.filter((claim) => !previewMetadataEmpty(claim.value));
     const conflict = new Set(nonEmpty.map((claim) => JSON.stringify(claim.value))).size > 1;
     return {
@@ -1761,8 +1919,6 @@ function previewMetadataWorkState(workId: number): MetadataWorkState {
       current,
       source: sourceClaim?.source ?? null,
       sourceId: sourceClaim?.sourceId ?? null,
-      locked: Boolean(lockedClaim),
-      lockSource: lockedClaim?.source ?? null,
       conflict,
       preferredClaimId: [...nonEmpty].sort((a, b) => a.priority - b.priority)[0]?.id ?? null,
       currentClaimId: sourceClaim?.id ?? null,
@@ -1776,8 +1932,6 @@ function previewMetadataWorkState(workId: number): MetadataWorkState {
     current: values.coverSource,
     source: values.coverSource,
     sourceId: null,
-    locked: coverClaims.some((claim) => claim.locked),
-    lockSource: coverClaims.find((claim) => claim.locked)?.source ?? null,
     conflict: new Set(coverClaims.map((claim) => JSON.stringify(claim.value))).size > 1,
     preferredClaimId: [...coverClaims].sort((a, b) => a.priority - b.priority)[0]?.id ?? null,
     currentClaimId: null,
@@ -1787,6 +1941,7 @@ function previewMetadataWorkState(workId: number): MetadataWorkState {
     workId,
     providers: previewMetadataProvidersSorted(),
     fields,
+    sourceLinks: previewWorkSourceLinks.get(workId) ?? [],
   };
 }
 
@@ -1914,11 +2069,9 @@ function previewMergePreview(workId: number, providerFilter?: string[]): MergePr
   const details = previewMergeDetailsForWork(workId).filter(
     (detail) => !providerFilter?.length || providerFilter.includes(detail.provider),
   );
-  const claims = previewMetadataClaims.get(workId) ?? [];
   const fields: MergeFieldState[] = [];
   for (const [field, label] of previewMetadataFieldLabels) {
     const current = previewMetadataCurrent(values, field);
-    const lockedClaim = claims.find((claim) => claim.field === field && claim.locked);
     const candidates: MergeFieldCandidate[] = details.flatMap((detail) => {
       const value = previewMetadataCandidateValue(detail, field);
       if (previewMetadataEmpty(value)) {
@@ -1945,10 +2098,8 @@ function previewMergePreview(workId: number, providerFilter?: string[]): MergePr
       field,
       label,
       current,
-      locked: Boolean(lockedClaim),
-      lockSource: lockedClaim?.source ?? null,
       candidates,
-      defaultSelected: previewMetadataEmpty(current) && !lockedClaim,
+      defaultSelected: previewMetadataEmpty(current),
       conflict: distinct.size > 1,
     });
   }
@@ -2058,17 +2209,20 @@ function previewMergeApply(request: MergeApplyRequest): MergeApplyResult {
     throw new Error("作品不存在");
   }
   const claims = previewMetadataClaims.get(request.workId) ?? [];
-  const lockedFields = new Set(claims.filter((claim) => claim.locked).map((claim) => claim.field));
   const update = previewEmptyUpdate(values);
   const applied: string[] = [];
-  const skippedLocked: string[] = [];
   const skippedNonEmpty: string[] = [];
   const errors: string[] = [];
+  for (const link of request.sourceLinks ?? []) {
+    previewUpsertSourceLink(request.workId, link.provider, link.sourceId, link.title ?? "");
+  }
   for (const selection of request.selections) {
-    if (lockedFields.has(selection.field)) {
-      skippedLocked.push(selection.field);
-      continue;
-    }
+    previewUpsertSourceLink(request.workId, selection.provider, selection.sourceId);
+  }
+  if (request.cover) {
+    previewUpsertSourceLink(request.workId, request.cover.provider, request.cover.sourceId);
+  }
+  for (const selection of request.selections) {
     if (
       request.onlyIfEmpty &&
       !previewMetadataEmpty(previewMetadataCurrent(values, selection.field))
@@ -2106,7 +2260,6 @@ function previewMergeApply(request: MergeApplyRequest): MergeApplyResult {
         sourceId: selection.sourceId,
         value,
         confidence: 0.9,
-        locked: false,
         fetchedAt: new Date().toISOString(),
         providerName: provider?.name ?? selection.provider,
         priority: provider?.priority ?? 100,
@@ -2116,9 +2269,7 @@ function previewMergeApply(request: MergeApplyRequest): MergeApplyResult {
   }
   let coverApplied = false;
   if (request.cover) {
-    if (lockedFields.has("cover")) {
-      skippedLocked.push("cover");
-    } else if (request.onlyIfEmpty && values.coverSource) {
+    if (request.onlyIfEmpty && values.coverSource) {
       skippedNonEmpty.push("cover");
     } else {
       const detail =
@@ -2139,7 +2290,6 @@ function previewMergeApply(request: MergeApplyRequest): MergeApplyResult {
             sourceId: request.cover.sourceId,
             value: coverUrl,
             confidence: 0.9,
-            locked: false,
             fetchedAt: new Date().toISOString(),
             providerName:
               previewMetadataProviders.find((entry) => entry.id === request.cover?.provider)
@@ -2153,7 +2303,7 @@ function previewMergeApply(request: MergeApplyRequest): MergeApplyResult {
   }
   previewWorkUpdates.set(request.workId, update);
   previewMetadataClaims.set(request.workId, claims);
-  return { applied, skippedLocked, skippedNonEmpty, coverApplied, errors };
+  return { applied, skippedNonEmpty, coverApplied, errors };
 }
 
 const previewBatchJobs = new Map<string, BatchWorkResult[]>();
@@ -2354,7 +2504,6 @@ export async function applyMetadataBatch(request: BatchApplyRequest): Promise<Ba
           title: proposal.title,
           status: "skipped",
           applied: [],
-          skippedLocked: [],
           skippedNonEmpty: [],
           coverApplied: false,
           errors: [],
@@ -2362,7 +2511,7 @@ export async function applyMetadataBatch(request: BatchApplyRequest): Promise<Ba
         continue;
       }
       const selections: MergeSelection[] = preview.fields.flatMap((field) => {
-        if (!field.defaultSelected || field.locked || !field.candidates[0]) {
+        if (!field.defaultSelected || !field.candidates[0]) {
           return [];
         }
         const candidate = field.candidates[0];
@@ -2382,6 +2531,11 @@ export async function applyMetadataBatch(request: BatchApplyRequest): Promise<Ba
         workId: proposal.workId,
         selections,
         cover,
+        sourceLinks: preview.matched.map((matched) => ({
+          provider: matched.provider,
+          sourceId: matched.sourceId,
+          title: matched.title,
+        })),
         onlyIfEmpty: true,
       });
       const status = result.applied.length > 0 || result.coverApplied ? "applied" : "skipped";
@@ -2394,7 +2548,6 @@ export async function applyMetadataBatch(request: BatchApplyRequest): Promise<Ba
         title: proposal.title,
         status,
         applied: result.applied,
-        skippedLocked: result.skippedLocked,
         skippedNonEmpty: result.skippedNonEmpty,
         coverApplied: result.coverApplied,
         errors: result.errors,
@@ -2491,7 +2644,6 @@ export async function getMetadataPreview(
       }
       const current = previewMetadataCurrent(values, field);
       const fieldClaims = claims.filter((claim) => claim.field === field);
-      const lockedClaim = fieldClaims.find((claim) => claim.locked);
       return [
         {
           field,
@@ -2500,16 +2652,13 @@ export async function getMetadataPreview(
           candidate: candidateValue,
           source: provider,
           sourceId,
-          locked: Boolean(lockedClaim),
-          lockSource: lockedClaim?.source ?? null,
-          defaultSelected: previewMetadataEmpty(current) && !lockedClaim,
+          defaultSelected: previewMetadataEmpty(current),
           priority: providerInfo?.priority ?? 100,
           existing: fieldClaims.map((claim) => ({
             source: claim.source,
             sourceId: claim.sourceId,
             value: claim.value,
             priority: claim.priority,
-            locked: claim.locked,
           })),
         },
       ];
@@ -2524,7 +2673,6 @@ export async function getMetadataPreview(
       candidateUrl: cover.url,
       kind: cover.kind,
       defaultSelected: !values.coverSource,
-      locked: false,
     }));
     return {
       workId,
@@ -2549,10 +2697,8 @@ export async function importMetadata(
     if (!values || !candidate) {
       throw new Error("候选不存在");
     }
+    previewUpsertSourceLink(request.workId, request.provider, request.sourceId, candidate.title);
     const claims = previewMetadataClaims.get(request.workId) ?? [];
-    const lockedFields = new Set(
-      claims.filter((claim) => claim.locked).map((claim) => claim.field),
-    );
     const next = {
       title: values.title,
       originalTitle: values.originalTitle,
@@ -2571,12 +2717,7 @@ export async function importMetadata(
       favorite: values.favorite,
     };
     const applied: string[] = [];
-    const skippedLocked: string[] = [];
     for (const field of request.selectedFields) {
-      if (lockedFields.has(field)) {
-        skippedLocked.push(field);
-        continue;
-      }
       const value = previewMetadataCandidateValue(candidate, field);
       if (previewMetadataEmpty(value)) {
         continue;
@@ -2612,12 +2753,9 @@ export async function importMetadata(
       }
       applied.push(field);
     }
-    if (request.selectedCover && lockedFields.has("cover")) {
-      skippedLocked.push("cover");
-    }
     const selectedCoverUrl = request.coverUrl ?? candidate.coverUrl;
     let coverApplied = false;
-    if (request.selectedCover && !lockedFields.has("cover") && selectedCoverUrl) {
+    if (request.selectedCover && selectedCoverUrl) {
       previewCoverSources.set(request.workId, request.provider);
       const existingCover = claims.find(
         (claim) =>
@@ -2639,7 +2777,6 @@ export async function importMetadata(
           sourceId: request.sourceId,
           value: selectedCoverUrl,
           confidence: 0.9,
-          locked: false,
           fetchedAt: new Date().toISOString(),
           providerName: providerInfo?.name ?? request.provider,
           priority: providerInfo?.priority ?? 100,
@@ -2648,6 +2785,19 @@ export async function importMetadata(
       coverApplied = true;
     }
     previewWorkUpdates.set(request.workId, next);
+    try {
+      const matched = previewMergePreview(request.workId);
+      const existingProviders = new Set(
+        (previewWorkSourceLinks.get(request.workId) ?? []).map((link) => link.provider),
+      );
+      for (const entry of matched.matched) {
+        if (!existingProviders.has(entry.provider)) {
+          previewUpsertSourceLink(request.workId, entry.provider, entry.sourceId, entry.title);
+        }
+      }
+    } catch {
+      // Import can still complete when no other provider has a match.
+    }
     const now = new Date().toISOString();
     const providerInfo = previewMetadataProviders.find((entry) => entry.id === request.provider);
     for (const field of applied) {
@@ -2669,7 +2819,6 @@ export async function importMetadata(
           sourceId: request.sourceId,
           value,
           confidence: 0.9,
-          locked: false,
           fetchedAt: now,
           providerName: providerInfo?.name ?? request.provider,
           priority: providerInfo?.priority ?? 100,
@@ -2679,45 +2828,10 @@ export async function importMetadata(
     previewMetadataClaims.set(request.workId, claims);
     return {
       applied,
-      skippedLocked,
       coverApplied,
     };
   }
   return invoke<MetadataImportResult>("metadata_import", { request });
-}
-
-export async function setMetadataFieldLock(
-  workId: number,
-  field: string,
-  locked: boolean,
-): Promise<void> {
-  if (!isTauri()) {
-    const claims = previewMetadataClaims.get(workId) ?? [];
-    const fieldClaims = claims.filter((claim) => claim.field === field);
-    if (locked && fieldClaims.length === 0) {
-      const values = previewMetadataValues(workId);
-      const value = values ? previewMetadataCurrent(values, field) : null;
-      claims.push({
-        id: previewMetadataClaimId++,
-        field,
-        source: "manual",
-        sourceId: "",
-        value,
-        confidence: null,
-        locked: true,
-        fetchedAt: new Date().toISOString(),
-        providerName: "手动编辑",
-        priority: 0,
-      });
-    } else {
-      fieldClaims.forEach((claim) => {
-        claim.locked = locked;
-      });
-    }
-    previewMetadataClaims.set(workId, claims);
-    return;
-  }
-  await invoke("metadata_set_field_lock", { workId, field, locked });
 }
 
 const previewOAuthStatuses: OAuthStatus[] = [
@@ -2730,6 +2844,9 @@ const previewOAuthStatuses: OAuthStatus[] = [
     connected: false,
     accountName: null,
     accountId: null,
+    avatarUrl: null,
+    profileSyncedAt: null,
+    connectedAt: null,
     scopes: [],
     expiresAt: null,
     hint: "需要 Bangumi 应用凭证和 client_secret",
@@ -2743,6 +2860,9 @@ const previewOAuthStatuses: OAuthStatus[] = [
     connected: false,
     accountName: null,
     accountId: null,
+    avatarUrl: null,
+    profileSyncedAt: null,
+    connectedAt: null,
     scopes: ["openid", "profile", "catalog:read"],
     expiresAt: null,
     hint: "public client + PKCE，不需要 client_secret",
@@ -2753,11 +2873,14 @@ const previewOAuthStatuses: OAuthStatus[] = [
     description: "Hikarinagi 账号、收藏与状态",
     authKind: "oauth2_pkce",
     configured: true,
-    connected: false,
-    accountName: null,
-    accountId: null,
+    connected: true,
+    accountName: "miyu",
+    accountId: "miyu",
+    avatarUrl: "/miyu-manager.png",
+    profileSyncedAt: "2026-11-15T08:00:00Z",
+    connectedAt: "2026-10-02T09:30:00Z",
     scopes: ["openid", "profile", "catalog:read", "user:read", "offline_access"],
-    expiresAt: null,
+    expiresAt: Math.floor(Date.now() / 1000) + 5_400,
     hint: "public client + PKCE，需要 openid/profile/offline_access",
   },
 ];
@@ -2796,6 +2919,13 @@ export async function connectOAuth(providerId: string): Promise<OAuthStatus> {
     throw new Error("浏览器预览不支持 OAuth 登录；请在 Tauri 窗口中使用。");
   }
   return invoke<OAuthStatus>("oauth_connect", { providerId });
+}
+
+export async function syncOAuthProfile(providerId: string): Promise<OAuthStatus> {
+  if (!isTauri()) {
+    throw new Error("浏览器预览不支持同步账号资料；请在 Tauri 窗口中使用。");
+  }
+  return invoke<OAuthStatus>("oauth_sync_profile", { providerId });
 }
 
 export async function disconnectOAuth(providerId: string): Promise<void> {

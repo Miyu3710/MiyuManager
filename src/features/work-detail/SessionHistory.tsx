@@ -1,8 +1,9 @@
-import { Check, Clock3, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Check, Clock3, History, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "../../design-system/components/Button";
 import { ConfirmDialog } from "../../design-system/components/ConfirmDialog";
+import { Hint } from "../../design-system/components/Hint";
 import { createSession, deleteSession, updateSession } from "../../lib/library-api";
 import type { PlaySessionWithWork } from "../../lib/library-types";
 import { formatPlaytimeSeconds } from "../../lib/format";
@@ -60,6 +61,18 @@ function statusLabel(session: PlaySessionWithWork): string {
     return "计时中";
   }
   return reasonLabel(session.endReason);
+}
+
+function dateLabel(value: string): string {
+  return new Date(value).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" });
+}
+
+function weekdayLabel(value: string): string {
+  return new Date(value).toLocaleDateString("zh-CN", { weekday: "short" });
+}
+
+function timeLabel(value: string): string {
+  return new Date(value).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
 }
 
 export function SessionHistory({ workId, onChanged }: SessionHistoryProps) {
@@ -148,12 +161,19 @@ export function SessionHistory({ workId, onChanged }: SessionHistoryProps) {
     }
   };
 
+  const totalSeconds =
+    sessions.data?.reduce((total, session) => total + session.durationSec, 0) ?? 0;
+
   return (
     <div className="session-history">
-      <header>
-        <div>
+      <header className="session-history__head">
+        <div className="session-history__title">
           <h2>游玩记录</h2>
-          <p>自动记录启动器产生的会话；异常中断的时长会在下次启动时截断到最后心跳。</p>
+          {sessions.data && sessions.data.length > 0 ? (
+            <p>
+              共 {sessions.data.length} 次 · {formatPlaytimeSeconds(totalSeconds)}
+            </p>
+          ) : null}
         </div>
         <Button variant="secondary" size="sm" onClick={beginCreate} disabled={busy}>
           <Plus size={13} strokeWidth={1.7} /> 补录会话
@@ -222,77 +242,83 @@ export function SessionHistory({ workId, onChanged }: SessionHistoryProps) {
         </form>
       ) : null}
 
-      <div className="detail-session-table">
-        <div className="detail-session-table__head detail-session-table__head--c6">
-          <span>开始时间</span>
-          <span>结束 / 状态</span>
-          <span>时长</span>
-          <span>备注</span>
-          <span>操作</span>
+      {sessions.isPending ? (
+        <div className="session-log session-log--empty">
+          <p>正在读取游玩记录…</p>
         </div>
-        {sessions.isPending ? (
-          <p className="detail-empty-row">正在读取游玩记录…</p>
-        ) : sessions.isError ? (
-          <p className="detail-empty-row">无法读取游玩记录：{String(sessions.error)}</p>
-        ) : sessions.data.length === 0 ? (
-          <p className="detail-empty-row">
-            还没有会话。启动游戏后这里会自动出现记录，也可以手动补录。
-          </p>
-        ) : (
-          sessions.data.map((session) => (
-            <div
-              className="detail-session-table__row detail-session-table__row--c6"
-              key={session.id}
-            >
-              <span>
-                {new Date(session.startedAt).toLocaleString("zh-CN", {
-                  month: "2-digit",
-                  day: "2-digit",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </span>
-              <span
-                className={session.status !== "ended" ? "session-state session-state--live" : ""}
-              >
-                {session.status === "ended" ? (
-                  <>
+      ) : sessions.isError ? (
+        <div className="session-log session-log--empty">
+          <p>无法读取游玩记录：{String(sessions.error)}</p>
+        </div>
+      ) : sessions.data.length === 0 ? (
+        <div className="session-log session-log--empty">
+          <History size={18} strokeWidth={1.6} aria-hidden="true" />
+          <p>启动游戏后会自动记录。</p>
+        </div>
+      ) : (
+        <ol className="session-log" aria-label="会话记录">
+          {sessions.data.map((session) => (
+            <li className="session-entry" key={session.id}>
+              <time className="session-entry__date" dateTime={session.startedAt}>
+                <b>{dateLabel(session.startedAt)}</b>
+                <span>{weekdayLabel(session.startedAt)}</span>
+              </time>
+              <div className="session-entry__content">
+                <div className="session-entry__headline">
+                  <span className="session-entry__range">
+                    <time dateTime={session.startedAt}>{timeLabel(session.startedAt)}</time>
+                    {session.endedAt ? (
+                      <>
+                        <span aria-hidden="true">–</span>
+                        <time dateTime={session.endedAt}>{timeLabel(session.endedAt)}</time>
+                      </>
+                    ) : null}
+                  </span>
+                  <strong>{formatPlaytimeSeconds(session.durationSec)}</strong>
+                </div>
+                <div className="session-entry__meta">
+                  <span
+                    className={
+                      session.status !== "ended"
+                        ? "session-entry__state is-live"
+                        : "session-entry__state"
+                    }
+                  >
+                    {session.status !== "ended" ? (
+                      <Clock3 size={11} strokeWidth={1.8} aria-hidden="true" />
+                    ) : null}
                     {statusLabel(session)}
-                    {session.corrected ? <i>已修正</i> : null}
-                    {session.source === "manual" ? <i>手动</i> : null}
-                  </>
-                ) : (
-                  <>
-                    <Clock3 size={11} strokeWidth={1.8} /> {statusLabel(session)}
-                  </>
-                )}
-              </span>
-              <b>{formatPlaytimeSeconds(session.durationSec)}</b>
-              <span className="session-note">{session.note || "—"}</span>
-              <span className="session-actions">
-                <button
-                  type="button"
-                  aria-label="编辑会话"
-                  title="编辑时间与备注"
-                  disabled={busy || session.status !== "ended"}
-                  onClick={() => beginEdit(session)}
-                >
-                  <Pencil size={12} strokeWidth={1.7} />
-                </button>
-                <button
-                  type="button"
-                  aria-label="删除会话"
-                  title="删除记录"
-                  disabled={busy || session.status !== "ended"}
-                  onClick={() => void remove(session)}
-                >
-                  <Trash2 size={12} strokeWidth={1.7} />
-                </button>
-              </span>
-            </div>
-          ))
-        )}
-      </div>
+                  </span>
+                  {session.corrected ? <span className="session-entry__badge">已修正</span> : null}
+                </div>
+                {session.note ? <p className="session-entry__note">{session.note}</p> : null}
+              </div>
+              <div className="session-entry__actions">
+                <Hint label="编辑时间与备注" side="top">
+                  <button
+                    type="button"
+                    aria-label="编辑会话"
+                    disabled={busy || session.status !== "ended"}
+                    onClick={() => beginEdit(session)}
+                  >
+                    <Pencil size={13} strokeWidth={1.7} />
+                  </button>
+                </Hint>
+                <Hint label="删除记录" side="top">
+                  <button
+                    type="button"
+                    aria-label="删除会话"
+                    disabled={busy || session.status !== "ended"}
+                    onClick={() => void remove(session)}
+                  >
+                    <Trash2 size={13} strokeWidth={1.7} />
+                  </button>
+                </Hint>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
       <ConfirmDialog
         open={confirmSession !== null}
         onOpenChange={(open) => {

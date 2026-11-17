@@ -456,12 +456,12 @@ export function CoverArt({ work, className = "", focus = "center" }: CoverArtPro
         </span>
         <div className="cover-art__type">
           {work.originalTitle ? <p className="cover-art__jp">{work.originalTitle}</p> : null}
-          <h3 className="cover-art__title">{work.title}</h3>
+          <span className="cover-art__title">{work.title}</span>
           <p className="cover-art__credit">
             {work.developer}
             {work.year ? (
               <>
-                <span>·</span>
+                {work.developer ? <span>·</span> : null}
                 {work.year}
               </>
             ) : null}
@@ -491,7 +491,7 @@ export function CoverArt({ work, className = "", focus = "center" }: CoverArtPro
       <div className="cover-art__grain" aria-hidden="true" />
       <div className="cover-art__type">
         <p className="cover-art__jp">{work.originalTitle}</p>
-        <h3 className="cover-art__title">{work.title}</h3>
+        <span className="cover-art__title">{work.title}</span>
         <p className="cover-art__credit">
           {work.developer} <span>·</span> {work.year}
         </p>

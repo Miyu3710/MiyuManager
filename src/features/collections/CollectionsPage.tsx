@@ -18,6 +18,7 @@ import { Button } from "../../design-system/components/Button";
 import { ConfirmDialog } from "../../design-system/components/ConfirmDialog";
 import { CoverArt } from "../../design-system/components/CoverArt";
 import { EmptyState } from "../../design-system/components/EmptyState";
+import { PageHeader } from "../../design-system/components/PageHeader";
 import { Tag } from "../../design-system/components/Tag";
 import {
   addCollectionWorks,
@@ -32,6 +33,8 @@ import {
 import type { CollectionSummary, LibraryItem } from "../../lib/library-types";
 import { formatPlaytimeSeconds, formatRelativeDate } from "../../lib/format";
 import { statusLabels } from "../../lib/game-data";
+import { useDeepLinkFocus } from "../../lib/use-deep-link-focus";
+import { workLinkState, type WorkOrigin } from "../../lib/work-navigation";
 import { useLibraryInfinite } from "../library/useLibrary";
 import { useCollectionItems, useCollections, useInvalidateCollections } from "./useCollections";
 import "./collections.css";
@@ -85,6 +88,16 @@ function NameDialog({
           }}
         >
           <Dialog.Title>{title}</Dialog.Title>
+          <Dialog.Close asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="collection-dialog__close"
+              aria-label={"关闭" + title}
+            >
+              <X size={16} strokeWidth={1.8} />
+            </Button>
+          </Dialog.Close>
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -182,6 +195,16 @@ function AddWorksDialog({
           }}
         >
           <Dialog.Title>添加作品到收藏集</Dialog.Title>
+          <Dialog.Close asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="collection-dialog__close"
+              aria-label="关闭添加作品窗口"
+            >
+              <X size={16} strokeWidth={1.8} />
+            </Button>
+          </Dialog.Close>
           <Dialog.Description className="collection-dialog__description">
             从本地游戏库选择作品；已经在本收藏集中的作品不会重复出现。
           </Dialog.Description>
@@ -272,19 +295,22 @@ function AddWorksDialog({
 
 function CollectionWorkCard({
   item,
+  origin,
   onRemove,
 }: {
   item: LibraryItem;
+  origin: WorkOrigin;
   onRemove: (item: LibraryItem) => void;
 }) {
+  const detailState = workLinkState(origin);
   return (
     <article className="collection-work">
-      <Link to={"/work/" + item.workId} className="collection-work__art">
+      <Link to={"/work/" + item.workId} state={detailState} className="collection-work__art">
         <CoverArt work={libraryItemToGame(item)} />
       </Link>
       <div className="collection-work__body">
         <span className="home-card-status">{statusLabels[item.status]}</span>
-        <Link to={"/work/" + item.workId} className="collection-work__title">
+        <Link to={"/work/" + item.workId} state={detailState} className="collection-work__title">
           {item.title}
         </Link>
         <p>{item.originalTitle || item.developer || "本地副本"}</p>
@@ -320,6 +346,7 @@ export function CollectionsPage() {
   const [busy, setBusy] = useState(false);
   const [sortBusy, setSortBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  useDeepLinkFocus({ ready: collectionId === null && !collections.isPending });
   const allItems = useMemo(
     () => items.data?.pages.flatMap((page) => page.items) ?? [],
     [items.data?.pages],
@@ -442,28 +469,28 @@ export function CollectionsPage() {
   if (current) {
     return (
       <div className="collections-page">
-        <header className="collections-head">
-          <div>
+        <PageHeader
+          title={current.name}
+          description={`${current.workCount} 部作品，${formatRelativeDate(current.updatedAt)}更新`}
+          above={
             <Link to="/collections" className="collections-back">
-              <ArrowLeft size={14} strokeWidth={1.7} /> 全部收藏集
+              <ArrowLeft size={15} strokeWidth={1.8} /> 全部收藏集
             </Link>
-            <h1>{current.name}</h1>
-            <p>
-              {current.workCount} 部作品，{formatRelativeDate(current.updatedAt)}更新
-            </p>
-          </div>
-          <div className="collections-head__actions">
-            <Button variant="ghost" size="sm" onClick={() => setRenameOpen(true)}>
-              <Pencil size={13} strokeWidth={1.7} /> 重命名
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setDeleteOpen(true)}>
-              <Trash2 size={13} strokeWidth={1.7} /> 删除
-            </Button>
-            <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>
-              <Plus size={14} strokeWidth={1.8} /> 添加作品
-            </Button>
-          </div>
-        </header>
+          }
+          actions={
+            <div className="collections-head__actions">
+              <Button variant="ghost" size="sm" onClick={() => setRenameOpen(true)}>
+                <Pencil size={13} strokeWidth={1.7} /> 重命名
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setDeleteOpen(true)}>
+                <Trash2 size={13} strokeWidth={1.7} /> 删除
+              </Button>
+              <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>
+                <Plus size={14} strokeWidth={1.8} /> 添加作品
+              </Button>
+            </div>
+          }
+        />
 
         {items.isError ? (
           <EmptyState
@@ -502,7 +529,12 @@ export function CollectionsPage() {
             </div>
             <section className="collection-works">
               {allItems.map((item) => (
-                <CollectionWorkCard item={item} key={item.workId} onRemove={removeWork} />
+                <CollectionWorkCard
+                  item={item}
+                  origin={{ label: current.name, to: "/collections/" + current.id }}
+                  key={item.workId}
+                  onRemove={removeWork}
+                />
               ))}
             </section>
           </>
@@ -542,12 +574,10 @@ export function CollectionsPage() {
 
   return (
     <div className="collections-page">
-      <header className="collections-head">
-        <div>
-          <h1>收藏集</h1>
-          <p>{(collections.data ?? []).length} 个分组，手动整理，不改动游戏库状态。</p>
-        </div>
-      </header>
+      <PageHeader
+        title="收藏集"
+        description={`${(collections.data ?? []).length} 个分组，手动整理，不改动游戏库状态。`}
+      />
 
       {collections.isError ? (
         <EmptyState
@@ -567,13 +597,18 @@ export function CollectionsPage() {
           title="建立第一个收藏集"
           description="按自己的理由把作品放在一起。"
           action={
-            <Button variant="primary" size="sm" onClick={() => setCreateOpen(true)}>
+            <Button
+              id="collections-new"
+              variant="primary"
+              size="sm"
+              onClick={() => setCreateOpen(true)}
+            >
               <Plus size={14} strokeWidth={1.8} /> 新建收藏集
             </Button>
           }
         />
       ) : (
-        <section className="collections-grid" aria-label="收藏集列表">
+        <section id="collections-grid" className="collections-grid" aria-label="收藏集列表">
           {(collections.data ?? []).map((collection, index) => (
             <article className="collection-card" key={collection.id}>
               <Link to={"/collections/" + collection.id} className="collection-card__main">
@@ -606,6 +641,7 @@ export function CollectionsPage() {
           ))}
           <button
             type="button"
+            id="collections-new"
             className="collection-card collection-card--new"
             onClick={() => setCreateOpen(true)}
           >

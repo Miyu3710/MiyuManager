@@ -22,7 +22,7 @@
 .settings-head p {
   margin: 0;
   color: var(--color-text-soft);
-  font-size: 12.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-layout {
@@ -50,7 +50,7 @@
   border-radius: 12px;
   background: transparent;
   color: var(--color-text-soft);
-  font-size: 12.5px;
+  font-size: var(--text-caption);
   text-align: left;
   cursor: pointer;
 }
@@ -88,14 +88,14 @@
   margin: 0;
   color: var(--color-text);
   font-family: var(--font-game);
-  font-size: 14px;
+  font-size: var(--text-ui);
   font-weight: 700;
 }
 
 .settings-section > header p {
   margin: 4px 0 0;
   color: var(--color-text-faint);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   line-height: 1.6;
 }
 
@@ -125,7 +125,7 @@
 
 .settings-row b {
   color: var(--color-text-muted);
-  font-size: 12.5px;
+  font-size: var(--text-caption);
   font-weight: 500;
 }
 
@@ -133,7 +133,7 @@
   overflow: hidden;
   color: var(--color-text-faint);
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -151,7 +151,7 @@
   overflow: hidden;
   max-width: 560px;
   font-family: var(--font-mono) !important;
-  font-size: 11.5px !important;
+  font-size: var(--text-caption) !important;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -191,13 +191,13 @@
 .settings-theme__card b {
   color: var(--color-text);
   font-family: var(--font-game);
-  font-size: 13px;
+  font-size: var(--text-meta);
   font-weight: 700;
 }
 
 .settings-theme__card span {
   color: var(--color-text-faint);
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .settings-theme__card .ds-tag {
@@ -207,7 +207,7 @@
 .settings-hint {
   margin: 8px 0 0;
   color: var(--color-text-faint);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-segmented {
@@ -223,7 +223,7 @@
   border-radius: var(--radius-pill);
   background: transparent;
   color: var(--color-text-soft);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   cursor: pointer;
 }
 
@@ -247,7 +247,7 @@
     var(--color-bg-raised);
   color: var(--color-text);
   font-family: var(--font-ui);
-  font-size: 12px;
+  font-size: var(--text-caption);
   appearance: none;
 }
 
@@ -312,13 +312,13 @@
 .settings-source-order__head {
   color: var(--color-text-faint);
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-source-priority {
   color: var(--color-data);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-caption);
   font-weight: 400;
 }
 
@@ -331,14 +331,14 @@
 .settings-source-name b {
   color: var(--color-text);
   font-family: var(--font-game);
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
 .settings-source-name span,
 .settings-source-fields {
   overflow: hidden;
   color: var(--color-text-faint);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
   line-height: 1.55;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -346,7 +346,7 @@
 
 .settings-source-fields {
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-source-state {
@@ -379,7 +379,7 @@
   gap: 7px;
   padding: 14px 0;
   color: var(--color-text-faint);
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .settings-source-loading--error {
@@ -414,7 +414,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-  margin-bottom: 10px;
+  margin-bottom: 4px;
 }
 
 .settings-field-priorities__head > div {
@@ -425,50 +425,48 @@
 .settings-field-priorities__head b {
   color: var(--color-text);
   font-family: var(--font-game);
-  font-size: 13px;
+  font-size: var(--text-meta);
 }
 
 .settings-field-priorities__head span {
   max-width: 680px;
   color: var(--color-text-faint);
-  font-size: 11px;
+  font-size: var(--text-caption);
   line-height: 1.65;
 }
 
 .settings-field-priority-mode {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin: 4px 0 10px;
-  padding: 10px 11px;
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-control);
-  background: rgba(243, 234, 216, 0.022);
-  cursor: pointer;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0 0 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--color-line);
 }
 
-.settings-field-priority-mode input {
-  margin-top: 2px;
-  accent-color: var(--color-status);
-}
-
-.settings-field-priority-mode > span {
+.settings-field-priority-mode__copy {
   display: grid;
+  min-width: 0;
   gap: 3px;
-  flex: 1;
 }
 
-.settings-field-priority-mode b {
+.settings-field-priority-mode__copy b {
+  color: var(--color-text);
+  font-size: var(--text-meta);
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.settings-field-priority-mode__copy span {
+  max-width: 62ch;
   color: var(--color-text-soft);
-  font-size: 11.5px;
-  font-weight: 500;
+  font-size: var(--text-caption);
+  line-height: 1.55;
 }
 
-.settings-field-priority-mode em {
-  color: var(--color-text-faint);
-  font-size: 10px;
-  font-style: normal;
-  line-height: 1.55;
+.settings-field-priority-mode .settings-switch {
+  margin-left: auto;
 }
 
 .settings-field-priorities.is-global .settings-field-priority__detail {
@@ -510,7 +508,7 @@
 .settings-field-priority__label {
   color: var(--color-text);
   font-family: var(--font-game);
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-weight: 700;
 }
 
@@ -523,7 +521,7 @@
 
 .settings-field-priority__preferred em {
   color: var(--color-text-faint);
-  font-size: 9.5px;
+  font-size: var(--text-caption);
   font-style: normal;
   font-family: var(--font-mono);
 }
@@ -531,7 +529,7 @@
 .settings-field-priority__preferred b {
   overflow: hidden;
   color: var(--color-data);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -541,7 +539,7 @@
   overflow: hidden;
   color: var(--color-text-faint);
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: var(--text-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -573,13 +571,13 @@
 .settings-field-priority__provider > b {
   color: var(--color-data);
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: var(--text-caption);
   font-weight: 400;
 }
 
 .settings-field-priority__provider > span {
   color: var(--color-text-soft);
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .settings-field-priority__actions {
@@ -603,17 +601,17 @@
 
 .settings-field-priority__footer span {
   color: var(--color-text-faint);
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 
 .settings-source-auth b {
   color: var(--color-text-muted);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-source-auth span {
   color: var(--color-text-faint);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
   line-height: 1.6;
 }
 
@@ -660,13 +658,13 @@
 .settings-oauth__head b {
   color: var(--color-text);
   font-family: var(--font-game);
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
 .settings-oauth__head span {
   max-width: 760px;
   color: var(--color-text-faint);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
   line-height: 1.6;
 }
 
@@ -684,7 +682,7 @@
   padding: 9px 12px;
   border-bottom: 1px solid var(--color-line);
   color: var(--color-text-faint);
-  font-size: 10px;
+  font-size: var(--text-caption);
   line-height: 1.6;
 }
 
@@ -706,7 +704,7 @@
 .settings-oauth__notice code {
   color: var(--color-text);
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: var(--text-caption);
   overflow-wrap: anywhere;
 }
 
@@ -732,7 +730,7 @@
   gap: 7px;
   padding: 14px 12px;
   color: var(--color-text-faint);
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .settings-oauth__loading--error {
@@ -781,13 +779,13 @@
 
 .settings-oauth__title b {
   color: var(--color-text);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-oauth__title span {
   overflow: hidden;
   color: var(--color-text-faint);
-  font-size: 10px;
+  font-size: var(--text-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -798,7 +796,7 @@
   gap: 4px;
   color: var(--color-text-faint);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--text-caption);
 }
 
 .settings-oauth__meta span {
@@ -810,7 +808,7 @@
 .settings-oauth__hint {
   margin: 0;
   color: var(--color-text-faint);
-  font-size: 9.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-oauth__state .ds-tag {
@@ -827,7 +825,7 @@
   padding: 8px 12px 10px;
   border-top: 1px solid var(--color-line);
   color: var(--color-text-faint);
-  font-size: 9.5px;
+  font-size: var(--text-caption);
   line-height: 1.65;
 }
 
@@ -894,7 +892,7 @@
 }
 
 .settings-head p {
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
 .settings-layout {
@@ -917,7 +915,7 @@
   padding: 7px 0;
   border-radius: 0;
   color: var(--color-text-soft);
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
 .settings-nav button:hover {
@@ -956,7 +954,7 @@
 
 .settings-section > header h2 {
   font-family: var(--font-ui);
-  font-size: 14px;
+  font-size: var(--text-ui);
   font-weight: 600;
 }
 
@@ -971,19 +969,19 @@
 }
 
 .settings-row b {
-  font-size: 12.5px;
+  font-size: var(--text-caption);
   font-weight: 500;
 }
 
 .settings-row span {
   font-family: var(--font-ui);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-path {
   max-width: 620px;
   font-family: var(--font-mono) !important;
-  font-size: 11px !important;
+  font-size: var(--text-caption) !important;
 }
 
 .settings-theme {
@@ -1006,17 +1004,17 @@
 
 .settings-theme__card b {
   font-family: var(--font-ui);
-  font-size: 12.5px;
+  font-size: var(--text-caption);
   font-weight: 600;
 }
 
 .settings-theme__card span {
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .settings-hint {
   margin-top: 8px;
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .settings-segmented {
@@ -1025,7 +1023,7 @@
 
 .settings-segmented button {
   border-radius: 2px;
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-segmented button[aria-pressed="true"] {
@@ -1038,27 +1036,27 @@
   border-color: var(--color-line);
   border-radius: var(--radius-control);
   background-color: transparent;
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
 .settings-source-order__head {
   font-family: var(--font-ui);
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 
 .settings-source-name b {
   font-family: var(--font-ui);
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-weight: 600;
 }
 
 .settings-source-name span {
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .settings-source-fields {
   font-family: var(--font-ui);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-source-auth,
@@ -1067,73 +1065,73 @@
 }
 
 .settings-source-auth b {
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
 .settings-source-auth span {
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .settings-oauth__head b {
   font-family: var(--font-ui);
-  font-size: 12.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-oauth__head span {
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .settings-oauth__notice {
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .settings-oauth__title b {
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
 .settings-oauth__title span {
-  font-size: 10.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-oauth__meta {
   font-family: var(--font-ui);
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 
 .settings-oauth__hint,
 .settings-oauth__note {
-  font-size: 10.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-field-priorities__head b {
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: var(--text-meta);
   font-weight: 600;
 }
 
 .settings-field-priorities__head span {
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .settings-field-priority__label {
   font-family: var(--font-ui);
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-weight: 600;
 }
 
 .settings-field-priority__preferred em,
 .settings-field-priority__remaining {
   font-family: var(--font-ui);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-field-priority__provider > b {
   font-family: var(--font-data);
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 
 .settings-field-priority__provider > span {
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 @media (max-width: 1180px) {
@@ -1167,14 +1165,14 @@
 
 .settings-stack-row b {
   color: var(--color-text);
-  font-size: 12.5px;
+  font-size: var(--text-caption);
   font-weight: 600;
 }
 
 .settings-stack-row span {
   max-width: 520px;
   color: var(--color-text-faint);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   line-height: 1.6;
 }
 
@@ -1196,7 +1194,7 @@
   background: var(--color-surface-soft);
   color: var(--color-text);
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-input:focus,
@@ -1233,7 +1231,7 @@
   background: var(--color-surface-soft);
   color: var(--color-text-soft);
   font-family: var(--font-body);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   line-height: 1.6;
   white-space: pre-wrap;
 }
@@ -1287,7 +1285,7 @@
   padding: 10px 11px;
   border-radius: 6px;
   color: var(--color-text-soft);
-  font-size: 12px;
+  font-size: var(--text-caption);
 }
 
 .settings-nav button:hover {
@@ -1328,14 +1326,14 @@
 
 .settings-section > header h2 {
   font-family: var(--font-ui);
-  font-size: 15px;
+  font-size: var(--text-body);
   font-weight: 650;
   letter-spacing: -0.01em;
 }
 
 .settings-section > header p {
   color: var(--color-text-faint);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-section > header > svg {
@@ -1354,7 +1352,7 @@
 
 .settings-row b {
   color: var(--color-text);
-  font-size: 12.5px;
+  font-size: var(--text-caption);
   font-weight: 600;
   line-height: 1.45;
 }
@@ -1364,7 +1362,7 @@
   overflow: visible;
   color: var(--color-text-faint);
   font-family: var(--font-ui);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   line-height: 1.55;
   text-overflow: clip;
   white-space: normal;
@@ -1380,7 +1378,7 @@
 .settings-path {
   max-width: 62ch;
   color: var(--color-text-muted) !important;
-  font-size: 11px !important;
+  font-size: var(--text-caption) !important;
 }
 
 .settings-row__actions {
@@ -1406,18 +1404,18 @@
 
 .settings-theme__card b {
   font-family: var(--font-ui);
-  font-size: 13px;
+  font-size: var(--text-meta);
   font-weight: 650;
 }
 
 .settings-theme__card span {
   color: var(--color-text-faint);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-hint {
   color: var(--color-text-faint);
-  font-size: 11px;
+  font-size: var(--text-caption);
   line-height: 1.6;
 }
 
@@ -1428,7 +1426,7 @@
 
 .settings-segmented button {
   border-radius: var(--radius-control);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-segmented button[aria-pressed="true"] {
@@ -1440,7 +1438,7 @@
   height: 36px;
   border-color: var(--color-line);
   background-color: var(--color-surface);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .settings-switch {
@@ -1455,7 +1453,7 @@
 .settings-textarea {
   border-color: var(--color-line);
   background: var(--color-surface);
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .settings-input:focus,

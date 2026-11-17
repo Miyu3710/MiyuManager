@@ -30,7 +30,6 @@ export function ConfirmDialog({
       <AlertDialog.Portal>
         <AlertDialog.Overlay className="ds-confirm__overlay" />
         <AlertDialog.Content className="ds-confirm">
-          <p className="ds-confirm__kicker">需要确认</p>
           <AlertDialog.Title className="ds-confirm__title">{title}</AlertDialog.Title>
           <AlertDialog.Description className="ds-confirm__description">
             {description}

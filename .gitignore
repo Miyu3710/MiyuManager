@@ -28,3 +28,7 @@ tmp/
 *.njsproj
 *.sln
 *.sw?
+
+# Installer extraction artifacts
+/$msiDir/
+/$nsisDir/

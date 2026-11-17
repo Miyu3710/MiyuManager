@@ -273,15 +273,11 @@
 }
 
 .mini-mark {
-  display: grid;
-  width: 13px;
-  height: 13px;
-  place-items: center;
-  border: 1px solid rgba(233, 226, 212, 0.55);
-  border-radius: 50%;
-  color: #e9e2d4;
-  font-family: var(--font-display);
-  font-size: 7px;
+  display: block;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  object-fit: contain;
 }
 
 .mini-rail__item {
@@ -859,11 +855,6 @@
 .mini-rail {
   border-right-color: rgba(243, 234, 216, 0.1);
   background: rgba(6, 16, 26, 0.36);
-}
-
-.mini-mark {
-  border-color: rgba(243, 234, 216, 0.5);
-  color: #f3ead8;
 }
 
 .mini-rail__item {

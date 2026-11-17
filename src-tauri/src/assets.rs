@@ -13,6 +13,8 @@ use crate::db;
 const MAX_SOURCE_BYTES: u64 = 30 * 1024 * 1024;
 const THUMB_WIDTH: u32 = 480;
 const THUMB_HEIGHT: u32 = 720;
+const HERO_WIDTH: u32 = 1440;
+const HERO_HEIGHT: u32 = 2160;
 
 const IMAGE_EXTENSIONS: [&str; 5] = ["png", "jpg", "jpeg", "webp", "bmp"];
 const COVER_STEMS: [&str; 9] = [
@@ -33,6 +35,7 @@ pub struct CoverAsset {
     pub work_id: i64,
     pub original_path: String,
     pub thumb_path: String,
+    pub hero_path: String,
     pub width: u32,
     pub height: u32,
     pub source: String,
@@ -84,9 +87,15 @@ fn asset_dir(data_dir: &Path, work_id: i64) -> PathBuf {
         .join(work_id.to_string())
 }
 
-fn remove_cached_files(data_dir: &Path, original_path: Option<&str>, thumb_path: Option<&str>) {
+fn remove_cached_files(
+    data_dir: &Path,
+    original_path: Option<&str>,
+    thumb_path: Option<&str>,
+    hero_path: Option<&str>,
+) {
     let root = data_dir.join("assets");
-    for relative in [original_path, thumb_path].into_iter().flatten() {
+    let root = dunce::canonicalize(&root).unwrap_or(root);
+    for relative in [original_path, thumb_path, hero_path].into_iter().flatten() {
         let candidate = root.join(relative);
         let Ok(canonical) = dunce::canonicalize(&candidate) else {
             continue;
@@ -171,18 +180,27 @@ pub async fn set_cover_bytes(
     let token = uuid::Uuid::new_v4().simple().to_string();
     let original_name = format!("original-{token}.{extension}");
     let thumb_name = format!("thumb-{token}.webp");
+    let hero_name = format!("hero-{token}.webp");
     let original_file = directory.join(&original_name);
     let thumb_file = directory.join(&thumb_name);
+    let hero_file = directory.join(&hero_name);
     std::fs::write(&original_file, bytes).context("无法写入封面原图缓存")?;
 
     let thumbnail = if width > THUMB_WIDTH || height > THUMB_HEIGHT {
         image.thumbnail(THUMB_WIDTH, THUMB_HEIGHT)
     } else {
-        image
+        image.clone()
     };
     thumbnail
         .save_with_format(&thumb_file, ImageFormat::WebP)
         .context("无法生成 WebP 封面缩略图")?;
+    let hero = if width > HERO_WIDTH || height > HERO_HEIGHT {
+        image.thumbnail(HERO_WIDTH, HERO_HEIGHT)
+    } else {
+        image
+    };
+    hero.save_with_format(&hero_file, ImageFormat::WebP)
+        .context("无法生成大屏高清封面")?;
 
     let original_relative = relative_string(
         original_file
@@ -194,20 +212,27 @@ pub async fn set_cover_bytes(
             .strip_prefix(data_dir.join("assets"))
             .context("封面缓存路径异常")?,
     );
+    let hero_relative = relative_string(
+        hero_file
+            .strip_prefix(data_dir.join("assets"))
+            .context("封面缓存路径异常")?,
+    );
 
     let old = sqlx::query(
-        "SELECT original_path, thumb_path FROM assets WHERE work_id = ? AND kind = 'cover'",
+        "SELECT original_path, thumb_path, hero_path
+         FROM assets WHERE work_id = ? AND kind = 'cover'",
     )
     .bind(work_id)
     .fetch_optional(pool)
     .await?;
     sqlx::query(
         "INSERT INTO assets
-           (work_id, kind, original_path, thumb_path, source_path, width, height, checksum, source)
-         VALUES (?, 'cover', ?, ?, ?, ?, ?, ?, ?)
+           (work_id, kind, original_path, thumb_path, hero_path, source_path, width, height, checksum, source)
+         VALUES (?, 'cover', ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(work_id, kind) DO UPDATE SET
            original_path = excluded.original_path,
            thumb_path = excluded.thumb_path,
+           hero_path = excluded.hero_path,
            source_path = excluded.source_path,
            width = excluded.width,
            height = excluded.height,
@@ -218,6 +243,7 @@ pub async fn set_cover_bytes(
     .bind(work_id)
     .bind(&original_relative)
     .bind(&thumb_relative)
+    .bind(&hero_relative)
     .bind(source_path)
     .bind(i64::from(width))
     .bind(i64::from(height))
@@ -229,8 +255,17 @@ pub async fn set_cover_bytes(
     if let Some(row) = old {
         let old_original: String = row.try_get("original_path")?;
         let old_thumb: String = row.try_get("thumb_path")?;
-        if old_original != original_relative || old_thumb != thumb_relative {
-            remove_cached_files(data_dir, Some(&old_original), Some(&old_thumb));
+        let old_hero: Option<String> = row.try_get("hero_path")?;
+        if old_original != original_relative
+            || old_thumb != thumb_relative
+            || old_hero.as_deref() != Some(hero_relative.as_str())
+        {
+            remove_cached_files(
+                data_dir,
+                Some(&old_original),
+                Some(&old_thumb),
+                old_hero.as_deref(),
+            );
         }
     }
 
@@ -238,6 +273,7 @@ pub async fn set_cover_bytes(
         work_id,
         original_path: original_relative,
         thumb_path: thumb_relative,
+        hero_path: hero_relative,
         width,
         height,
         source: source.to_string(),
@@ -246,7 +282,8 @@ pub async fn set_cover_bytes(
 
 pub async fn clear_cover(pool: &SqlitePool, data_dir: &Path, work_id: i64) -> Result<()> {
     let row = sqlx::query(
-        "SELECT original_path, thumb_path FROM assets WHERE work_id = ? AND kind = 'cover'",
+        "SELECT original_path, thumb_path, hero_path
+         FROM assets WHERE work_id = ? AND kind = 'cover'",
     )
     .bind(work_id)
     .fetch_optional(pool)
@@ -258,7 +295,8 @@ pub async fn clear_cover(pool: &SqlitePool, data_dir: &Path, work_id: i64) -> Re
     if let Some(row) = row {
         let original: String = row.try_get("original_path")?;
         let thumb: String = row.try_get("thumb_path")?;
-        remove_cached_files(data_dir, Some(&original), Some(&thumb));
+        let hero: Option<String> = row.try_get("hero_path")?;
+        remove_cached_files(data_dir, Some(&original), Some(&thumb), hero.as_deref());
     }
     Ok(())
 }
@@ -425,6 +463,7 @@ pub fn serve_asset(data_dir: &Path, request_path: &str) -> Response<Vec<u8>> {
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, content_type(&canonical))
+        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .header(header::CACHE_CONTROL, "public, max-age=31536000, immutable")
         .body(bytes)
         .unwrap_or_else(|_| Response::new(Vec::new()))
@@ -477,8 +516,10 @@ mod tests {
         .expect("cover");
         assert!(asset.thumb_path.ends_with(".webp"));
         let thumb = temp.path().join("assets").join(&asset.thumb_path);
+        let hero = temp.path().join("assets").join(&asset.hero_path);
         let original = temp.path().join("assets").join(&asset.original_path);
         assert!(thumb.is_file());
+        assert!(hero.is_file());
         assert!(original.is_file());
         let dimensions = ImageReader::open(&thumb)
             .unwrap()
@@ -496,6 +537,7 @@ mod tests {
             .await
             .expect("clear");
         assert!(!thumb.exists());
+        assert!(!hero.exists());
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM assets WHERE work_id = ?")
             .bind(work_id)
             .fetch_one(&pool)

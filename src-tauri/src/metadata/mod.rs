@@ -614,7 +614,6 @@ pub async fn preview(
             .iter()
             .filter(|claim| claim.field == *field)
             .collect();
-        let locked_claim = field_claims.iter().find(|claim| claim.locked);
         let existing: Vec<ClaimPreview> = field_claims
             .iter()
             .map(|claim| ClaimPreview {
@@ -622,7 +621,6 @@ pub async fn preview(
                 source_id: claim.source_id.clone(),
                 value: claim.value.clone(),
                 priority: claim.priority,
-                locked: claim.locked,
             })
             .collect();
         let best_existing_priority = field_claims
@@ -638,7 +636,6 @@ pub async fn preview(
         let current_empty = is_empty_value(&current);
         let same_as_current = same_value(&candidate, &current);
         let default_selected = current_empty
-            && locked_claim.is_none()
             && !same_as_current
             && best_existing_priority.is_none_or(|priority| field_priority <= priority);
         fields.push(PreviewField {
@@ -648,16 +645,11 @@ pub async fn preview(
             candidate,
             source: provider_id.to_string(),
             source_id: source_id.to_string(),
-            locked: locked_claim.is_some(),
-            lock_source: locked_claim.map(|claim| claim.source.clone()),
             default_selected,
             priority: field_priority,
             existing,
         });
     }
-    let cover_locked = claims
-        .iter()
-        .any(|claim| claim.field == "cover" && claim.locked);
     let mut cover_options = candidates
         .covers
         .iter()
@@ -666,8 +658,7 @@ pub async fn preview(
             current_source: values.cover_source.clone(),
             candidate_url: option.url.clone(),
             kind: option.kind.clone(),
-            default_selected: values.cover_source.is_none() && !cover_locked && index == 0,
-            locked: cover_locked,
+            default_selected: values.cover_source.is_none() && index == 0,
         })
         .collect::<Vec<_>>();
     if cover_options.is_empty()
@@ -677,8 +668,7 @@ pub async fn preview(
             current_source: values.cover_source.clone(),
             candidate_url: url.clone(),
             kind: "cover".to_string(),
-            default_selected: values.cover_source.is_none() && !cover_locked,
-            locked: cover_locked,
+            default_selected: values.cover_source.is_none(),
         });
     }
     let cover = cover_options.first().cloned();
@@ -738,7 +728,8 @@ pub async fn import(
         None
     };
 
-    apply_import(
+    let work_id = request.work_id;
+    let result = apply_import(
         pool,
         data_dir,
         request,
@@ -746,7 +737,9 @@ pub async fn import(
         cover_bytes,
         cover_url.as_deref(),
     )
-    .await
+    .await?;
+    let _ = merge::sync_source_links(pool, http, oauth, work_id, cancel).await;
+    Ok(result)
 }
 
 async fn apply_import(
@@ -757,25 +750,13 @@ async fn apply_import(
     cover_bytes: Option<Vec<u8>>,
     cover_url: Option<&str>,
 ) -> Result<MetadataImportResult> {
-    let claims = store::load_claims(pool, request.work_id).await?;
-    let locked_fields: Vec<String> = claims
-        .iter()
-        .filter(|claim| claim.locked)
-        .map(|claim| claim.field.clone())
-        .collect();
-
     let mut applied = Vec::new();
-    let mut skipped_locked = Vec::new();
     let mut selected_fields: Vec<String> = request.selected_fields.into_iter().collect();
     selected_fields.sort();
     selected_fields.dedup();
     let mut tx = pool.begin().await?;
     for field in &selected_fields {
         if field == "cover" {
-            continue;
-        }
-        if locked_fields.iter().any(|locked| locked == field) {
-            skipped_locked.push(field.clone());
             continue;
         }
         let Some(value) = candidate_value(detail, field) else {
@@ -793,11 +774,18 @@ async fn apply_import(
             &request.source_id,
             &value,
             Some(0.9),
-            false,
         )
         .await?;
         applied.push(field.clone());
     }
+    store::upsert_source_link(
+        &mut tx,
+        request.work_id,
+        &request.provider,
+        &request.source_id,
+        &detail.title,
+    )
+    .await?;
     store::touch_work(&mut tx, request.work_id).await?;
     tx.commit().await?;
 
@@ -805,29 +793,23 @@ async fn apply_import(
     if let Some(bytes) = cover_bytes
         && let Some(url) = cover_url
     {
-        if locked_fields.iter().any(|field| field == "cover") {
-            skipped_locked.push("cover".to_string());
-        } else {
-            assets::set_cover_bytes(pool, data_dir, request.work_id, &bytes, url, "online").await?;
-            let mut connection = pool.acquire().await?;
-            store::upsert_claim(
-                &mut connection,
-                request.work_id,
-                "cover",
-                &request.provider,
-                &request.source_id,
-                &Value::String(url.to_string()),
-                Some(0.9),
-                false,
-            )
-            .await?;
-            cover_applied = true;
-        }
+        assets::set_cover_bytes(pool, data_dir, request.work_id, &bytes, url, "online").await?;
+        let mut connection = pool.acquire().await?;
+        store::upsert_claim(
+            &mut connection,
+            request.work_id,
+            "cover",
+            &request.provider,
+            &request.source_id,
+            &Value::String(url.to_string()),
+            Some(0.9),
+        )
+        .await?;
+        cover_applied = true;
     }
 
     Ok(MetadataImportResult {
         applied,
-        skipped_locked,
         cover_applied,
     })
 }
@@ -842,6 +824,7 @@ pub async fn work_state(
     }
     let values = store::load_work_field_values(pool, work_id).await?;
     let mut claims = store::load_claims(pool, work_id).await?;
+    let source_links = store::load_source_links(pool, work_id).await?;
     let priorities = merge::effective_priorities(pool, oauth).await?;
     merge::apply_claim_priorities(&mut claims, &priorities);
     let providers = list_providers(pool, oauth).await?;
@@ -856,7 +839,6 @@ pub async fn work_state(
             .iter()
             .find(|claim| same_value(&claim.value, &current))
             .copied();
-        let locked_claim = field_claims.iter().find(|claim| claim.locked).copied();
         let preferred_claim_id = field_claims
             .iter()
             .filter(|claim| !is_empty_value(&claim.value))
@@ -868,8 +850,6 @@ pub async fn work_state(
             current,
             source: source_claim.map(|claim| claim.source.clone()),
             source_id: source_claim.map(|claim| claim.source_id.clone()),
-            locked: locked_claim.is_some(),
-            lock_source: locked_claim.map(|claim| claim.source.clone()),
             conflict: has_conflicting_claims(&field_claims),
             preferred_claim_id,
             current_claim_id: source_claim.map(|claim| claim.id),
@@ -889,7 +869,6 @@ pub async fn work_state(
             .find(|claim| claim.value.as_str() == Some(source))
             .copied()
     });
-    let cover_locked_claim = cover_rows.iter().find(|claim| claim.locked).copied();
     let cover_preferred_claim_id = cover_rows
         .iter()
         .filter(|claim| !is_empty_value(&claim.value))
@@ -909,8 +888,6 @@ pub async fn work_state(
             .map_or(Value::Null, Value::String),
         source: values.cover_source.clone(),
         source_id: cover_source_claim.map(|claim| claim.source_id.clone()),
-        locked: cover_locked_claim.is_some(),
-        lock_source: cover_locked_claim.map(|claim| claim.source.clone()),
         conflict: has_conflicting_claims(&cover_rows),
         preferred_claim_id: cover_preferred_claim_id,
         current_claim_id: cover_source_claim.map(|claim| claim.id),
@@ -927,8 +904,6 @@ pub async fn work_state(
             current: Value::Null,
             source: None,
             source_id: None,
-            locked: false,
-            lock_source: None,
             conflict: has_conflicting_claims(&related_claims),
             preferred_claim_id: related_claims
                 .iter()
@@ -946,30 +921,8 @@ pub async fn work_state(
         work_id,
         providers,
         fields,
+        source_links,
     })
-}
-
-pub async fn set_field_lock(
-    pool: &SqlitePool,
-    work_id: i64,
-    field: &str,
-    locked: bool,
-) -> Result<()> {
-    if !db::work_exists(pool, work_id).await? {
-        bail!("作品不存在");
-    }
-    let values = store::load_work_field_values(pool, work_id).await?;
-    let current = if field == "cover" {
-        values
-            .cover_source
-            .clone()
-            .map_or(Value::Null, Value::String)
-    } else if field == "related" {
-        Value::Null
-    } else {
-        values.current(field)
-    };
-    store::set_field_lock(pool, work_id, field, locked, current).await
 }
 
 pub async fn record_manual_claim(
@@ -978,7 +931,7 @@ pub async fn record_manual_claim(
     field: &str,
     value: &Value,
 ) -> Result<()> {
-    store::upsert_claim(connection, work_id, field, "manual", "", value, None, true).await
+    store::upsert_claim(connection, work_id, field, "manual", "", value, None).await
 }
 
 fn has_conflicting_claims(claims: &[&store::ClaimRow]) -> bool {
@@ -1004,7 +957,6 @@ fn claim_record(claim: &store::ClaimRow) -> MetadataClaimRecord {
         source_id: claim.source_id.clone(),
         value: claim.value.clone(),
         confidence: claim.confidence,
-        locked: claim.locked,
         fetched_at: claim.fetched_at.clone(),
         provider_name: claim.provider_name.clone(),
         priority: claim.priority,
@@ -1047,7 +999,6 @@ pub(crate) fn same_value(left: &Value, right: &Value) -> bool {
 mod tests {
     use super::*;
     use crate::db::open_memory_pool;
-    use serde_json::json;
     use tempfile::TempDir;
 
     async fn seed_work(pool: &SqlitePool) -> i64 {
@@ -1111,80 +1062,6 @@ mod tests {
         assert_eq!(providers[0].id, "bangumi");
         assert_eq!(providers[1].id, "vndb");
         assert!(!providers[1].enabled);
-    }
-
-    #[tokio::test]
-    async fn locked_fields_are_skipped_and_other_fields_are_imported() {
-        let pool = open_memory_pool().await.expect("pool");
-        let work_id = seed_work(&pool).await;
-        let mut connection = pool.acquire().await.expect("connection");
-        store::upsert_claim(
-            &mut connection,
-            work_id,
-            "title",
-            "vndb",
-            "v11469",
-            &json!("VNDB 标题"),
-            Some(0.9),
-            false,
-        )
-        .await
-        .expect("claim");
-        drop(connection);
-        set_field_lock(&pool, work_id, "title", true)
-            .await
-            .expect("lock");
-
-        let detail = CandidateDetail {
-            provider: "bangumi".to_string(),
-            source_id: "50756".to_string(),
-            title: "新标题".to_string(),
-            original_title: "新月影".to_string(),
-            aliases: vec!["月影".to_string()],
-            description: "新简介".to_string(),
-            release_date: Some("2013-04-18".to_string()),
-            year: Some(2013),
-            developer: Some("TAKUYO".to_string()),
-            publisher: Some("TAKUYO".to_string()),
-            tags: vec!["乙女向".to_string()],
-            cover_url: None,
-            covers: Vec::new(),
-            related: Vec::new(),
-            raw_json: "{}".to_string(),
-        };
-        let request = MetadataImportRequest {
-            work_id,
-            provider: "bangumi".to_string(),
-            source_id: "50756".to_string(),
-            selected_fields: vec!["title".to_string(), "description".to_string()],
-            selected_cover: false,
-            cover_url: None,
-        };
-        let temp = TempDir::new().expect("temp");
-        let result = apply_import(&pool, temp.path(), request, &detail, None, None)
-            .await
-            .expect("import");
-        assert_eq!(result.applied, vec!["description"]);
-        assert_eq!(result.skipped_locked, vec!["title"]);
-
-        let oauth_temp = TempDir::new().expect("oauth temp");
-        let oauth = OAuthService::new(oauth_temp.path()).expect("oauth");
-        let state = work_state(&pool, &oauth, work_id).await.expect("state");
-        let title = state
-            .fields
-            .iter()
-            .find(|field| field.field == "title")
-            .expect("title field");
-        assert_eq!(title.current, json!("测试作品"));
-        assert!(title.locked);
-        assert_eq!(title.lock_source.as_deref(), Some("vndb"));
-        let description = state
-            .fields
-            .iter()
-            .find(|field| field.field == "description")
-            .expect("description field");
-        assert_eq!(description.current, json!("新简介"));
-        assert_eq!(description.source.as_deref(), Some("bangumi"));
     }
 
     #[tokio::test]

@@ -1,15 +1,20 @@
 mod assets;
 mod bigscreen;
 mod commands;
+mod database_maintenance;
 mod db;
+mod diagnostics;
 mod launcher;
+mod magpie;
 mod metadata;
 mod net;
 mod oauth;
 mod preferences;
 mod scan;
+mod security;
 mod steam_library;
 mod tracking;
+mod tray;
 
 use tauri::Manager;
 
@@ -17,6 +22,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(security::navigation_guard())
         .register_uri_scheme_protocol("miyu-asset", |context, request| {
             let state = context.app_handle().state::<commands::AppState>();
             assets::serve_asset(&state.data_dir, request.uri().path())
@@ -28,10 +34,20 @@ pub fn run() {
             bigscreen::bigscreen_state,
             bigscreen::bigscreen_open_detail,
             commands::app_info,
+            commands::app_quit,
+            commands::database_health,
+            commands::database_backup,
+            commands::database_backup_default,
+            commands::database_restore,
+            commands::open_backup_dir,
+            commands::open_log_dir,
+            commands::report_frontend_error,
             commands::preferences_get,
             commands::preferences_update,
             commands::onboarding_complete,
             commands::open_data_dir,
+            commands::open_external_url,
+            commands::reveal_work_path,
             commands::update_check,
             commands::library_query,
             commands::library_get,
@@ -80,7 +96,6 @@ pub fn run() {
             commands::metadata_search_cancel,
             commands::metadata_candidate_preview,
             commands::metadata_import,
-            commands::metadata_set_field_lock,
             commands::metadata_field_priorities,
             commands::metadata_field_priority_reorder,
             commands::metadata_field_priority_reset,
@@ -96,11 +111,13 @@ pub fn run() {
             commands::oauth_import_config,
             commands::oauth_status,
             commands::oauth_connect,
+            commands::oauth_sync_profile,
             commands::oauth_disconnect,
         ])
         .setup(|app| {
             let state = tauri::async_runtime::block_on(commands::create_app_state(app.handle()))?;
             app.manage(state);
+            tray::setup(app)?;
 
             if std::env::var("MIYU_PROBE_FULLSCREEN").ok().as_deref() == Some("1")
                 && let Some(window) = app.get_webview_window("main")
@@ -113,10 +130,10 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if window.label() == "main"
-                && matches!(event, tauri::WindowEvent::CloseRequested { .. })
+                && let tauri::WindowEvent::CloseRequested { api, .. } = event
             {
-                let state = window.state::<commands::AppState>();
-                let _ = tauri::async_runtime::block_on(tracking::close_open_sessions(&state.pool));
+                api.prevent_close();
+                let _ = window.hide();
             }
             if window.label() == bigscreen::LABEL
                 && matches!(event, tauri::WindowEvent::CloseRequested { .. })
@@ -124,6 +141,13 @@ pub fn run() {
                 bigscreen::restore_main(window.app_handle());
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if matches!(event, tauri::RunEvent::Exit)
+                && let Some(state) = app_handle.try_state::<commands::AppState>()
+            {
+                let _ = tauri::async_runtime::block_on(tracking::close_open_sessions(&state.pool));
+            }
+        });
 }

@@ -1,22 +1,24 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { queryLibrary } from "../../lib/library-api";
 import type { LibraryItem } from "../../lib/library-types";
 import { useLibrarySummary, useStats } from "../library/useLibrary";
 import { bigScreenCategorySpec, type BigScreenCategory } from "./bigscreenCategories";
 
-export function useBigScreenData(category: BigScreenCategory) {
+export function useBigScreenData(category: BigScreenCategory, search = "") {
   const spec = bigScreenCategorySpec(category);
+  const trimmedSearch = search.trim();
   const active = useQuery({
-    queryKey: ["library", "big-screen", category],
+    queryKey: ["library", "big-screen", category, trimmedSearch],
     queryFn: () =>
       queryLibrary({
-        search: "",
+        search: trimmedSearch,
         status: spec.status,
         sort: spec.sort,
         page: 0,
-        pageSize: spec.favoriteOnly ? 200 : 80,
+        pageSize: trimmedSearch ? 80 : spec.favoriteOnly ? 200 : 80,
       }),
+    placeholderData: keepPreviousData,
     staleTime: 3_000,
   });
   const summary = useLibrarySummary();

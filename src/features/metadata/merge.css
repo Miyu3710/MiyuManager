@@ -31,7 +31,7 @@
 .merge-panel__head p:not(.app-kicker) {
   margin: 0;
   color: var(--color-text-faint);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   line-height: 1.7;
 }
 
@@ -48,7 +48,7 @@
   border: 1px dashed var(--color-line-strong);
   border-radius: var(--radius-card);
   color: var(--color-text-faint);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .merge-spin {
@@ -68,7 +68,7 @@
   margin-top: 12px;
   padding: 8px 10px;
   border-radius: var(--radius-control);
-  font-size: 11px;
+  font-size: var(--text-caption);
   line-height: 1.5;
 }
 
@@ -109,7 +109,7 @@
   margin-right: 4px;
   color: var(--color-text-faint);
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: var(--text-caption);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -126,7 +126,7 @@
 
 .merge-source b {
   color: var(--color-data);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
   font-weight: 600;
 }
 
@@ -134,7 +134,7 @@
   overflow: hidden;
   max-width: 180px;
   color: var(--color-text-soft);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -142,13 +142,13 @@
 .merge-source em {
   color: var(--color-text-faint);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--text-caption);
   font-style: normal;
 }
 
 .merge-sources__none {
   color: var(--color-text-faint);
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 
 .merge-fields {
@@ -167,7 +167,7 @@
   padding: 8px 4px;
   color: var(--color-text-faint);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--text-caption);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -190,13 +190,13 @@
 .merge-field__label b {
   color: var(--color-text);
   font-family: var(--font-game);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .merge-field__label span {
   overflow: hidden;
   color: var(--color-text-faint);
-  font-size: 10px;
+  font-size: var(--text-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -218,7 +218,7 @@
   border-radius: 7px;
   background: transparent;
   color: var(--color-text-soft);
-  font-size: 10px;
+  font-size: var(--text-caption);
   text-align: left;
   cursor: pointer;
   transition:
@@ -246,7 +246,7 @@
   flex: none;
   color: var(--color-data);
   font-family: var(--font-mono);
-  font-size: 8.5px;
+  font-size: var(--text-caption);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -279,13 +279,13 @@
   margin: 0;
   color: var(--color-text);
   font-family: var(--font-game);
-  font-size: 13px;
+  font-size: var(--text-meta);
 }
 
 .merge-covers__head p {
   margin: 3px 0 0;
   color: var(--color-text-faint);
-  font-size: 10px;
+  font-size: var(--text-caption);
 }
 
 .merge-cover-grid {
@@ -357,7 +357,7 @@
 .merge-cover__meta b {
   overflow: hidden;
   color: var(--color-data);
-  font-size: 9.5px;
+  font-size: var(--text-caption);
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -366,7 +366,7 @@
 .merge-cover__meta em {
   flex: none;
   color: var(--color-text-faint);
-  font-size: 8.5px;
+  font-size: var(--text-caption);
   font-style: normal;
 }
 
@@ -381,7 +381,7 @@
 
 .merge-actions > span {
   color: var(--color-text-faint);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
 }
 
 .merge-actions > div {
@@ -408,7 +408,7 @@
 
 .merge-placeholder b {
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-weight: 500;
 }
 
@@ -416,7 +416,7 @@
   max-width: 780px;
   margin: 0;
   color: var(--color-text-faint);
-  font-size: 10.5px;
+  font-size: var(--text-caption);
   line-height: 1.65;
 }
 
@@ -492,7 +492,7 @@
 
 .merge-panel__head p:not(.app-kicker) {
   color: var(--color-text-soft);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 
 .merge-sources {
@@ -506,7 +506,7 @@
 
 .merge-sources__label {
   font-family: var(--font-ui);
-  font-size: 10px;
+  font-size: var(--text-caption);
   letter-spacing: 0;
   text-transform: none;
 }
@@ -519,22 +519,22 @@
 }
 
 .merge-source b {
-  font-size: 10.5px;
+  font-size: var(--text-caption);
 }
 
 .merge-source > span {
-  font-size: 10.5px;
+  font-size: var(--text-caption);
 }
 
 .merge-source em {
   font-family: var(--font-ui);
-  font-size: 9.5px;
+  font-size: var(--text-caption);
 }
 
 .merge-fields__head {
   padding: 9px 0;
   font-family: var(--font-ui);
-  font-size: 10px;
+  font-size: var(--text-caption);
   letter-spacing: 0;
   text-transform: none;
 }
@@ -545,12 +545,12 @@
 
 .merge-field__label b {
   font-family: var(--font-ui);
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-weight: 600;
 }
 
 .merge-field__label span {
-  font-size: 10.5px;
+  font-size: var(--text-caption);
 }
 
 .merge-candidate {
@@ -561,7 +561,7 @@
 .merge-candidate b,
 .merge-candidate span,
 .merge-candidate em {
-  font-size: 10.5px;
+  font-size: var(--text-caption);
 }
 
 .merge-loading {

@@ -7,19 +7,29 @@ export type BigScreenAction =
   | "right"
   | "confirm"
   | "back"
+  | "backspace"
   | "menu"
   | "control"
+  | "search"
   | "prevZone"
-  | "nextZone";
+  | "nextZone"
+  | "prevCategory"
+  | "nextCategory"
+  | "prevPage"
+  | "nextPage";
 
 export type GamepadDirection = "up" | "down" | "left" | "right";
 
 export const GAMEPAD_BUTTONS = {
   confirm: 0,
   back: 1,
+  backspace: 2,
   menu: 3,
-  prevZone: 4,
-  nextZone: 5,
+  prevCategory: 4,
+  nextCategory: 5,
+  prevPage: 6,
+  nextPage: 7,
+  search: 8,
   control: 9,
 } as const;
 
@@ -114,8 +124,13 @@ export function useBigScreenInput({ enabled, onAction, onActivity }: UseBigScree
       else if (key === "ArrowRight") action = "right";
       else if (key === "Enter" || key === " ") action = "confirm";
       else if (key === "Escape" || key === "Backspace") action = "back";
+      else if (key.toLowerCase() === "x") action = "backspace";
       else if (key.toLowerCase() === "c" || (key === "F10" && event.shiftKey)) action = "menu";
+      else if (key.toLowerCase() === "y") action = "menu";
       else if (key.toLowerCase() === "m") action = "control";
+      else if (key.toLowerCase() === "f" || key === "/") action = "search";
+      else if (key.toLowerCase() === "q" || key === "PageUp") action = "prevPage";
+      else if (key.toLowerCase() === "e" || key === "PageDown") action = "nextPage";
       else if (key === "Tab") action = event.shiftKey ? "prevZone" : "nextZone";
 
       if (!action) {
