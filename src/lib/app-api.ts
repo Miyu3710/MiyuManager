@@ -93,7 +93,7 @@ export async function quitApp(): Promise<void> {
 export async function checkForUpdates(): Promise<UpdateCheck> {
   if (!isTauri()) {
     return {
-      currentVersion: "0.2.1-preview",
+      currentVersion: "0.2.2-preview",
       configured: false,
       latestVersion: null,
       updateAvailable: false,

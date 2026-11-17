@@ -1,0 +1,3 @@
+# SQLx hashes migration bytes. CRLF conversion would invalidate every
+# already-applied migration on Windows checkouts.
+src-tauri/migrations/*.sql text eol=lf

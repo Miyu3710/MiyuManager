@@ -2069,6 +2069,28 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn migration_files_must_keep_lf_line_endings() {
+        use std::fs;
+
+        let migrations = Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+        let mut count = 0;
+        for entry in fs::read_dir(&migrations).expect("migrations directory") {
+            let path = entry.expect("migration entry").path();
+            if path.extension().and_then(|value| value.to_str()) != Some("sql") {
+                continue;
+            }
+            let bytes = fs::read(&path).expect("migration file");
+            assert!(
+                !bytes.contains(&b'\r'),
+                "{} contains CR bytes; SQLx migration checksums require LF line endings",
+                path.display()
+            );
+            count += 1;
+        }
+        assert!(count > 0, "no migration files were checked");
+    }
+
     async fn fixture_pool() -> (TempDir, SqlitePool) {
         let temp = TempDir::new().expect("temp dir");
         let root = temp.path().join("games");

@@ -243,8 +243,9 @@ pub async fn create_app_state(app: &AppHandle) -> anyhow::Result<AppState> {
             "fatal",
             "database_open_failed",
             "数据库无法打开或迁移失败",
-            serde_json::json!({"error": error.to_string(), "path": db_path.to_string_lossy()}),
+            serde_json::json!({"error": format!("{error:#}"), "path": db_path.to_string_lossy()}),
         );
+        eprintln!("database open failed: {error:#}");
     })?;
     let recovered = tracking::recover_open_sessions(&pool).await?;
     if recovered > 0 {
