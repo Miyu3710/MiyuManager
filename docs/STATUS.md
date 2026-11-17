@@ -1,7 +1,7 @@
 # MiyuManager 项目状态
 
 > 最后更新：2026-11-17
-> 当前阶段：0.2.1 发布中；修复部分游戏经 MiyuManager 启动后闪退且不计时长的问题。Tauri Updater、GitHub Release 更新源、更新签名、设置页下载安装和自动检查已接入。干净 Windows 安装/卸载、Authenticode 签名、物理手柄和多显示器仍待验证。
+> 当前阶段：0.2.1 已发布；修复部分游戏经 MiyuManager 启动后闪退且不计时长的问题。Tauri Updater、GitHub Release 更新源、更新签名、设置页下载安装和自动检查已接入。干净 Windows 安装/卸载、Authenticode 签名、物理手柄和多显示器仍待验证。
 >
 > 计划文件：`docs/DEVELOPMENT_PLAN.md`  
 > 设计提案：`docs/DESIGN.md`
@@ -13,6 +13,9 @@
 - 问题：部分游戏登记的 exe 只是前置启动器，启动后由另一个进程接手；旧观察器只在根进程仍是登记 exe 时建立会话，60 秒后按“启动超时”结束整个 Job Object，造成游戏闪退且没有游玩记录。
 - 修复：会话在进程创建时立即写入；观察器在整个 Job Object 进程树中按完整路径识别真正主程序，支持同 exe 的新 PID、不同 exe 的同目录子进程和作业对象外的交接进程，并同步更新会话 PID/exe。
 - 安全边界：识别失败不再结束游戏进程树；短于一次轮询周期（15 秒内）的会话会按实际墙钟时间保底记录，避免启动后立刻退出时显示 0 秒。
+- 验证：前端 53 项测试通过；Rust 95 passed / 15 ignored；新增真实 Windows Job Object 交接测试，确认 `cmd.exe` 拉起的另一个 exe 能被识别。GitHub Actions `44106698368` 完整通过，0.2.1 Release 已发布。
+- 产物：MSI `17,408,000` bytes / `d35817ccf5f4ceae17eaea49de0dbf3a6f6bc455ad23aef5586c93ffdfb07970`；NSIS `15,797,701` bytes / `688e49456dc769beb029f5ad5a4085ee6cf259d76ffc8a2103f51bae33320813`。`latest.json`、`release-manifest.json` 和 `SHA256SUMS.txt` 已上传，更新载荷 URL 指向 Release 的 NSIS 直链。
+- 发布地址：`https://github.com/Miyu3710/MiyuManager/releases/tag/v0.2.1`。尚未在干净 Windows 环境执行 0.2.0 → 0.2.1 的实际下载安装验收。
 
 ### 2026-11-17 0.2.0 自动更新
 
