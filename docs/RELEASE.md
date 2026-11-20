@@ -1,6 +1,6 @@
 # MiyuManager 发布手册
 
-> 当前版本：0.2.2  
+> 当前版本：0.3.0  
 > 发布形态：Windows x64，MSI + NSIS 当前用户安装  
 > 签名状态：安装器未做 Authenticode 签名；自动更新载荷已使用独立 Tauri 更新密钥签名
 
@@ -50,6 +50,15 @@ pnpm release:build
 - NSIS：当前用户安装，不要求管理员权限。
 - 未包含离线 WebView2；安装器会按 Tauri 配置引导或使用已安装的 WebView2。
 
+## 0.3.0 产物
+
+| 文件                              |             大小 | SHA-256                                                            |
+| --------------------------------- | ---------------: | ------------------------------------------------------------------ |
+| `MiyuManager_0.3.0_x64_en-US.msi` | 17,567,744 bytes | `63621282c9c002d654a927615080fa56a3d0a26d47587271688bb74aa3ac6ef6` |
+| `MiyuManager_0.3.0_x64-setup.exe` | 15,909,172 bytes | `84ccf7f56d3f28a06a6940da5380ec75deb8a38151fea5b8dcc10f6ab7b4db56` |
+
+0.3.0 由 GitHub Actions `44770852936` 构建并发布，新增游戏内截图与图库。Release 同时包含两份 `.sig`、`latest.json`、`release-manifest.json` 和 `SHA256SUMS.txt`。CI 产物已用现有数据库副本启动验证。
+
 ## 0.2.2 产物
 
 | 文件                              |             大小 | SHA-256                                                            |
@@ -89,7 +98,7 @@ https://github.com/Miyu3710/MiyuManager/releases/latest/download/latest.json
 
 应用启动后每 24 小时检查一次更新；“设置 → 数据与关于”也提供手动检查和下载安装。更新安装使用 Windows passive 模式，下载完成后自动进入安装器并重启。
 
-推送形如 `v0.2.2` 的 tag 会触发 `.github/workflows/release.yml`。工作流使用 GitHub Actions Secrets 中的 `TAURI_SIGNING_PRIVATE_KEY` 与 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 构建、签名、上传安装器，并生成 Release 的 `latest.json`。发布说明从 `docs/RELEASE_NOTES.md` 读取。
+推送形如 `v0.3.0` 的 tag 会触发 `.github/workflows/release.yml`。工作流使用 GitHub Actions Secrets 中的 `TAURI_SIGNING_PRIVATE_KEY` 与 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 构建、签名、上传安装器，并生成 Release 的 `latest.json`。发布说明从 `docs/RELEASE_NOTES.md` 读取。
 
 自动更新签名不能替代 Windows Authenticode：前者保证更新载荷来自本项目，后者决定 SmartScreen 和发布者身份。
 
