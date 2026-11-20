@@ -75,7 +75,7 @@ pnpm tauri dev
 
 “设置 → 数据与关于”可以备份或恢复数据库，并查看完整性、迁移和日志状态。备份只保存数据库，不包含游戏文件和封面缓存。OAuth 凭据从 `MIYU_OAUTH_CONFIG` 或数据目录的 `oauth/providers.json` 读取，不进入 Git。开源后请按 [OAuth 配置](docs/OAUTH.md) 创建自己的应用；仓库只提供 [providers.example.json](providers.example.json) 模板，不要把填好的 `providers.json` 提交到 Git。
 
-截图默认保存到 `Pictures\MiyuManager\Screenshots`，每部作品使用标题文件夹，并生成 `_thumbs` 缩略图。可以在“设置 → 截图”修改快捷键和目录；快捷键只在游戏运行时注册。
+截图默认保存到 `Pictures\MiyuManager\Screenshots`，每部作品使用标题文件夹，文件夹内只保留原图；缩略图和归属索引存放在应用数据目录。可以在“设置 → 截图”修改快捷键和目录，修改后自动生效；快捷键只在游戏运行时注册。
 
 ## 开发与贡献
 

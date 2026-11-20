@@ -260,7 +260,11 @@ pub async fn create_app_state(app: &AppHandle) -> anyhow::Result<AppState> {
     }
     let preferences = preferences::load(&pool).await?;
     let screenshot_root = screenshots::effective_root(app, &data_dir, &preferences);
-    let screenshots = Arc::new(ScreenshotService::new(screenshot_root));
+    let screenshot_cache_root = data_dir.join("screenshots-cache");
+    let screenshots = Arc::new(ScreenshotService::new(
+        screenshot_root,
+        screenshot_cache_root,
+    ));
     if let Err(error) =
         crate::startup::apply(preferences.launch_at_startup, preferences.silent_startup)
     {
@@ -799,6 +803,8 @@ pub async fn preferences_update(
     let next_proxy = input.effective_proxy();
     let startup_changed = previous.launch_at_startup != input.launch_at_startup
         || previous.silent_startup != input.silent_startup;
+    let screenshot_hotkey_changed = previous.screenshot_hotkey != input.screenshot_hotkey;
+    let mut screenshot_shortcut_switched = false;
     if startup_changed {
         crate::startup::apply(input.launch_at_startup, input.silent_startup)
             .map_err(|error| format!("无法更新开机启动：{error}"))?;
@@ -806,9 +812,21 @@ pub async fn preferences_update(
     if previous_proxy != next_proxy {
         state.replace_http(next_proxy)?;
     }
+    if screenshot_hotkey_changed && state.launches.has_active() {
+        state
+            .screenshots
+            .sync_shortcut(&app, &input.screenshot_hotkey)
+            .map_err(|error| format!("截图快捷键注册失败：{error}"))?;
+        screenshot_shortcut_switched = true;
+    }
     if let Err(error) = preferences::save(&state.pool, &input).await {
         if startup_changed {
             let _ = crate::startup::apply(previous.launch_at_startup, previous.silent_startup);
+        }
+        if screenshot_shortcut_switched {
+            let _ = state
+                .screenshots
+                .sync_shortcut(&app, &previous.screenshot_hotkey);
         }
         return Err(error.to_string());
     }
@@ -818,12 +836,6 @@ pub async fn preferences_update(
     state
         .screenshots
         .set_root(screenshots::effective_root(&app, &state.data_dir, &input));
-    if state.launches.has_active() {
-        state
-            .screenshots
-            .sync_shortcut(&app, &input.screenshot_hotkey)
-            .map_err(|error| format!("截图快捷键注册失败：{error}"))?;
-    }
     Ok(input)
 }
 
@@ -839,9 +851,14 @@ pub async fn screenshots_list(
     state: State<'_, AppState>,
     work_id: Option<i64>,
 ) -> Result<Vec<ScreenshotItem>, String> {
-    screenshots::list(&state.pool, &state.screenshots.root(), work_id)
-        .await
-        .map_err(|error| error.to_string())
+    screenshots::list(
+        &state.pool,
+        &state.screenshots.root(),
+        &state.screenshots.cache_root(),
+        work_id,
+    )
+    .await
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

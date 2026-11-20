@@ -80,6 +80,12 @@ export function ScreenshotLightbox({ items, index, onIndex }: ScreenshotLightbox
             </div>
           </header>
           <div className="screenshot-lightbox__stage">
+            <span
+              className="screenshot-lightbox__ambient"
+              style={{ backgroundImage: `url("${screenshotFullUrl(item)}")` }}
+              aria-hidden="true"
+            />
+            <span className="screenshot-lightbox__wash" aria-hidden="true" />
             {index > 0 ? (
               <button
                 type="button"

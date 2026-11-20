@@ -1,15 +1,16 @@
-import { Camera, FolderOpen, Keyboard, RotateCcw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Check, FolderOpen, FolderSearch, Keyboard, Loader2, RotateCcw } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { openScreenshotDirectory } from "../../lib/screenshots-api";
-import { pickDirectory } from "../../lib/library-api";
+import { Hint } from "../../design-system/components/Hint";
 import { updatePreferences } from "../../lib/app-api";
-import type { AppInfo } from "../../lib/library-types";
 import type { AppPreferences } from "../../lib/app-types";
-import { Button } from "../../design-system/components/Button";
+import type { AppInfo } from "../../lib/library-types";
+import { pickDirectory } from "../../lib/library-api";
+import { openScreenshotDirectory } from "../../lib/screenshots-api";
 import "./screenshot-settings.css";
 
 const MODIFIER_KEYS = new Set(["Control", "Alt", "Shift", "Meta"]);
+const DEFAULT_HOTKEY = "Ctrl+Shift+F12";
 
 function keyToken(event: KeyboardEvent): string | null {
   if (event.code === "Space" || event.key === " ") {
@@ -50,6 +51,8 @@ function hotkeyFromEvent(event: KeyboardEvent): string | null {
   return parts.join("+");
 }
 
+type SaveState = "idle" | "saving" | "saved";
+
 export function ScreenshotSettings({
   preferences,
   appInfo,
@@ -59,12 +62,81 @@ export function ScreenshotSettings({
   appInfo: AppInfo | undefined;
   onSaved?: () => void;
 }) {
-  const [hotkey, setHotkey] = useState(
-    preferences.screenshotHotkey || "Ctrl+Shift+F12",
-  );
+  const [hotkey, setHotkey] = useState(preferences.screenshotHotkey || DEFAULT_HOTKEY);
   const [directory, setDirectory] = useState(preferences.screenshotDir);
   const [recording, setRecording] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const preferencesRef = useRef(preferences);
+  const hotkeyRef = useRef(hotkey);
+  const directoryRef = useRef(directory);
+  const onSavedRef = useRef(onSaved);
+  const statusTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    preferencesRef.current = preferences;
+  }, [preferences]);
+
+  useEffect(() => {
+    hotkeyRef.current = hotkey;
+  }, [hotkey]);
+
+  useEffect(() => {
+    directoryRef.current = directory;
+  }, [directory]);
+
+  useEffect(() => {
+    onSavedRef.current = onSaved;
+  }, [onSaved]);
+
+  useEffect(() => {
+    return () => {
+      if (statusTimer.current !== null) {
+        window.clearTimeout(statusTimer.current);
+      }
+    };
+  }, []);
+
+  const persist = async (nextHotkey: string, nextDirectory: string) => {
+    const current = preferencesRef.current;
+    if (
+      nextHotkey.trim() === current.screenshotHotkey.trim() &&
+      nextDirectory.trim() === current.screenshotDir.trim()
+    ) {
+      return;
+    }
+    setSaveState("saving");
+    try {
+      const saved = await updatePreferences({
+        ...current,
+        screenshotHotkey: nextHotkey.trim(),
+        screenshotDir: nextDirectory.trim(),
+      });
+      preferencesRef.current = saved;
+      setHotkey(saved.screenshotHotkey);
+      setDirectory(saved.screenshotDir);
+      onSavedRef.current?.();
+      setSaveState("saved");
+      if (statusTimer.current !== null) {
+        window.clearTimeout(statusTimer.current);
+      }
+      statusTimer.current = window.setTimeout(() => setSaveState("idle"), 1600);
+    } catch (error) {
+      setHotkey(preferencesRef.current.screenshotHotkey || DEFAULT_HOTKEY);
+      setDirectory(preferencesRef.current.screenshotDir);
+      setSaveState("idle");
+      toast.error(String(error));
+    }
+  };
+
+  useEffect(() => {
+    if (directory.trim() === preferencesRef.current.screenshotDir.trim()) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void persist(hotkeyRef.current, directoryRef.current);
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [directory]);
 
   useEffect(() => {
     if (!recording) {
@@ -85,8 +157,10 @@ export function ScreenshotSettings({
         toast.warning("请使用修饰键组合，或按 F1–F24");
         return;
       }
-      setHotkey(next);
       setRecording(false);
+      setHotkey(next);
+      hotkeyRef.current = next;
+      void persist(next, directoryRef.current);
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
@@ -95,41 +169,25 @@ export function ScreenshotSettings({
   const chooseDirectory = async () => {
     try {
       const selected = await pickDirectory(directory || appInfo?.screenshotDir);
-      if (selected) {
-        setDirectory(selected);
+      if (!selected) {
+        return;
       }
+      setDirectory(selected);
+      directoryRef.current = selected;
+      await persist(hotkeyRef.current, selected);
     } catch (error) {
       toast.error(String(error));
-    }
-  };
-
-  const save = async () => {
-    setBusy(true);
-    try {
-      const saved = await updatePreferences({
-        ...preferences,
-        screenshotHotkey: hotkey.trim(),
-        screenshotDir: directory.trim(),
-      });
-      setHotkey(saved.screenshotHotkey);
-      setDirectory(saved.screenshotDir);
-      onSaved?.();
-      toast.success("截图设置已保存");
-    } catch (error) {
-      toast.error(String(error));
-    } finally {
-      setBusy(false);
     }
   };
 
   return (
-    <div className="settings-preference-form screenshot-settings" aria-busy={busy}>
-      <div className="settings-row">
-        <div>
+    <div className="screenshot-settings">
+      <div className="screenshot-settings__row">
+        <div className="screenshot-settings__copy">
           <b>截图快捷键</b>
-          <span>只在游戏运行时注册；点击快捷键后按下组合键，或使用默认组合。</span>
+          <span>只在游戏运行时注册；点击后按下新的组合键。</span>
         </div>
-        <div className="screenshot-settings__shortcut">
+        <div className="screenshot-settings__hotkey">
           <button
             type="button"
             className={recording ? "screenshot-shortcut is-recording" : "screenshot-shortcut"}
@@ -139,56 +197,74 @@ export function ScreenshotSettings({
             <Keyboard size={14} strokeWidth={1.8} />
             {recording ? "按下组合键…" : hotkey}
           </button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setHotkey("Ctrl+Shift+F12")}
-            disabled={busy}
+          <button
+            type="button"
+            className="screenshot-settings__reset"
+            onClick={() => {
+              setHotkey(DEFAULT_HOTKEY);
+              hotkeyRef.current = DEFAULT_HOTKEY;
+              void persist(DEFAULT_HOTKEY, directoryRef.current);
+            }}
           >
             <RotateCcw size={13} strokeWidth={1.7} /> 默认
-          </Button>
+          </button>
         </div>
       </div>
 
-      <div className="settings-row screenshot-settings__directory-row">
-        <div>
+      <div className="screenshot-settings__row">
+        <div className="screenshot-settings__copy">
           <b>保存目录</b>
-          <span>每部游戏会在目录下建立自己的标题文件夹；修改只影响后续截图。</span>
+          <span>每部作品按标题归档；修改会立即生效，只影响后续截图。</span>
         </div>
-        <div className="screenshot-settings__directory">
+        <div className="screenshot-folder-field">
           <input
             value={directory}
-            onChange={(event) => setDirectory(event.target.value)}
+            onChange={(event) => {
+              setDirectory(event.target.value);
+              directoryRef.current = event.target.value;
+            }}
+            onBlur={() => void persist(hotkeyRef.current, directoryRef.current)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void persist(hotkeyRef.current, directoryRef.current);
+              }
+            }}
             placeholder={appInfo?.screenshotDir ?? "默认图片目录"}
             aria-label="截图保存目录"
           />
-          <Button variant="secondary" size="sm" onClick={() => void chooseDirectory()}>
-            <FolderOpen size={14} strokeWidth={1.7} /> 选择
-          </Button>
+          <Hint label="选择目录" side="top">
+            <button type="button" onClick={() => void chooseDirectory()} aria-label="选择截图目录">
+              <FolderSearch size={15} strokeWidth={1.7} />
+            </button>
+          </Hint>
+          <Hint label="打开目录" side="top">
+            <button
+              type="button"
+              onClick={() =>
+                void openScreenshotDirectory().catch((error) => toast.error(String(error)))
+              }
+              aria-label="打开截图目录"
+            >
+              <FolderOpen size={15} strokeWidth={1.7} />
+            </button>
+          </Hint>
         </div>
       </div>
 
-      <div className="settings-row screenshot-settings__effective">
-        <div className="screenshot-settings__effective-copy">
-          <span className="screenshot-settings__eyebrow">
-            <Camera size={13} strokeWidth={1.7} /> 当前保存位置
-          </span>
-          <span className="settings-path" title={directory.trim() || appInfo?.screenshotDir}>
-            {directory.trim() || appInfo?.screenshotDir || "正在读取…"}
-          </span>
-        </div>
-        <div className="screenshot-settings__buttons">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void openScreenshotDirectory().catch((error) => toast.error(String(error)))}
-          >
-            <FolderOpen size={14} strokeWidth={1.7} /> 打开
-          </Button>
-          <Button variant="primary" size="sm" onClick={() => void save()} disabled={busy}>
-            {busy ? "保存中…" : "保存截图设置"}
-          </Button>
-        </div>
+      <div className="screenshot-settings__footer">
+        <span>更改会自动保存。</span>
+        <span className={saveState === "saved" ? "is-saved" : undefined}>
+          {saveState === "saving" ? (
+            <>
+              <Loader2 className="screenshot-settings__spin" size={12} strokeWidth={1.8} /> 正在保存
+            </>
+          ) : saveState === "saved" ? (
+            <>
+              <Check size={12} strokeWidth={2} /> 已保存
+            </>
+          ) : null}
+        </span>
       </div>
     </div>
   );

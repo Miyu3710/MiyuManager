@@ -31,14 +31,16 @@ static TOAST_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 pub struct ScreenshotService {
     root: RwLock<PathBuf>,
+    cache_root: PathBuf,
     registered: Mutex<Option<String>>,
     capturing: AtomicBool,
 }
 
 impl ScreenshotService {
-    pub fn new(root: PathBuf) -> Self {
+    pub fn new(root: PathBuf, cache_root: PathBuf) -> Self {
         Self {
             root: RwLock::new(root),
+            cache_root,
             registered: Mutex::new(None),
             capturing: AtomicBool::new(false),
         }
@@ -55,6 +57,10 @@ impl ScreenshotService {
         if let Ok(mut value) = self.root.write() {
             *value = root;
         }
+    }
+
+    pub fn cache_root(&self) -> PathBuf {
+        self.cache_root.clone()
     }
 
     fn begin_capture(&self) -> bool {
@@ -182,10 +188,11 @@ pub fn handle_hotkey(app: &AppHandle) {
     let app = app.clone();
     let service = state.screenshots.clone();
     let root = service.root();
+    let cache_root = service.cache_root();
     tauri::async_runtime::spawn(async move {
         let result = tauri::async_runtime::spawn_blocking(move || {
             let captured = capture_game_screen(game_pid)?;
-            let item = save_capture(&root, work_id, &title, captured.image)?;
+            let item = save_capture(&root, &cache_root, work_id, &title, captured.image)?;
             Ok::<_, anyhow::Error>(CaptureOutcome {
                 item,
                 monitor: captured.monitor,
@@ -219,6 +226,7 @@ pub struct ScreenshotItem {
     pub file_name: String,
     pub relative_path: String,
     pub thumbnail_path: String,
+    pub thumbnail_is_cache: bool,
     pub path: String,
     pub captured_at: String,
     pub size_bytes: i64,
@@ -228,6 +236,11 @@ pub struct ScreenshotItem {
 struct FolderMeta {
     work_id: i64,
     title: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct ScreenshotIndex {
+    folders: HashMap<String, FolderMeta>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -325,50 +338,116 @@ fn sanitize_folder_name(title: &str) -> String {
     }
 }
 
-fn read_folder_meta(folder: &Path) -> Option<FolderMeta> {
+fn read_legacy_folder_meta(folder: &Path) -> Option<FolderMeta> {
     let raw = std::fs::read_to_string(folder.join("_miyu.json")).ok()?;
     serde_json::from_str(&raw).ok()
 }
 
-fn write_folder_meta(folder: &Path, work_id: i64, title: &str) -> Result<()> {
-    let meta = FolderMeta {
-        work_id,
-        title: title.to_string(),
-    };
-    std::fs::write(folder.join("_miyu.json"), serde_json::to_vec_pretty(&meta)?)?;
+fn index_path(cache_root: &Path) -> PathBuf {
+    cache_root.join("index.json")
+}
+
+fn read_index(cache_root: &Path) -> ScreenshotIndex {
+    std::fs::read(index_path(cache_root))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default()
+}
+
+fn write_index(cache_root: &Path, index: &ScreenshotIndex) -> Result<()> {
+    std::fs::create_dir_all(cache_root)?;
+    std::fs::write(index_path(cache_root), serde_json::to_vec_pretty(index)?)?;
     Ok(())
 }
 
-fn resolve_game_folder(root: &Path, work_id: i64, title: &str) -> Result<PathBuf> {
+fn migrate_legacy_folder(folder: &Path, cache_root: &Path) -> Result<()> {
+    let sidecar = folder.join("_miyu.json");
+    if sidecar.is_file() {
+        std::fs::remove_file(sidecar)?;
+    }
+    let thumbs = folder.join("_thumbs");
+    if thumbs.is_dir() {
+        let folder_name = folder
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default();
+        let destination = cache_root.join("thumbnails").join(folder_name);
+        std::fs::create_dir_all(&destination)?;
+        for entry in std::fs::read_dir(&thumbs)?.flatten() {
+            let source = entry.path();
+            if !source.is_file() {
+                continue;
+            }
+            if let Some(name) = source.file_name() {
+                std::fs::copy(&source, destination.join(name))?;
+            }
+        }
+        std::fs::remove_dir_all(thumbs)?;
+    }
+    Ok(())
+}
+
+fn resolve_game_folder(
+    root: &Path,
+    cache_root: &Path,
+    work_id: i64,
+    title: &str,
+) -> Result<PathBuf> {
     std::fs::create_dir_all(root)
         .with_context(|| format!("无法创建截图目录：{}", root.display()))?;
+    std::fs::create_dir_all(cache_root)?;
+    let mut index = read_index(cache_root);
     let base = sanitize_folder_name(title);
-    for index in 0..100 {
-        let name = if index == 0 {
+    for suffix in 0..100 {
+        let name = if suffix == 0 {
             base.clone()
         } else {
-            format!("{base} ({})", index + 1)
+            format!("{base} ({})", suffix + 1)
         };
         let folder = root.join(&name);
+        let mut changed = false;
+        let meta = if let Some(meta) = index.folders.get(&name).cloned() {
+            Some(meta)
+        } else if let Some(meta) = read_legacy_folder_meta(&folder) {
+            index.folders.insert(name.clone(), meta.clone());
+            changed = true;
+            Some(meta)
+        } else {
+            None
+        };
+        if meta.as_ref().is_some_and(|meta| meta.work_id != work_id) {
+            continue;
+        }
         if !folder.exists() {
             std::fs::create_dir_all(&folder)?;
-            write_folder_meta(&folder, work_id, title)?;
-            return Ok(folder);
+            changed = true;
         }
-        let meta = read_folder_meta(&folder);
-        if meta.as_ref().is_none_or(|meta| meta.work_id == work_id) {
-            std::fs::create_dir_all(&folder)?;
-            if meta.is_none() {
-                write_folder_meta(&folder, work_id, title)?;
-            }
-            return Ok(folder);
+        if meta.is_none() {
+            index.folders.insert(
+                name.clone(),
+                FolderMeta {
+                    work_id,
+                    title: title.to_string(),
+                },
+            );
+            changed = true;
         }
+        let _ = migrate_legacy_folder(&folder, cache_root);
+        if changed {
+            write_index(cache_root, &index)?;
+        }
+        return Ok(folder);
     }
     bail!("同名截图目录过多，无法创建作品文件夹")
 }
 
-fn save_thumbnail(image: &DynamicImage, folder: &Path, file_name: &str) -> Result<PathBuf> {
-    let thumbs = folder.join("_thumbs");
+fn save_thumbnail(
+    image: &DynamicImage,
+    cache_root: &Path,
+    folder_name: &str,
+    file_name: &str,
+) -> Result<PathBuf> {
+    let thumbs = cache_root.join("thumbnails").join(folder_name);
     std::fs::create_dir_all(&thumbs)?;
     let path = thumbs.join(format!("{file_name}.jpg"));
     let thumb = if image.width() > THUMB_WIDTH {
@@ -389,11 +468,12 @@ fn save_thumbnail(image: &DynamicImage, folder: &Path, file_name: &str) -> Resul
 
 fn save_capture(
     root: &Path,
+    cache_root: &Path,
     work_id: i64,
     title: &str,
     image: RgbaImage,
 ) -> Result<ScreenshotItem> {
-    let folder = resolve_game_folder(root, work_id, title)?;
+    let folder = resolve_game_folder(root, cache_root, work_id, title)?;
     let stamp = Local::now().format("%Y-%m-%d_%H-%M-%S_%3f").to_string();
     let mut path = folder.join(format!("{stamp}.png"));
     let mut suffix = 1;
@@ -408,19 +488,32 @@ fn save_capture(
         .and_then(|value| value.to_str())
         .unwrap_or("screenshot.png")
         .to_string();
-    let thumbnail = save_thumbnail(&dynamic, &folder, &file_name)?;
+    let folder_name = folder
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("未命名作品")
+        .to_string();
+    let thumbnail = save_thumbnail(&dynamic, cache_root, &folder_name, &file_name).ok();
     let metadata = std::fs::metadata(&path)?;
+    let (thumbnail_path, thumbnail_is_cache) = if let Some(thumbnail) = thumbnail {
+        (
+            relative_string(thumbnail.strip_prefix(cache_root).unwrap_or(&thumbnail)),
+            true,
+        )
+    } else {
+        (
+            relative_string(path.strip_prefix(root).unwrap_or(&path)),
+            false,
+        )
+    };
     Ok(ScreenshotItem {
         work_id: Some(work_id),
         work_title: title.to_string(),
-        folder: folder
-            .file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or_default()
-            .to_string(),
+        folder: folder_name,
         file_name,
         relative_path: relative_string(path.strip_prefix(root).unwrap_or(&path)),
-        thumbnail_path: relative_string(thumbnail.strip_prefix(root).unwrap_or(&thumbnail)),
+        thumbnail_path,
+        thumbnail_is_cache,
         path: path.to_string_lossy().to_string(),
         captured_at: timestamp_from_metadata(&metadata),
         size_bytes: metadata.len() as i64,
@@ -430,6 +523,7 @@ fn save_capture(
 pub async fn list(
     pool: &SqlitePool,
     root: &Path,
+    cache_root: &Path,
     work_id: Option<i64>,
 ) -> Result<Vec<ScreenshotItem>> {
     let rows = sqlx::query("SELECT id, canonical_title FROM works")
@@ -454,6 +548,8 @@ pub async fn list(
     });
     let target_folder = target_title.as_deref().map(sanitize_folder_name);
 
+    let mut index = read_index(cache_root);
+    let mut index_changed = false;
     let Ok(entries) = std::fs::read_dir(root) else {
         return Ok(Vec::new());
     };
@@ -469,7 +565,14 @@ pub async fn list(
             if folder_name.starts_with('_') {
                 continue;
             }
-            let meta = read_folder_meta(&path);
+            if let Some(meta) = read_legacy_folder_meta(&path) {
+                index.folders.insert(folder_name.clone(), meta);
+                index_changed = true;
+                let _ = migrate_legacy_folder(&path, cache_root);
+            } else if path.join("_thumbs").is_dir() {
+                let _ = migrate_legacy_folder(&path, cache_root);
+            }
+            let meta = index.folders.get(&folder_name).cloned();
             let matched = by_folder.get(&folder_name.to_lowercase());
             let (item_work_id, item_title) = if let Some(meta) = meta {
                 let current_title = works
@@ -484,10 +587,30 @@ pub async fn list(
             } else {
                 (None, folder_name.clone())
             };
-            collect_images(root, &path, item_work_id, &item_title, &mut items);
+            if item_work_id.is_some() && !index.folders.contains_key(&folder_name) {
+                index.folders.insert(
+                    folder_name.clone(),
+                    FolderMeta {
+                        work_id: item_work_id.unwrap_or_default(),
+                        title: item_title.clone(),
+                    },
+                );
+                index_changed = true;
+            }
+            collect_images(
+                root,
+                cache_root,
+                &path,
+                item_work_id,
+                &item_title,
+                &mut items,
+            );
         } else if is_image(&path) {
-            add_image_item(root, &path, None, "未分类", &mut items);
+            add_image_item(root, cache_root, &path, None, "未分类", &mut items);
         }
+    }
+    if index_changed {
+        let _ = write_index(cache_root, &index);
     }
     if let Some(target_id) = work_id {
         items.retain(|item| {
@@ -504,6 +627,7 @@ pub async fn list(
 
 fn collect_images(
     root: &Path,
+    cache_root: &Path,
     folder: &Path,
     work_id: Option<i64>,
     title: &str,
@@ -515,13 +639,14 @@ fn collect_images(
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_file() && is_image(&path) {
-            add_image_item(root, &path, work_id, title, items);
+            add_image_item(root, cache_root, &path, work_id, title, items);
         }
     }
 }
 
 fn add_image_item(
     root: &Path,
+    cache_root: &Path,
     path: &Path,
     work_id: Option<i64>,
     title: &str,
@@ -541,32 +666,45 @@ fn add_image_item(
         .and_then(|value| value.to_str())
         .unwrap_or_default()
         .to_string();
-    let thumb = path
-        .parent()
-        .map(|parent| parent.join("_thumbs").join(format!("{file_name}.jpg")))
-        .filter(|thumb| thumb.is_file());
+    let thumb = cache_root
+        .join("thumbnails")
+        .join(&folder)
+        .join(format!("{file_name}.jpg"));
+    let (thumbnail_path, thumbnail_is_cache) = if thumb.is_file() {
+        (
+            relative_string(thumb.strip_prefix(cache_root).unwrap_or(&thumb)),
+            true,
+        )
+    } else {
+        (
+            relative_string(path.strip_prefix(root).unwrap_or(path)),
+            false,
+        )
+    };
     items.push(ScreenshotItem {
         work_id,
         work_title: title.to_string(),
         folder,
         file_name: file_name.clone(),
         relative_path: relative_string(path.strip_prefix(root).unwrap_or(path)),
-        thumbnail_path: relative_string(
-            thumb
-                .as_deref()
-                .unwrap_or(path)
-                .strip_prefix(root)
-                .unwrap_or(path),
-        ),
+        thumbnail_path,
+        thumbnail_is_cache,
         path: path.to_string_lossy().to_string(),
         captured_at: timestamp_from_metadata(&metadata),
         size_bytes: metadata.len() as i64,
     });
 }
 
-pub fn serve_file(root: &Path, query: Option<&str>) -> Response<Vec<u8>> {
-    let relative = form_urlencoded::parse(query.unwrap_or_default().as_bytes())
-        .find_map(|(key, value)| (key == "path").then(|| value.into_owned()));
+pub fn serve_file(root: &Path, cache_root: &Path, query: Option<&str>) -> Response<Vec<u8>> {
+    let mut relative = None;
+    let mut use_cache = false;
+    for (key, value) in form_urlencoded::parse(query.unwrap_or_default().as_bytes()) {
+        if key == "path" {
+            relative = Some(value.into_owned());
+        } else if key == "cache" {
+            use_cache = value == "1";
+        }
+    }
     let Some(relative) = relative else {
         return not_found("missing screenshot path");
     };
@@ -578,7 +716,8 @@ pub fn serve_file(root: &Path, query: Option<&str>) -> Response<Vec<u8>> {
     {
         return not_found("invalid screenshot path");
     }
-    let Ok(root) = dunce::canonicalize(root) else {
+    let base = if use_cache { cache_root } else { root };
+    let Ok(root) = dunce::canonicalize(base) else {
         return not_found("screenshot directory missing");
     };
     let requested = root.join(relative);
@@ -622,7 +761,6 @@ fn show_success_toast(app: &AppHandle, item: &ScreenshotItem, monitor: Option<Ca
     let query = form_urlencoded::Serializer::new(String::new())
         .append_pair("state", "success")
         .append_pair("title", &item.work_title)
-        .append_pair("file", &item.file_name)
         .finish();
     show_toast(app, &query, monitor);
 }
@@ -1028,17 +1166,32 @@ mod tests {
     async fn saves_lists_and_serves_a_screenshot() {
         let temp = tempfile::TempDir::new().expect("temp");
         let root = temp.path().join("Screenshots");
-        let saved = save_capture(&root, 7, "GINKA", sample_image()).expect("save screenshot");
+        let cache_root = temp.path().join("ScreenshotsCache");
+        let saved =
+            save_capture(&root, &cache_root, 7, "GINKA", sample_image()).expect("save screenshot");
         assert!(saved.relative_path.starts_with("GINKA/"));
         assert!(std::path::Path::new(&saved.path).is_file());
-        assert!(saved.thumbnail_path.contains("_thumbs/"));
+        assert!(saved.thumbnail_path.starts_with("thumbnails/GINKA/"));
+        assert!(saved.thumbnail_is_cache);
+        let game_folder = root.join("GINKA");
+        let names = std::fs::read_dir(&game_folder)
+            .expect("game folder")
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(names.len(), 1);
+        assert!(names[0].ends_with(".png"));
+        assert!(!game_folder.join("_thumbs").exists());
+        assert!(!game_folder.join("_miyu.json").exists());
 
         let pool = crate::db::open_memory_pool().await.expect("pool");
         sqlx::query("INSERT INTO works (id, canonical_title) VALUES (7, 'GINKA')")
             .execute(&pool)
             .await
             .expect("work");
-        let listed = list(&pool, &root, Some(7)).await.expect("list");
+        let listed = list(&pool, &root, &cache_root, Some(7))
+            .await
+            .expect("list");
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].work_id, Some(7));
         assert_eq!(listed[0].work_title, "GINKA");
@@ -1046,15 +1199,23 @@ mod tests {
         let query = form_urlencoded::Serializer::new(String::new())
             .append_pair("path", &saved.relative_path)
             .finish();
-        let response = serve_file(&root, Some(&query));
+        let response = serve_file(&root, &cache_root, Some(&query));
         assert_eq!(response.status(), StatusCode::OK);
         assert!(!response.body().is_empty());
+
+        let thumb_query = form_urlencoded::Serializer::new(String::new())
+            .append_pair("path", &saved.thumbnail_path)
+            .append_pair("cache", "1")
+            .finish();
+        let thumb_response = serve_file(&root, &cache_root, Some(&thumb_query));
+        assert_eq!(thumb_response.status(), StatusCode::OK);
+        assert!(!thumb_response.body().is_empty());
 
         let traversal = form_urlencoded::Serializer::new(String::new())
             .append_pair("path", "../secret.png")
             .finish();
         assert_eq!(
-            serve_file(&root, Some(&traversal)).status(),
+            serve_file(&root, &cache_root, Some(&traversal)).status(),
             StatusCode::NOT_FOUND
         );
     }
@@ -1063,8 +1224,10 @@ mod tests {
     fn uses_a_suffix_when_two_works_share_a_title_folder() {
         let temp = tempfile::TempDir::new().expect("temp");
         let root = temp.path().join("Screenshots");
-        let first = resolve_game_folder(&root, 1, "Same Title").expect("first folder");
-        let second = resolve_game_folder(&root, 2, "Same Title").expect("second folder");
+        let cache_root = temp.path().join("ScreenshotsCache");
+        let first = resolve_game_folder(&root, &cache_root, 1, "Same Title").expect("first folder");
+        let second =
+            resolve_game_folder(&root, &cache_root, 2, "Same Title").expect("second folder");
         assert_ne!(first, second);
         assert_eq!(
             second.file_name().and_then(|value| value.to_str()),

@@ -1,4 +1,4 @@
-import { Camera, Check, TriangleAlert } from "lucide-react";
+import { Check, TriangleAlert } from "lucide-react";
 import { useEffect } from "react";
 import "./screenshot-toast.css";
 
@@ -12,7 +12,6 @@ export function ScreenshotToastPage() {
   const query = readToastQuery();
   const success = query.get("state") === "success";
   const title = query.get("title")?.trim() || "当前游戏";
-  const file = query.get("file")?.trim();
   const message = query.get("message")?.trim() || "请稍后重试";
 
   useEffect(() => {
@@ -35,9 +34,8 @@ export function ScreenshotToastPage() {
       </span>
       <div className="screenshot-toast__copy">
         <strong>{success ? "截图已保存" : "截图失败"}</strong>
-        <span>{success ? `${title}${file ? " · " + file : ""}` : message}</span>
+        <span>{success ? title : message}</span>
       </div>
-      <Camera className="screenshot-toast__mark" size={20} strokeWidth={1.6} aria-hidden="true" />
     </div>
   );
 }

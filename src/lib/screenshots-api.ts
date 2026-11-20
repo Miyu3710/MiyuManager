@@ -7,17 +7,22 @@ export interface ScreenshotItem {
   fileName: string;
   relativePath: string;
   thumbnailPath: string;
+  thumbnailIsCache: boolean;
   path: string;
   capturedAt: string;
   sizeBytes: number;
 }
 
-function screenshotUrl(relativePath: string): string {
-  return "http://miyu-shot.localhost/?path=" + encodeURIComponent(relativePath);
+function screenshotUrl(relativePath: string, cache = false): string {
+  return (
+    "http://miyu-shot.localhost/?path=" +
+    encodeURIComponent(relativePath) +
+    (cache ? "&cache=1" : "")
+  );
 }
 
 export function screenshotThumbUrl(item: ScreenshotItem): string {
-  return screenshotUrl(item.thumbnailPath || item.relativePath);
+  return screenshotUrl(item.thumbnailPath || item.relativePath, item.thumbnailIsCache);
 }
 
 export function screenshotFullUrl(item: ScreenshotItem): string {

@@ -44,7 +44,11 @@ pub fn run() {
         })
         .register_uri_scheme_protocol("miyu-shot", |context, request| {
             let state = context.app_handle().state::<commands::AppState>();
-            screenshots::serve_file(&state.screenshots.root(), request.uri().query())
+            screenshots::serve_file(
+                &state.screenshots.root(),
+                &state.screenshots.cache_root(),
+                request.uri().query(),
+            )
         })
         .invoke_handler(tauri::generate_handler![
             bigscreen::bigscreen_open,

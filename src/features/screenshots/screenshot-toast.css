@@ -8,7 +8,7 @@ body.screenshot-toast-window #root {
 }
 
 body.screenshot-toast-window {
-  color: var(--ink-strong, #4d2b35);
+  color: #fff;
   font-family: "Noto Sans SC", "Manrope", sans-serif;
 }
 
@@ -16,19 +16,18 @@ body.screenshot-toast-window {
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 10px;
   width: calc(100vw - 16px);
   min-height: 76px;
   margin: 8px;
   padding: 14px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 18px;
   background:
-    linear-gradient(135deg, rgba(255, 253, 251, 0.97), rgba(255, 244, 246, 0.95)),
+    linear-gradient(135deg, rgba(255, 250, 252, 0.94), rgba(255, 243, 247, 0.9)),
     #fffafb;
-  box-shadow:
-    0 14px 36px rgba(89, 43, 57, 0.18),
-    0 2px 7px rgba(89, 43, 57, 0.08);
+  box-shadow: none;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   pointer-events: none;
@@ -42,14 +41,12 @@ body.screenshot-toast-window {
   width: 38px;
   height: 38px;
   border-radius: 13px;
-  color: #fffafb;
-  background: linear-gradient(145deg, #ef8da7, #d95779);
-  box-shadow: 0 6px 14px rgba(205, 78, 112, 0.24);
+  color: #fff;
+  background: linear-gradient(145deg, #f08fa8, #d95779);
 }
 
 .screenshot-toast.is-error .screenshot-toast__icon {
-  background: linear-gradient(145deg, #c88a75, #a8524b);
-  box-shadow: 0 6px 14px rgba(139, 63, 56, 0.22);
+  background: linear-gradient(145deg, #cd907b, #a8524b);
 }
 
 .screenshot-toast__copy {
@@ -57,25 +54,25 @@ body.screenshot-toast-window {
   flex-direction: column;
   gap: 3px;
   min-width: 0;
-  flex: 1;
+  max-width: 290px;
+  text-align: left;
 }
 
 .screenshot-toast__copy strong {
+  overflow: hidden;
+  color: #4d2b35;
   font-size: 14px;
   font-weight: 650;
   letter-spacing: 0.01em;
-}
-
-.screenshot-toast__copy span {
-  overflow: hidden;
-  color: rgba(92, 52, 65, 0.66);
-  font-size: 11.5px;
-  line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.screenshot-toast__mark {
-  flex: 0 0 auto;
-  color: rgba(160, 88, 108, 0.42);
+.screenshot-toast__copy span {
+  overflow: hidden;
+  color: rgba(92, 52, 65, 0.68);
+  font-size: 11.5px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
