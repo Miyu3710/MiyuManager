@@ -48,6 +48,7 @@ pub struct LaunchWatch {
     pub manual_stop: Arc<AtomicBool>,
     pub external_pid: Arc<Mutex<Option<u32>>>,
     pub root_exit_code: Arc<Mutex<Option<i32>>>,
+    pub game_pid: Arc<Mutex<Option<u32>>>,
 }
 
 #[derive(Debug)]
@@ -234,6 +235,7 @@ pub async fn watch_launch(config: LaunchWatch) -> WatchOutcome {
         manual_stop,
         external_pid,
         root_exit_code,
+        game_pid: shared_game_pid,
     } = config;
 
     let started_waiting = Instant::now();
@@ -327,6 +329,9 @@ pub async fn watch_launch(config: LaunchWatch) -> WatchOutcome {
                     eprintln!("play session retarget failed: {error}");
                 }
                 game_pid = Some(pid);
+            }
+            if let Ok(mut stored) = shared_game_pid.lock() {
+                *stored = Some(pid);
             }
             if let Ok(mut stored) = external_pid.lock() {
                 *stored = (!pids.contains(&pid)).then_some(pid);

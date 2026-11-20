@@ -790,6 +790,7 @@ export async function getAppInfo(): Promise<AppInfo> {
       rootCount: previewRoots.length,
       onboardingCompleted: true,
       version: "0.2.2-preview",
+      screenshotDir: "C:\\Users\\you\\Pictures\\MiyuManager\\Screenshots",
     };
   }
   return invoke<AppInfo>("app_info");

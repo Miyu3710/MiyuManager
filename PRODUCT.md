@@ -16,6 +16,8 @@ with a controller and must stay legible from a distance.
   Hikarinagi and Steam, with source and update time retained.
 - Play time comes from tracked launch sessions, not from reading a game's save data. A session can
   be corrected or entered manually and is marked accordingly.
+- In-game screenshots are captured only after a user hotkey, stored in a user-selected local folder
+  grouped by game title, and never uploaded by the application.
 - User status, rating, notes and collection membership are user-authored. They must never look like
   automatically detected story progress.
 - The default desktop window is 1440 × 900 with a minimum of 1120 × 720. The interface also supports
@@ -31,6 +33,7 @@ with a controller and must stay legible from a distance.
 3. Add or rescan a local game folder.
 4. Correct metadata, covers and launch settings without losing existing values.
 5. Review play history and open the television view.
+6. Capture and browse screenshots for a game or across the gallery.
 
 ## Interface principles
 

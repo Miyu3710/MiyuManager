@@ -1,0 +1,94 @@
+.screenshot-settings__shortcut,
+.screenshot-settings__directory,
+.screenshot-settings__buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.screenshot-shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 144px;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--color-line);
+  border-radius: 9px;
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.72);
+  font: inherit;
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-swift),
+    background var(--motion-fast) var(--ease-swift);
+}
+
+.screenshot-shortcut:hover,
+.screenshot-shortcut.is-recording {
+  border-color: rgba(212, 56, 104, 0.36);
+  color: var(--color-accent-text);
+  background: var(--color-accent-soft);
+}
+
+.screenshot-settings__directory input {
+  width: min(42vw, 420px);
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 9px;
+  outline: none;
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.7);
+  font: inherit;
+  font-size: var(--text-caption);
+}
+
+.screenshot-settings__directory input:focus {
+  border-color: var(--color-focus);
+  box-shadow: 0 0 0 3px rgba(212, 56, 104, 0.1);
+}
+
+.screenshot-settings__effective {
+  align-items: flex-end;
+  padding-top: 4px;
+  border-top: 1px solid var(--color-line);
+}
+
+.screenshot-settings__effective-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.screenshot-settings__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-text-faint);
+  font-size: var(--text-micro);
+}
+
+.screenshot-settings .settings-path {
+  max-width: min(58vw, 720px);
+}
+
+@media (max-width: 900px) {
+  .screenshot-settings__directory-row,
+  .screenshot-settings__effective {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .screenshot-settings__directory {
+    width: 100%;
+  }
+
+  .screenshot-settings__directory input {
+    width: 100%;
+  }
+}

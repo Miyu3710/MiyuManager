@@ -14,6 +14,7 @@ import {
   HardDrive,
   Heart,
   History,
+  Images,
   LayoutDashboard,
   Loader2,
   Pencil,
@@ -60,13 +61,15 @@ import { SourceWorkspace } from "./SourceWorkspace";
 import { UserReviewCard } from "./UserReviewCard";
 import { WorkEditPanel } from "./WorkEditPanel";
 import { SessionHistory } from "./SessionHistory";
+import { WorkScreenshots } from "../screenshots/WorkScreenshots";
 import "./work-detail.css";
 
-type Tab = "overview" | "sessions" | "launch" | "sources";
+type Tab = "overview" | "sessions" | "screenshots" | "launch" | "sources";
 
 const tabs: { id: Tab; label: string; shortLabel: string; icon: LucideIcon }[] = [
   { id: "overview", label: "概览", shortLabel: "概览", icon: LayoutDashboard },
   { id: "sessions", label: "游玩记录", shortLabel: "记录", icon: History },
+  { id: "screenshots", label: "截图", shortLabel: "截图", icon: Images },
   { id: "launch", label: "启动配置", shortLabel: "启动", icon: SlidersHorizontal },
   { id: "sources", label: "来源与字段", shortLabel: "来源", icon: Database },
 ];
@@ -877,6 +880,10 @@ export function WorkDetailPage() {
           </div>
         ) : null}
 
+        {tab === "screenshots" ? (
+          <WorkScreenshots workId={item.workId} />
+        ) : null}
+
         {tab === "launch" && hasLocalCopy ? (
           <LaunchConfigPanel
             key={detail.data.workId}
@@ -895,6 +902,8 @@ export function WorkDetailPage() {
                 silentStartup: false,
                 closeBehavior: "tray",
                 bangumiProgressSync: false,
+                screenshotHotkey: "Ctrl+Shift+F12",
+                screenshotDir: "",
               }
             }
             onSaved={invalidate}

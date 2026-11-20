@@ -4,6 +4,7 @@ import {
   ArrowUpRight,
   FolderHeart,
   Home,
+  Images,
   Library,
   PanelLeftClose,
   PanelLeftOpen,
@@ -39,6 +40,7 @@ const navGroups = [
     items: [
       { to: "/", label: "首页", icon: Home, end: true },
       { to: "/library", label: "游戏库", icon: Library },
+      { to: "/screenshots", label: "图库", icon: Images },
     ],
   },
   {
@@ -53,6 +55,7 @@ const navGroups = [
 const pageNames: Record<string, string> = {
   "/": "首页",
   "/library": "游戏库",
+  "/screenshots": "图库",
   "/collections": "收藏集",
   "/stats": "统计",
   "/settings": "设置",

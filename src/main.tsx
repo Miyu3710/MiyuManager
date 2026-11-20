@@ -12,8 +12,20 @@ import { ErrorBoundary } from "./app/ErrorBoundary";
 import { installGlobalErrorReporting } from "./app/error-reporting";
 import "./design-system/atelier.css";
 
-if (isTauri() && ["bigscreen", "bigscreen-probe"].includes(getCurrentWindow().label)) {
+const screenshotToastRoute = window.location.hash.startsWith("#/screenshot-toast");
+const windowLabel = screenshotToastRoute
+  ? "screenshot-toast"
+  : isTauri()
+    ? getCurrentWindow().label
+    : "main";
+
+if (["bigscreen", "bigscreen-probe"].includes(windowLabel)) {
   window.location.hash = "#/big-screen";
+}
+
+if (windowLabel.startsWith("screenshot-toast")) {
+  document.documentElement.classList.add("screenshot-toast-window");
+  document.body.classList.add("screenshot-toast-window");
 }
 
 if (!window.location.hash || window.location.hash === "#" || window.location.hash === "#/") {

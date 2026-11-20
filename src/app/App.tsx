@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect } from "react";
 import type { ReactNode } from "react";
 import { createHashRouter, Navigate, RouterProvider } from "react-router-dom";
@@ -11,6 +11,7 @@ import { HintProvider } from "../design-system/components/Hint";
 import { HomePage } from "../features/home/HomePage";
 import { useAppInfo } from "../features/library/useLibrary";
 import { useAutomaticUpdates } from "./useAutomaticUpdates";
+import { ScreenshotToastPage } from "../features/screenshots/ScreenshotToastPage";
 
 const LibraryPage = lazy(() =>
   import("../features/library/LibraryPage").then((module) => ({ default: module.LibraryPage })),
@@ -41,6 +42,12 @@ const OnboardingPage = lazy(() =>
 const BigScreenPage = lazy(() =>
   import("../features/bigscreen/BigScreenPage").then((module) => ({
     default: module.BigScreenPage,
+  })),
+);
+
+const ScreenshotsPage = lazy(() =>
+  import("../features/screenshots/ScreenshotsPage").then((module) => ({
+    default: module.ScreenshotsPage,
   })),
 );
 
@@ -128,6 +135,14 @@ const router = createHashRouter([
         element: (
           <PageRoute>
             <CollectionsPage />
+          </PageRoute>
+        ),
+      },
+      {
+        path: "screenshots",
+        element: (
+          <PageRoute>
+            <ScreenshotsPage />
           </PageRoute>
         ),
       },
@@ -259,7 +274,24 @@ function useLaunchWarnings() {
   }, []);
 }
 
-export default function App() {
+function useScreenshotEvents() {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (!isTauri() || getCurrentWindow().label !== "main") {
+      return;
+    }
+    let unlisten: (() => void) | undefined;
+    void listen("screenshot-captured", () => {
+      void queryClient.invalidateQueries({ queryKey: ["screenshots"] });
+    }).then((cleanup) => {
+      unlisten = cleanup;
+    });
+    return () => unlisten?.();
+  }, [queryClient]);
+  return null;
+}
+
+function MainWindowApp() {
   useRevealWindow();
   useMainWindowBridge();
   useLaunchWarnings();
@@ -267,6 +299,7 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <ScreenshotEvents />
       <HintProvider>
         <RouterProvider router={router} />
         <Toaster
@@ -280,4 +313,33 @@ export default function App() {
       </HintProvider>
     </QueryClientProvider>
   );
+}
+
+function ScreenshotEvents() {
+  useScreenshotEvents();
+  return null;
+}
+
+function windowLabel(): string {
+  if (window.location.hash.startsWith("#/screenshot-toast")) {
+    return "screenshot-toast";
+  }
+  if (!isTauri()) {
+    return "main";
+  }
+  try {
+    return getCurrentWindow().label;
+  } catch {
+    return "main";
+  }
+}
+
+export default function App() {
+  if (
+    windowLabel().startsWith("screenshot-toast") ||
+    window.location.hash.startsWith("#/screenshot-toast")
+  ) {
+    return <ScreenshotToastPage />;
+  }
+  return <MainWindowApp />;
 }

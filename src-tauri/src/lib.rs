@@ -12,6 +12,7 @@ mod net;
 mod oauth;
 mod preferences;
 mod scan;
+mod screenshots;
 mod security;
 mod startup;
 mod steam_library;
@@ -27,10 +28,23 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        screenshots::handle_hotkey(app);
+                    }
+                })
+                .build(),
+        )
         .plugin(security::navigation_guard())
         .register_uri_scheme_protocol("miyu-asset", |context, request| {
             let state = context.app_handle().state::<commands::AppState>();
             assets::serve_asset(&state.data_dir, request.uri().path())
+        })
+        .register_uri_scheme_protocol("miyu-shot", |context, request| {
+            let state = context.app_handle().state::<commands::AppState>();
+            screenshots::serve_file(&state.screenshots.root(), request.uri().query())
         })
         .invoke_handler(tauri::generate_handler![
             bigscreen::bigscreen_open,
@@ -76,6 +90,9 @@ pub fn run() {
             commands::launch_stop,
             commands::launch_state,
             commands::sessions_list,
+            commands::screenshots_list,
+            commands::screenshots_open_dir,
+            commands::screenshot_reveal,
             commands::session_create,
             commands::session_update,
             commands::session_delete,

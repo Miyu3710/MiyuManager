@@ -20,6 +20,8 @@ export interface AppPreferences {
   silentStartup: boolean;
   closeBehavior: CloseBehavior;
   bangumiProgressSync: boolean;
+  screenshotHotkey: string;
+  screenshotDir: string;
 }
 
 export interface UpdateCheck {

@@ -324,6 +324,7 @@ export interface AppInfo {
   rootCount: number;
   onboardingCompleted: boolean;
   version: string;
+  screenshotDir: string;
 }
 
 export interface CollectionSummary {

@@ -28,8 +28,8 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://tauri.localhost miyu-asset: http://miyu-asset.localhost; img-src 'self' asset: http://asset.localhost miyu-asset: http://miyu-asset.localhost data: blob: https:; media-src 'self' https: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none';",
-      "devCsp": "default-src 'self' http://localhost:1420; connect-src 'self' ipc: http://ipc.localhost http://localhost:1420 ws://localhost:1420; img-src 'self' asset: http://asset.localhost miyu-asset: http://miyu-asset.localhost data: blob: https:; media-src 'self' https: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none';"
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost http://tauri.localhost miyu-asset: http://miyu-asset.localhost; img-src 'self' asset: http://asset.localhost miyu-asset: http://miyu-asset.localhost miyu-shot: http://miyu-shot.localhost data: blob: https:; media-src 'self' https: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none';",
+      "devCsp": "default-src 'self' http://localhost:1420; connect-src 'self' ipc: http://ipc.localhost http://localhost:1420 ws://localhost:1420; img-src 'self' asset: http://asset.localhost miyu-asset: http://miyu-asset.localhost miyu-shot: http://miyu-shot.localhost data: blob: https:; media-src 'self' https: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; object-src 'none'; frame-src 'none'; base-uri 'self'; form-action 'none';"
     }
   },
   "bundle": {

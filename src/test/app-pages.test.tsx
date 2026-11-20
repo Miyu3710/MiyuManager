@@ -9,6 +9,7 @@ import { LibraryPage } from "../features/library/LibraryPage";
 import { WorkDetailPage } from "../features/work-detail/WorkDetailPage";
 import { CoverArt } from "../design-system/components/CoverArt";
 import { StatsPage } from "../features/stats/StatsPage";
+import { ScreenshotsPage } from "../features/screenshots/ScreenshotsPage";
 
 afterEach(() => {
   cleanup();
@@ -226,6 +227,23 @@ describe("main app pages", () => {
 
     expect(await screen.findByText("补录测试")).toBeInTheDocument();
     expect(screen.getByText("手动补录")).toBeInTheDocument();
+  });
+
+  it("shows the empty screenshot gallery and per-game screenshot tab", async () => {
+    renderWithProviders(<ScreenshotsPage />, ["/screenshots"]);
+    expect(await screen.findByRole("heading", { level: 1, name: "图库" })).toBeInTheDocument();
+    expect(await screen.findByText("图库还是空的")).toBeInTheDocument();
+    expect((await screen.findAllByText(/按 Ctrl\+Shift\+F12/)).length).toBeGreaterThan(0);
+
+    cleanup();
+    renderWithProviders(
+      <Routes>
+        <Route path="/work/:id" element={<WorkDetailPage />} />
+      </Routes>,
+      ["/work/moonlit-atelier?tab=screenshots"],
+    );
+    expect(await screen.findByRole("heading", { name: "截图" })).toBeInTheDocument();
+    expect(await screen.findByText("还没有截图")).toBeInTheDocument();
   });
 
   it("opens the inline editor in the sources tab", async () => {

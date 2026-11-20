@@ -262,6 +262,7 @@ pub struct AppInfo {
     pub root_count: i64,
     pub onboarding_completed: bool,
     pub version: String,
+    pub screenshot_dir: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

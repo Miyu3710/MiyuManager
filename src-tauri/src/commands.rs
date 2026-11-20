@@ -23,6 +23,7 @@ use crate::metadata::{self, MetadataHttp, MetadataImportRequest, MetadataImportR
 use crate::oauth::OAuthService;
 use crate::preferences::{self, AppPreferences, UpdateCheck};
 use crate::scan::{self, ScanCandidate, ScanCoordinator};
+use crate::screenshots::{self, ScreenshotItem, ScreenshotService};
 use crate::steam_library;
 use crate::tracking::{
     self, PlaySessionWithWork, SessionCreateInput, SessionUpdateInput, StatsOverview, StatsPeriod,
@@ -39,6 +40,7 @@ pub struct AppState {
     pub metadata_jobs: Arc<MetadataCoordinator>,
     pub batch_jobs: Arc<BatchCoordinator>,
     pub oauth: Arc<OAuthService>,
+    pub screenshots: Arc<ScreenshotService>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -257,6 +259,8 @@ pub async fn create_app_state(app: &AppHandle) -> anyhow::Result<AppState> {
         );
     }
     let preferences = preferences::load(&pool).await?;
+    let screenshot_root = screenshots::effective_root(app, &data_dir, &preferences);
+    let screenshots = Arc::new(ScreenshotService::new(screenshot_root));
     if let Err(error) =
         crate::startup::apply(preferences.launch_at_startup, preferences.silent_startup)
     {
@@ -283,6 +287,7 @@ pub async fn create_app_state(app: &AppHandle) -> anyhow::Result<AppState> {
         metadata_jobs: Arc::new(MetadataCoordinator::default()),
         batch_jobs: Arc::new(BatchCoordinator::default()),
         oauth,
+        screenshots,
     })
 }
 
@@ -768,6 +773,7 @@ pub async fn app_info(state: State<'_, AppState>) -> Result<AppInfo, String> {
         root_count,
         onboarding_completed: preferences.onboarding_completed,
         version: env!("CARGO_PKG_VERSION").to_string(),
+        screenshot_dir: state.screenshots.root().to_string_lossy().to_string(),
     })
 }
 
@@ -780,10 +786,12 @@ pub async fn preferences_get(state: State<'_, AppState>) -> Result<AppPreference
 
 #[tauri::command]
 pub async fn preferences_update(
+    app: AppHandle,
     state: State<'_, AppState>,
     mut input: AppPreferences,
 ) -> Result<AppPreferences, String> {
     input.validate().map_err(|error| error.to_string())?;
+    screenshots::validate_hotkey(&input.screenshot_hotkey).map_err(|error| error.to_string())?;
     let previous = preferences::load(&state.pool)
         .await
         .map_err(|error| error.to_string())?;
@@ -807,6 +815,15 @@ pub async fn preferences_update(
     state
         .close_to_tray
         .store(input.close_behavior != "quit", Ordering::SeqCst);
+    state
+        .screenshots
+        .set_root(screenshots::effective_root(&app, &state.data_dir, &input));
+    if state.launches.has_active() {
+        state
+            .screenshots
+            .sync_shortcut(&app, &input.screenshot_hotkey)
+            .map_err(|error| format!("截图快捷键注册失败：{error}"))?;
+    }
     Ok(input)
 }
 
@@ -815,6 +832,26 @@ pub async fn onboarding_complete(state: State<'_, AppState>) -> Result<AppPrefer
     preferences::mark_onboarding_completed(&state.pool)
         .await
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn screenshots_list(
+    state: State<'_, AppState>,
+    work_id: Option<i64>,
+) -> Result<Vec<ScreenshotItem>, String> {
+    screenshots::list(&state.pool, &state.screenshots.root(), work_id)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn screenshots_open_dir(state: State<'_, AppState>) -> Result<(), String> {
+    screenshots::open_root(&state.screenshots.root()).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn screenshot_reveal(state: State<'_, AppState>, path: String) -> Result<(), String> {
+    screenshots::reveal(&path, &state.screenshots.root()).map_err(|error| error.to_string())
 }
 
 #[tauri::command]

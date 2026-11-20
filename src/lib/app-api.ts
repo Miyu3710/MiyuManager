@@ -25,6 +25,8 @@ const previewDefaults: AppPreferences = {
   silentStartup: false,
   closeBehavior: "tray",
   bangumiProgressSync: false,
+  screenshotHotkey: "Ctrl+Shift+F12",
+  screenshotDir: "",
 };
 
 function previewPreferences(): AppPreferences {

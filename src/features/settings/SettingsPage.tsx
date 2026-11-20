@@ -1,5 +1,6 @@
 import {
   Database,
+  Camera,
   Gamepad2,
   Globe2,
   ListFilter,
@@ -34,6 +35,7 @@ import { MetadataSourceSettings } from "./MetadataSourceSettings";
 import { OAuthAccounts } from "./OAuthAccounts";
 import { ScanExclusionsDialog } from "./ScanExclusionsDialog";
 import { SettingsSelect } from "./SettingsSelect";
+import { ScreenshotSettings } from "./ScreenshotSettings";
 import {
   BangumiSyncSection,
   DataAndUpdateSection,
@@ -85,6 +87,12 @@ const settingsGroups = [
         label: "启动器",
         icon: Monitor,
         description: "显示器、全屏，以及 Locale Emulator 与 Magpie。",
+      },
+      {
+        id: "screenshot-settings",
+        label: "截图",
+        icon: Camera,
+        description: "截图快捷键、保存目录与浏览。",
       },
       {
         id: "network-settings",
@@ -526,6 +534,40 @@ export function SettingsPage() {
                 <Button variant="ghost" size="sm" onClick={() => void preferences.refetch()}>
                   重试
                 </Button>
+              </div>
+            )}
+          </section>
+
+          <section id="screenshot-settings" className="settings-section settings-section--full">
+            <SettingsSectionHeader
+              icon={Camera}
+              title="截图"
+              description="游戏内快捷键、保存目录与图库入口。"
+              action={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate("/screenshots")}
+                >
+                  查看图库
+                </Button>
+              }
+            />
+            {preferences.data ? (
+              <ScreenshotSettings
+                preferences={preferences.data}
+                appInfo={appInfo.data}
+                onSaved={() => {
+                  invalidatePreferences();
+                  void appInfo.refetch();
+                }}
+              />
+            ) : (
+              <div className="settings-row">
+                <div>
+                  <b>截图设置</b>
+                  <span>{preferences.isError ? String(preferences.error) : "正在读取设置…"}</span>
+                </div>
               </div>
             )}
           </section>

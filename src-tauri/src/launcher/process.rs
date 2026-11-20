@@ -3,6 +3,7 @@ pub struct WindowInfo {
     pub class_name: String,
     pub exe_path: String,
     pub title: String,
+    pub hwnd: isize,
 }
 
 #[cfg(windows)]
@@ -215,7 +216,8 @@ mod platform {
     }
 
     struct WindowSearch {
-        target: String,
+        target: Option<String>,
+        target_pid: Option<u32>,
         class_prefix: Option<String>,
         include_owned: bool,
         best: Option<(u64, WindowInfo)>,
@@ -239,7 +241,17 @@ mod platform {
         let Some(exe_path) = process_image_path(pid) else {
             return 1;
         };
-        if !same_path(&exe_path, &search.target) {
+        if search
+            .target_pid
+            .is_some_and(|target_pid| target_pid != pid)
+        {
+            return 1;
+        }
+        if search
+            .target
+            .as_deref()
+            .is_some_and(|target| !same_path(&exe_path, target))
+        {
             return 1;
         }
 
@@ -296,9 +308,32 @@ mod platform {
                 class_name,
                 exe_path,
                 title,
+                hwnd: hwnd as isize,
             },
         ));
         1
+    }
+
+    fn find_window_inner(
+        exe_path: &str,
+        pid: Option<u32>,
+        class_prefix: Option<&str>,
+        include_owned: bool,
+    ) -> Option<WindowInfo> {
+        let mut search = WindowSearch {
+            target: Some(exe_path.to_string()),
+            target_pid: pid,
+            class_prefix: class_prefix.map(str::to_string),
+            include_owned,
+            best: None,
+        };
+        unsafe {
+            EnumWindows(
+                Some(collect_window),
+                &mut search as *mut WindowSearch as LPARAM,
+            );
+        }
+        search.best.map(|(_, window)| window)
     }
 
     fn find_window(
@@ -306,10 +341,15 @@ mod platform {
         class_prefix: Option<&str>,
         include_owned: bool,
     ) -> Option<WindowInfo> {
+        find_window_inner(exe_path, None, class_prefix, include_owned)
+    }
+
+    pub fn window_info_by_pid(pid: u32) -> Option<WindowInfo> {
         let mut search = WindowSearch {
-            target: exe_path.to_string(),
-            class_prefix: class_prefix.map(str::to_string),
-            include_owned,
+            target: None,
+            target_pid: Some(pid),
+            class_prefix: None,
+            include_owned: false,
             best: None,
         };
         unsafe {
@@ -492,6 +532,10 @@ mod platform {
         None
     }
 
+    pub fn window_info_by_pid(_pid: u32) -> Option<WindowInfo> {
+        None
+    }
+
     #[cfg(test)]
     pub fn wait_for_window_by_class(
         _exe_path: &str,
@@ -512,7 +556,7 @@ mod platform {
 
 pub use platform::{
     ProcessJob, foreground_process_id, process_ids, process_ids_with_name, process_image_path,
-    terminate_process, visible_window_area, wait_for_window_by_executable,
+    terminate_process, visible_window_area, wait_for_window_by_executable, window_info_by_pid,
 };
 
 #[cfg(test)]

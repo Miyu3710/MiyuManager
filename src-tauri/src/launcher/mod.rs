@@ -20,7 +20,11 @@ use process::ProcessJob;
 
 struct ActiveLaunch {
     work_id: i64,
+    title: String,
+    target_exe: String,
+    working_dir: String,
     pid: u32,
+    game_pid: Arc<Mutex<Option<u32>>>,
     started_at: String,
     job: Option<Arc<ProcessJob>>,
     manual_stop: Arc<AtomicBool>,
@@ -107,6 +111,43 @@ impl LaunchManager {
             }
         }
         Ok(false)
+    }
+
+    pub fn has_active(&self) -> bool {
+        self.active
+            .lock()
+            .map(|active| !active.is_empty())
+            .unwrap_or(false)
+    }
+
+    pub fn capture_target(&self, foreground: Option<u32>) -> Option<(i64, String, Option<u32>)> {
+        let active = self.active.lock().ok()?;
+        let foreground_path = foreground
+            .and_then(process::process_image_path)
+            .map(|path| normalized_capture_path(&path));
+        for launch in active.values() {
+            let game_pid = launch.game_pid.lock().ok().and_then(|value| *value);
+            let external_pid = launch.external_pid.lock().ok().and_then(|value| *value);
+            let matches_foreground = foreground.is_some_and(|foreground| {
+                Some(foreground) == game_pid
+                    || Some(foreground) == external_pid
+                    || foreground == launch.pid
+                    || launch
+                        .job
+                        .as_ref()
+                        .and_then(|job| job.active_process_ids().ok())
+                        .is_some_and(|pids| pids.contains(&foreground))
+                    || foreground_path.as_deref().is_some_and(|path| {
+                        let directory = capture_directory_prefix(&launch.working_dir);
+                        path == normalized_capture_path(&launch.target_exe)
+                            || (!directory.is_empty() && path.starts_with(&directory))
+                    })
+            });
+            if matches_foreground {
+                return Some((launch.work_id, launch.title.clone(), game_pid));
+            }
+        }
+        None
     }
 
     fn finish(&self, launch_id: &str) {
@@ -200,6 +241,24 @@ fn validation_message(report: &db::ValidationReport) -> String {
         "启动路径无效".to_string()
     } else {
         parts.join("；")
+    }
+}
+
+fn normalized_capture_path(path: &str) -> String {
+    dunce::canonicalize(std::path::Path::new(path))
+        .unwrap_or_else(|_| std::path::PathBuf::from(path))
+        .to_string_lossy()
+        .replace('/', "\\")
+        .to_lowercase()
+}
+
+fn capture_directory_prefix(path: &str) -> String {
+    let normalized = normalized_capture_path(path);
+    let trimmed = normalized.trim_end_matches('\\');
+    if trimmed.is_empty() {
+        String::new()
+    } else {
+        format!("{trimmed}\\")
     }
 }
 
@@ -297,12 +356,17 @@ pub async fn start(
     };
     let manual_stop = Arc::new(AtomicBool::new(false));
     let external_pid = Arc::new(Mutex::new(job.is_none().then_some(pid)));
+    let game_pid = Arc::new(Mutex::new(Some(pid)));
     if let Ok(mut active) = manager.active.lock() {
         active.insert(
             launch_id.clone(),
             ActiveLaunch {
                 work_id,
+                title: target.title.clone(),
+                target_exe: target.exe_path.clone(),
+                working_dir: target.working_dir.clone(),
                 pid,
+                game_pid: game_pid.clone(),
                 started_at: started_at.clone(),
                 job: job.clone(),
                 manual_stop: manual_stop.clone(),
@@ -311,6 +375,29 @@ pub async fn start(
         );
     } else {
         bail!("启动状态锁已损坏");
+    }
+    match crate::screenshots::register_for_game(&app, &settings.screenshot_hotkey) {
+        Ok(()) => crate::diagnostics::event(
+            "info",
+            "screenshot_shortcut_registered",
+            "已为运行中的游戏注册截图快捷键",
+            serde_json::json!({"workId": work_id, "hotkey": settings.screenshot_hotkey}),
+        ),
+        Err(error) => {
+            crate::diagnostics::event(
+                "warn",
+                "screenshot_shortcut_failed",
+                "截图快捷键注册失败",
+                serde_json::json!({"workId": work_id, "hotkey": settings.screenshot_hotkey, "error": format!("{error:#}")}),
+            );
+            let _ = app.emit(
+                "launch-warning",
+                serde_json::json!({
+                    "workId": work_id,
+                    "message": format!("截图快捷键不可用：{error}")
+                }),
+            );
+        }
     }
     let _ = app.emit("launch-state", &snapshot);
 
@@ -351,6 +438,7 @@ pub async fn start(
             manual_stop,
             external_pid,
             root_exit_code,
+            game_pid,
         })
         .await;
         let (exit_code, message) = match outcome {
@@ -372,6 +460,9 @@ pub async fn start(
             },
         );
         event_manager.finish(&event_launch_id);
+        if !event_manager.has_active() {
+            crate::screenshots::unregister(&event_app);
+        }
     });
 
     Ok(snapshot)

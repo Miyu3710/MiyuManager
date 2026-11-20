@@ -23,6 +23,7 @@
 - 🌐 **多源元数据** — 从 VNDB、Bangumi、Kungal、Hikarinagi 和 Steam 搜索、比较并合并作品信息与封面。
 - 🏷️ **资料与收藏** — 编辑标题、原题、简介、标签、状态、评分和评价，用收藏集手动分组。
 - ⏱️ **游玩记录** — 按实际启动会话统计时长，支持补录和修正；`Ctrl+K` 搜索作品、别名、标签和收藏集。
+- 📸 **游戏内截图** — 游戏运行时按 `Ctrl+Shift+F12` 截取当前游戏窗口，保存到可自定义目录并按作品标题归档；详情页与图库可浏览。
 - 📺 **电视大屏** — 全屏浏览和启动游戏，支持手柄操作，适合从远处使用。
 - 💾 **数据备份** — SQLite 在线备份与恢复，恢复前自动创建安全快照，并提供诊断日志。
 - 🔄 **自动更新** — 从 GitHub Release 检查、下载并安装经过 Tauri 签名校验的新版本。
@@ -73,6 +74,8 @@ pnpm tauri dev
 ```
 
 “设置 → 数据与关于”可以备份或恢复数据库，并查看完整性、迁移和日志状态。备份只保存数据库，不包含游戏文件和封面缓存。OAuth 凭据从 `MIYU_OAUTH_CONFIG` 或数据目录的 `oauth/providers.json` 读取，不进入 Git。开源后请按 [OAuth 配置](docs/OAUTH.md) 创建自己的应用；仓库只提供 [providers.example.json](providers.example.json) 模板，不要把填好的 `providers.json` 提交到 Git。
+
+截图默认保存到 `Pictures\MiyuManager\Screenshots`，每部作品使用标题文件夹，并生成 `_thumbs` 缩略图。可以在“设置 → 截图”修改快捷键和目录；快捷键只在游戏运行时注册。
 
 ## 开发与贡献
 

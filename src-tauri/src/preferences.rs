@@ -85,6 +85,10 @@ pub struct AppPreferences {
     pub close_behavior: String,
     #[serde(default)]
     pub bangumi_progress_sync: bool,
+    #[serde(default = "default_screenshot_hotkey")]
+    pub screenshot_hotkey: String,
+    #[serde(default)]
+    pub screenshot_dir: String,
 }
 
 fn default_proxy_mode() -> String {
@@ -97,6 +101,10 @@ fn default_close_behavior() -> String {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_screenshot_hotkey() -> String {
+    "Ctrl+Shift+F12".to_string()
 }
 
 impl Default for AppPreferences {
@@ -116,6 +124,8 @@ impl Default for AppPreferences {
             silent_startup: false,
             close_behavior: default_close_behavior(),
             bangumi_progress_sync: false,
+            screenshot_hotkey: default_screenshot_hotkey(),
+            screenshot_dir: String::new(),
         }
     }
 }
@@ -141,6 +151,23 @@ impl AppPreferences {
         self.close_behavior = self.close_behavior.trim().to_ascii_lowercase();
         if !matches!(self.close_behavior.as_str(), "tray" | "quit") {
             bail!("关闭行为无效");
+        }
+        self.screenshot_hotkey = self.screenshot_hotkey.trim().to_string();
+        if self.screenshot_hotkey.is_empty() {
+            self.screenshot_hotkey = default_screenshot_hotkey();
+        }
+        if self.screenshot_hotkey.chars().count() > 64 {
+            bail!("截图快捷键过长");
+        }
+        if self.screenshot_hotkey.contains('\0') {
+            bail!("截图快捷键不能包含 NUL 字符");
+        }
+        self.screenshot_dir = self.screenshot_dir.trim().to_string();
+        if self.screenshot_dir.chars().count() > 4096 {
+            bail!("截图目录路径过长");
+        }
+        if self.screenshot_dir.contains('\0') {
+            bail!("截图目录不能包含 NUL 字符");
         }
         Ok(())
     }
