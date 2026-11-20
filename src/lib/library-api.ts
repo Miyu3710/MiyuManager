@@ -789,7 +789,7 @@ export async function getAppInfo(): Promise<AppInfo> {
       exclusionCount: previewExclusions.length,
       rootCount: previewRoots.length,
       onboardingCompleted: true,
-      version: "0.2.2-preview",
+      version: "0.3.0-preview",
       screenshotDir: "C:\\Users\\you\\Pictures\\MiyuManager\\Screenshots",
     };
   }
